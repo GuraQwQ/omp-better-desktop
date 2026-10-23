@@ -1,0 +1,14 @@
+node_modules/
+dist/
+target/
+.codegraph/
+.cache/
+.references/
+.impeccable/review/
+artifacts/
+*.log
+.env*
+AGENTS.md
+PRODUCT.md
+test/
+src-tauri/gen/

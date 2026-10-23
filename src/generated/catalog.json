@@ -1,0 +1,1775 @@
+[
+  {
+    "name": "acp",
+    "kind": "cli",
+    "description": "Run omp as an ACP (Agent Client Protocol) server over stdio",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/acp.ts"
+  },
+  {
+    "name": "agents",
+    "kind": "cli",
+    "description": "Manage bundled task agents",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/agents.ts"
+  },
+  {
+    "name": "anonymize",
+    "kind": "cli",
+    "description": "Write a shareable copy of a session and its subagents: turn contents redacted, metadata kept, paths and literals replaced by consistent mock tokens",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/anonymize.ts"
+  },
+  {
+    "name": "auth-broker",
+    "kind": "cli",
+    "description": "Manage the omp auth-broker (credential vault)",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/auth-broker.ts"
+  },
+  {
+    "name": "auth-gateway",
+    "kind": "cli",
+    "description": "Run an auth-gateway: an HTTP forward proxy backed by the configured broker, or JSON lines on stdio with your own credentials",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/auth-gateway.ts"
+  },
+  {
+    "name": "auth",
+    "kind": "cli",
+    "description": "Export or import stored provider credentials (API keys and OAuth logins) as JSON",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/auth.ts"
+  },
+  {
+    "name": "bench",
+    "kind": "cli",
+    "description": "Benchmark models: TTFT/prefill vs decode throughput with p50/p95, across chat, prefill, generation, and prompt-cache workloads, or single-user vs parallel load (--detailed)",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/bench.ts"
+  },
+  {
+    "name": "browser-relay",
+    "kind": "cli",
+    "description": "",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/browser-relay.ts"
+  },
+  {
+    "name": "cleanse",
+    "kind": "cli",
+    "description": "Detect and fix project diagnostics with weighted parallel subagents",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/cleanse.ts"
+  },
+  {
+    "name": "clip",
+    "kind": "cli",
+    "description": "Upload a /record recording to live.omp.sh as a public clip and print its URL",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/clip.ts"
+  },
+  {
+    "name": "collab",
+    "kind": "cli",
+    "description": "List active local Collab host metadata without URLs; use collab link <instanceId|pid> to retrieve a control link (--view for view-only)",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/collab.ts"
+  },
+  {
+    "name": "commit",
+    "kind": "cli",
+    "description": "Generate a commit message and update changelogs",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/commit.ts"
+  },
+  {
+    "name": "complete",
+    "kind": "cli",
+    "description": "",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/complete.ts"
+  },
+  {
+    "name": "completions",
+    "kind": "cli",
+    "description": "Print a shell completion script (bash, zsh, or fish)",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/completions.ts"
+  },
+  {
+    "name": "compress",
+    "kind": "cli",
+    "description": "Rewrite a text file into the dense prompt register, reporting what it drops",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/compress.ts"
+  },
+  {
+    "name": "config",
+    "kind": "cli",
+    "description": "Manage configuration settings",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/config.ts"
+  },
+  {
+    "name": "dry-balance",
+    "kind": "cli",
+    "description": "Dry-run OAuth account balancing across random session ids",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/dry-balance.ts"
+  },
+  {
+    "name": "find",
+    "kind": "cli",
+    "description": "Semantic search: describe a behavior, get the files and line ranges that implement it",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/find.ts"
+  },
+  {
+    "name": "gallery",
+    "kind": "cli",
+    "description": "Preview tool, composer, and status-line renderers in a deterministic visual gallery",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/gallery.ts"
+  },
+  {
+    "name": "gc",
+    "kind": "cli",
+    "description": "Run storage garbage collection",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/gc.ts"
+  },
+  {
+    "name": "git",
+    "kind": "cli",
+    "description": "Interactive fullscreen git UI: split diff viewer, staging sidebar, and commit composer",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/git.ts"
+  },
+  {
+    "name": "grep",
+    "kind": "cli",
+    "description": "Test grep tool",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/grep.ts"
+  },
+  {
+    "name": "grievances",
+    "kind": "cli",
+    "description": "View, clean, or push reported tool issues (auto-QA grievances)",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/grievances.ts"
+  },
+  {
+    "name": "if-bench",
+    "kind": "cli",
+    "description": "Benchmark instruction following and working memory: one cached thread of glyph array actions with a moving cat-sound directive",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/if-bench.ts"
+  },
+  {
+    "name": "images",
+    "kind": "cli",
+    "description": "Inspect, diagnose, probe, and purge image publication backends",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/images.ts"
+  },
+  {
+    "name": "install",
+    "kind": "cli",
+    "description": "Install or link an extension package (alias of `plugin install`/`plugin link`)",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/install.ts"
+  },
+  {
+    "name": "join",
+    "kind": "cli",
+    "description": "Join a shared collab session (same as /join)",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/join.ts"
+  },
+  {
+    "name": "launch",
+    "kind": "cli",
+    "description": "",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/launch.ts"
+  },
+  {
+    "name": "login",
+    "kind": "cli",
+    "description": "Log in to a model provider (terminal counterpart of /login)",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/login.ts"
+  },
+  {
+    "name": "models",
+    "kind": "cli",
+    "description": "List, search, and refresh available models",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/models.ts"
+  },
+  {
+    "name": "play",
+    "kind": "cli",
+    "description": "Replay a /record session recording in the terminal (space pauses, q quits)",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/play.ts"
+  },
+  {
+    "name": "plugin",
+    "kind": "cli",
+    "description": "Manage plugins (install, uninstall, list, etc.)",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/plugin.ts"
+  },
+  {
+    "name": "predict",
+    "kind": "cli",
+    "description": "Type a prompt and compare every word-completion engine's ghost text live",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/predict.ts"
+  },
+  {
+    "name": "ps",
+    "kind": "cli",
+    "description": "List and control daemon-supervised background processes (logs, stop, kill, restart)",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/ps.ts"
+  },
+  {
+    "name": "read",
+    "kind": "cli",
+    "description": "Show what the read tool will return for a path, URL, or internal URI",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/read.ts"
+  },
+  {
+    "name": "render",
+    "kind": "cli",
+    "description": "Draw a session's entire thread through the production transcript pipeline (with repaint timing)",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/render.ts"
+  },
+  {
+    "name": "say",
+    "kind": "cli",
+    "description": "Synthesize text with the local TTS engine and play it through the speakers",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/say.ts"
+  },
+  {
+    "name": "session",
+    "kind": "cli",
+    "description": "Hand a session to another machine: pack it, unpack it, or mark the local copy moved",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/session.ts"
+  },
+  {
+    "name": "setup",
+    "kind": "cli",
+    "description": "Run onboarding setup or install dependencies for optional features",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/setup.ts"
+  },
+  {
+    "name": "share",
+    "kind": "cli",
+    "description": "Share a saved session via an encrypted link (same as /share)",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/share.ts"
+  },
+  {
+    "name": "shell",
+    "kind": "cli",
+    "description": "Interactive shell console",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/shell.ts"
+  },
+  {
+    "name": "skill",
+    "kind": "cli",
+    "description": "Install, search, publish, and manage skills on the Skillshare registry (skills.omp.sh)",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/skill.ts"
+  },
+  {
+    "name": "ssh",
+    "kind": "cli",
+    "description": "Manage SSH host configurations",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/ssh.ts"
+  },
+  {
+    "name": "stats",
+    "kind": "cli",
+    "description": "View usage statistics",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/stats.ts"
+  },
+  {
+    "name": "stream",
+    "kind": "cli",
+    "description": "Broadcast local omp session screens and chat to your public live channel",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/stream.ts"
+  },
+  {
+    "name": "tiny-models",
+    "kind": "cli",
+    "description": "Download tiny local models (session titles, memory, word completion)",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/tiny-models.ts"
+  },
+  {
+    "name": "token",
+    "kind": "cli",
+    "description": "Get the API key or OAuth token for a provider",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/token.ts"
+  },
+  {
+    "name": "toks",
+    "kind": "cli",
+    "description": "Count a file or text with every embedded offline tokenizer (OpenAI, Claude, Qwen, …)",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/toks.ts"
+  },
+  {
+    "name": "ttsr",
+    "kind": "cli",
+    "description": "Inspect and test Time-Traveling Stream Rules (TTSR)",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/ttsr.ts"
+  },
+  {
+    "name": "update",
+    "kind": "cli",
+    "description": "Check for and install updates",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/update.ts"
+  },
+  {
+    "name": "usage",
+    "kind": "cli",
+    "description": "Show provider usage limits for every authenticated account",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/usage.ts"
+  },
+  {
+    "name": "web-search",
+    "kind": "cli",
+    "description": "Test web search providers",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/web-search.ts"
+  },
+  {
+    "name": "worktree",
+    "kind": "cli",
+    "description": "Add, list, or clear git worktrees (clone-first when enabled)",
+    "surface": "cli",
+    "source": "packages/coding-agent/src/commands/worktree.ts"
+  },
+  {
+    "name": "advisor",
+    "kind": "slash",
+    "description": "Toggle the advisor (a second model that reviews each turn and injects notes)",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-collaboration.ts"
+  },
+  {
+    "name": "export",
+    "kind": "slash",
+    "description": "Export session to HTML file",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-collaboration.ts"
+  },
+  {
+    "name": "trace",
+    "kind": "slash",
+    "description": "Open this session's trace in the stats dashboard",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-collaboration.ts"
+  },
+  {
+    "name": "dump",
+    "kind": "slash",
+    "description": "Copy session transcript to clipboard (and write LLM request JSON to tmp)",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-collaboration.ts"
+  },
+  {
+    "name": "share",
+    "kind": "slash",
+    "description": "Share session via an encrypted link (share server or secret gist)",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-collaboration.ts"
+  },
+  {
+    "name": "collab",
+    "kind": "slash",
+    "description": "Share this session live via a relay",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-collaboration.ts"
+  },
+  {
+    "name": "join",
+    "kind": "slash",
+    "description": "Join a shared collab session",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-collaboration.ts"
+  },
+  {
+    "name": "leave",
+    "kind": "slash",
+    "description": "Leave the collab session",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-collaboration.ts"
+  },
+  {
+    "name": "browser",
+    "kind": "slash",
+    "description": "Toggle browser eval-prelude headless vs visible mode",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-collaboration.ts"
+  },
+  {
+    "name": "copy",
+    "kind": "slash",
+    "description": "Pick text or code from the conversation to copy",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-collaboration.ts"
+  },
+  {
+    "name": "open",
+    "kind": "slash",
+    "description": "Open the last link from the conversation in your browser (or pick one with /copy)",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-collaboration.ts"
+  },
+  {
+    "name": "force",
+    "kind": "slash",
+    "description": "Force next turn to use a specific tool",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-control.ts"
+  },
+  {
+    "name": "live",
+    "kind": "slash",
+    "description": "Start Codex-backed realtime voice mode",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-control.ts"
+  },
+  {
+    "name": "record",
+    "kind": "slash",
+    "description": "Start or stop recording this screen to a replayable file (omp play)",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-control.ts"
+  },
+  {
+    "name": "pause",
+    "kind": "slash",
+    "description": "Freeze all agents (main, subagents, advisor) until resumed",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-control.ts"
+  },
+  {
+    "name": "forget-approvals",
+    "kind": "slash",
+    "description": "Forget every file and folder approval Ask and remember has recorded",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-control.ts"
+  },
+  {
+    "name": "quit",
+    "kind": "slash",
+    "description": "Quit the application",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-control.ts"
+  },
+  {
+    "name": "ssh",
+    "kind": "slash",
+    "description": "Manage SSH hosts (add, list, remove)",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "new",
+    "kind": "slash",
+    "description": "Start a new session",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "fresh",
+    "kind": "slash",
+    "description": "Reset provider stream state without changing the local transcript",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "clear",
+    "kind": "slash",
+    "description": "Clear the conversation context in place, keeping the session",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "delete",
+    "kind": "slash",
+    "description": "Delete the current session and start a new one",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "compact",
+    "kind": "slash",
+    "description": "Manually compact the session context",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "shake",
+    "kind": "slash",
+    "description": "Drop heavy content from context (tool results, large blocks)",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "handoff",
+    "kind": "slash",
+    "description": "Summarize the session into a handoff document and compact in place",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "resume",
+    "kind": "slash",
+    "description": "Resume a different session",
+    "surface": "sessions",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "pin",
+    "kind": "slash",
+    "description": "Pin or unpin a session at the top of the resume list",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "btw",
+    "kind": "slash",
+    "description": "Ask a side question, or browse this session's BTW history",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "tan",
+    "kind": "slash",
+    "description": "Run a full background agent on tangential work",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "omfg",
+    "kind": "slash",
+    "description": "Forge a TTSR rule from a complaint to stop a recurring behavior",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "cleanse",
+    "kind": "slash",
+    "description": "Detect and fix project diagnostics with weighted parallel subagents",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "retry",
+    "kind": "slash",
+    "description": "Retry the last failed agent turn",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "debug",
+    "kind": "slash",
+    "description": "Open debug tools selector",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "memory",
+    "kind": "slash",
+    "description": "Inspect and operate memory maintenance",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "rename",
+    "kind": "slash",
+    "description": "Rename the current session (omit title to generate)",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "move",
+    "kind": "slash",
+    "description": "Move the current session to a different directory",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "wt",
+    "kind": "slash",
+    "description": "Move this session into a new worktree, changes included",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "add-dir",
+    "kind": "slash",
+    "description": "Add a workspace directory to this session (multi-root)",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "remove-dir",
+    "kind": "slash",
+    "description": "Remove a workspace directory from this session",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "dirs",
+    "kind": "slash",
+    "description": "List this session's workspace directories",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "exit",
+    "kind": "slash",
+    "description": "Exit the application",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "restart",
+    "kind": "slash",
+    "description": "Restart omp with the same launch flags, resuming this session",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
+    "name": "marketplace",
+    "kind": "slash",
+    "description": "Manage marketplace plugin sources and installed plugins",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-marketplace.ts"
+  },
+  {
+    "name": "plugins",
+    "kind": "slash",
+    "description": "View and manage installed plugins",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-marketplace.ts"
+  },
+  {
+    "name": "reload-plugins",
+    "kind": "slash",
+    "description": "Reload all plugins (skills, commands, hooks, tools, agents, MCP)",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-marketplace.ts"
+  },
+  {
+    "name": "security",
+    "kind": "slash",
+    "description": "Plan, run, inspect, import, and compare OMP-native security scans",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "settings",
+    "kind": "slash",
+    "description": "Open settings menu",
+    "surface": "settings",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "setup",
+    "kind": "slash",
+    "description": "Open provider setup",
+    "surface": "settings",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "plan",
+    "kind": "slash",
+    "description": "Toggle plan mode (agent plans before executing)",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "plan-review",
+    "kind": "slash",
+    "description": "Re-open the plan review for the latest plan (plan mode only)",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "vibe",
+    "kind": "slash",
+    "description": "Toggle vibe mode (direct persistent fast/good worker sessions; read-only toolset)",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "goal",
+    "kind": "slash",
+    "description": "Toggle goal mode (persistent autonomous objective for this session)",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "guided-goal",
+    "kind": "slash",
+    "description": "Have the agent interview you in chat, then set up goal mode",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "loop",
+    "kind": "slash",
+    "description": "",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "queue",
+    "kind": "slash",
+    "description": "Queue a message for after the agent yields",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "model",
+    "kind": "slash",
+    "description": "Switch model for this session",
+    "surface": "models",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "switch",
+    "kind": "slash",
+    "description": "",
+    "surface": "models",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "fast",
+    "kind": "slash",
+    "description": "Toggle fast service (OpenAI service_tier=priority or ultrafast, Anthropic speed=fast, Google priority)",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "slow",
+    "kind": "slash",
+    "description": "Toggle slow mode: flex tier on OpenAI/Google; on Anthropic, continue at low priority after the Claude session limit",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "skillful",
+    "kind": "slash",
+    "description": "Toggle listing available skills in the system prompt (session only)",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "extended-context",
+    "kind": "slash",
+    "description": "Toggle extended context windows",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "computer",
+    "kind": "slash",
+    "description": "Toggle the native computer-use eval prelude for this session",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "ratchet",
+    "kind": "slash",
+    "description": "Build (or reuse) an eval for an LLM flow, then hillclimb it unattended",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "prewalk",
+    "kind": "slash",
+    "description": "Arm, restart, or cancel a one-shot model handoff",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "modelpreset",
+    "kind": "slash",
+    "description": "Save and switch model presets (role models + thinking level)",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "effort",
+    "kind": "slash",
+    "description": "",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
+  },
+  {
+    "name": "todo",
+    "kind": "slash",
+    "description": "View or modify the agent's todo list",
+    "surface": "jobs",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
+    "name": "session",
+    "kind": "slash",
+    "description": "Session management commands",
+    "surface": "sessions",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
+    "name": "jobs",
+    "kind": "slash",
+    "description": "Show async background jobs status",
+    "surface": "jobs",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
+    "name": "usage",
+    "kind": "slash",
+    "description": "Show provider usage and limits",
+    "surface": "usage",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
+    "name": "stats",
+    "kind": "slash",
+    "description": "Launch the local stats dashboard",
+    "surface": "usage",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
+    "name": "changelog",
+    "kind": "slash",
+    "description": "Show changelog entries",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
+    "name": "hotkeys",
+    "kind": "slash",
+    "description": "Show all keyboard shortcuts",
+    "surface": "shortcuts",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
+    "name": "tools",
+    "kind": "slash",
+    "description": "Show tools currently visible to the agent",
+    "surface": "tools",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
+    "name": "context",
+    "kind": "slash",
+    "description": "Show estimated context usage breakdown",
+    "surface": "context",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
+    "name": "extensions",
+    "kind": "slash",
+    "description": "Open Extension Control Center dashboard",
+    "surface": "extensions",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
+    "name": "agents",
+    "kind": "slash",
+    "description": "Open the agents hub (per-agent model, prewalk, and advisor)",
+    "surface": "agents",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
+    "name": "git",
+    "kind": "slash",
+    "description": "Open the git UI (split diff viewer, staging, commit composer)",
+    "surface": "diff",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
+    "name": "hub",
+    "kind": "slash",
+    "description": "Open the live Agent Hub",
+    "surface": "agents",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
+    "name": "branch",
+    "kind": "slash",
+    "description": "Rewind to a previous message, keeping the old path as a branch",
+    "surface": "tree",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
+    "name": "fork",
+    "kind": "slash",
+    "description": "Fork this session, or open it in a multiplexer pane or window",
+    "surface": "tree",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
+    "name": "tree",
+    "kind": "slash",
+    "description": "Navigate session tree (switch branches)",
+    "surface": "tree",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
+    "name": "login",
+    "kind": "slash",
+    "description": "Login with OAuth provider",
+    "surface": "providers",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
+    "name": "logout",
+    "kind": "slash",
+    "description": "Logout from OAuth provider",
+    "surface": "providers",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
+    "name": "mcp",
+    "kind": "slash",
+    "description": "Manage MCP servers (add, list, remove, test)",
+    "surface": "mcp",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
+    "name": "skills",
+    "kind": "slash",
+    "description": "Search, install, and update skills from the skills.omp.sh registry",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-skills.ts"
+  },
+  {
+    "name": "read",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "bash",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "edit",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "ast_grep",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "ast_edit",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "ask",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "debug",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "ida",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "eval",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "github",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "glob",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "grep",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "find",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "lsp",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "checkpoint",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "rewind",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "context_notes",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "new_context",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "security_scan",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "task",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "wait",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "todo",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "web_search",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "write",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "memory_edit",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "retain",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "recall",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "reflect",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "learn",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "manage_skill",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "yield",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "goal",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "think",
+    "kind": "tool",
+    "description": "",
+    "surface": "tools",
+    "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "desktop_settings",
+    "kind": "rpc",
+    "description": "Read or update settings through the runtime registry and persistence layer.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "desktop_commands",
+    "kind": "rpc",
+    "description": "List every built-in command, including terminal presentation commands.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "negotiate_protocol",
+    "kind": "rpc",
+    "description": "Switch the connection to a protocol version advertised by `ready`.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "prompt",
+    "kind": "rpc",
+    "description": "Submit a prompt; acknowledged once admitted, completed by its `prompt_result`.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "steer",
+    "kind": "rpc",
+    "description": "Queue a steering message.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "follow_up",
+    "kind": "rpc",
+    "description": "Queue a follow-up message.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "remove_queued_message",
+    "kind": "rpc",
+    "description": "Remove one pending queued message by its queue-chip text.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "promote_queued_message",
+    "kind": "rpc",
+    "description": "Move one queued follow-up to the end of the steering queue.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "abort",
+    "kind": "rpc",
+    "description": "Abort the current run.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "abort_and_prompt",
+    "kind": "rpc",
+    "description": "Abort the current run and submit a prompt; completed by its `prompt_result`.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "abort_and_restore_queue",
+    "kind": "rpc",
+    "description": "Withdraw queued user input, then abort the current run; returns the withdrawn input.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "new_session",
+    "kind": "rpc",
+    "description": "Start a new session.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "open_session",
+    "kind": "rpc",
+    "description": "Continue the newest non-empty session in a directory, or start a fresh one there. Give provider and modelId together to override the saved model; otherwise an unavailable saved model fails the request.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "get_state",
+    "kind": "rpc",
+    "description": "Snapshot the session state.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "set_fast_mode",
+    "kind": "rpc",
+    "description": "Enable or disable fast mode for the session.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "set_slow_mode",
+    "kind": "rpc",
+    "description": "Turn `/slow` on or off for the active model; returns whether it is now on.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "goal",
+    "kind": "rpc",
+    "description": "Read or change goal mode with the lifecycle of the interactive `/goal` command.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "set_ask_dialog",
+    "kind": "rpc",
+    "description": "Opt in to `ask` UI requests; returns the applied setting.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "get_available_commands",
+    "kind": "rpc",
+    "description": "List the slash-command catalog.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "get_entries",
+    "kind": "rpc",
+    "description": "Read the append-history; with `since`, only entries strictly after that durable entry id.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "get_tree",
+    "kind": "rpc",
+    "description": "Read the raw session tree.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "set_todos",
+    "kind": "rpc",
+    "description": "Replace the session's todo phases.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "set_host_tools",
+    "kind": "rpc",
+    "description": "Replace the host-owned tools the server may call back into.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "set_host_uri_schemes",
+    "kind": "rpc",
+    "description": "Replace the host-owned URI schemes.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "set_subagent_subscription",
+    "kind": "rpc",
+    "description": "Select which subagent frames are forwarded.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "set_event_filter",
+    "kind": "rpc",
+    "description": "Forward only the listed session event types; null forwards all.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "get_subagents",
+    "kind": "rpc",
+    "description": "List running subagents.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "get_subagent_messages",
+    "kind": "rpc",
+    "description": "Read a subagent transcript by id or registered session file (`subagentId` wins).",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "cancel_subagent",
+    "kind": "rpc",
+    "description": "Hard-kill one running subagent; false when it is not running.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "steer_subagent",
+    "kind": "rpc",
+    "description": "Send a message to a running subagent as its user.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "live_start",
+    "kind": "rpc",
+    "description": "Start a live voice session bound to this session; returns the voice in use.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "live_stop",
+    "kind": "rpc",
+    "description": "Stop the live voice session, if any.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "live_mute",
+    "kind": "rpc",
+    "description": "Set microphone mute, or toggle it when `muted` is omitted; returns the new state.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "set_model",
+    "kind": "rpc",
+    "description": "Select a model by provider and id.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "cycle_model",
+    "kind": "rpc",
+    "description": "Cycle to the next model.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "get_available_models",
+    "kind": "rpc",
+    "description": "List available models.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "set_thinking_level",
+    "kind": "rpc",
+    "description": "Set the thinking level.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "cycle_thinking_level",
+    "kind": "rpc",
+    "description": "Cycle to the next thinking level.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "get_available_thinking_levels",
+    "kind": "rpc",
+    "description": "Selectable thinking levels for the live model, `\"off\"` first.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "set_steering_mode",
+    "kind": "rpc",
+    "description": "Set how queued steering is delivered.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "set_follow_up_mode",
+    "kind": "rpc",
+    "description": "Set how queued follow-ups are delivered.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "set_interrupt_mode",
+    "kind": "rpc",
+    "description": "Set how steering interrupts tools.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "compact",
+    "kind": "rpc",
+    "description": "Compact the conversation.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "set_auto_compaction",
+    "kind": "rpc",
+    "description": "Enable or disable auto-compaction.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "set_cache_warming",
+    "kind": "rpc",
+    "description": "Override cache warming for this session only; returns the effective mode.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "set_auto_retry",
+    "kind": "rpc",
+    "description": "Enable or disable auto-retry.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "abort_retry",
+    "kind": "rpc",
+    "description": "Abort a pending auto-retry.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "bash",
+    "kind": "rpc",
+    "description": "Run a shell command.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "abort_bash",
+    "kind": "rpc",
+    "description": "Abort the running shell command.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "get_session_stats",
+    "kind": "rpc",
+    "description": "Session statistics.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "export_html",
+    "kind": "rpc",
+    "description": "Export the session as HTML; returns the written path.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "switch_session",
+    "kind": "rpc",
+    "description": "Switch to another session file. Give provider and modelId together to override the saved model; otherwise an unavailable saved model fails the request and keeps the current session.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "branch",
+    "kind": "rpc",
+    "description": "Branch the session at an entry.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "fork",
+    "kind": "rpc",
+    "description": "Fork into a new session file: history through `entryId`, or the whole session.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "get_branch_messages",
+    "kind": "rpc",
+    "description": "List user messages that can be branched from.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "get_last_assistant_text",
+    "kind": "rpc",
+    "description": "Text of the last assistant message, if any.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "set_session_name",
+    "kind": "rpc",
+    "description": "Rename the session.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "handoff",
+    "kind": "rpc",
+    "description": "Hand the conversation off to a fresh session; null when no handoff was produced.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "get_messages",
+    "kind": "rpc",
+    "description": "Every message of the session in one response.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "get_messages_page",
+    "kind": "rpc",
+    "description": "One stable page of messages.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "get_login_providers",
+    "kind": "rpc",
+    "description": "List OAuth providers and their authentication status.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "login",
+    "kind": "rpc",
+    "description": "Run OAuth login; the flow arrives as `open_url` and `input` UI requests.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "get_logout_accounts",
+    "kind": "rpc",
+    "description": "List the stored credentials `logout` can remove for a provider, active first.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "logout",
+    "kind": "rpc",
+    "description": "Remove one stored credential; fails when it is no longer stored. `remainingSource` names auth that still applies.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "predict_word",
+    "kind": "rpc",
+    "description": "Ghost-text suffix for the prose word ending at `cursor` (a UTF-16 offset); null when none applies.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "predict_word_feedback",
+    "kind": "rpc",
+    "description": "Report a shown suggestion as accepted or typed past.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "btw",
+    "kind": "rpc",
+    "description": "Ask a side question, or a follow-up in topic `recordId`; returns the record once it is running.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "btw_cancel",
+    "kind": "rpc",
+    "description": "Cancel the running side question (only topic `recordId` when given); false when none matches.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "get_btw_history",
+    "kind": "rpc",
+    "description": "List the session's side-question records, newest first.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  }
+]

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Better OMP Desktop",
+  "version": "0.1.0",
+  "identifier": "dev.omp.better-desktop",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "bun run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{ "label": "main", "title": "Better OMP Desktop", "width": 1440, "height": 940, "minWidth": 880, "minHeight": 640, "backgroundColor": "#f8f8f6" }],
+    "security": { "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'" }
+  },
+  "bundle": { "active": true, "targets": ["nsis"], "icon": ["icons/icon.ico"], "windows": { "webviewInstallMode": { "type": "skip" }, "nsis": { "displayLanguageSelector": true, "languages": ["English", "SimpChinese"], "installMode": "currentUser" } } }
+}

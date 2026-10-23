@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/can1357/oh-my-pi.git",
+  "revision": "2d39e5f5d26c12d49b241f58905b5526106d2a1e",
+  "runtimeVersion": "18.12.6",
+  "protocolVersion": 2,
+  "referenceGui": {
+    "repository": "https://github.com/nornzach/oh-my-pi-gui.git",
+    "revision": "3fe79bdfed429ab4b6c4c48526e6ca32745c9736"
+  },
+  "reason": "Runtime, generated wire contracts and desktop patches must be validated as one compatibility unit.",
+  "updateOwner": "Repository maintainer"
+}

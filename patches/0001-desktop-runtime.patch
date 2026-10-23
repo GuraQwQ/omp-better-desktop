@@ -1,0 +1,895 @@
+diff --git a/packages/coding-agent/src/config.ts b/packages/coding-agent/src/config.ts
+index 28ab063da4..e6f5a0bb0f 100644
+--- a/packages/coding-agent/src/config.ts
++++ b/packages/coding-agent/src/config.ts
+@@ -1,7 +1,7 @@
+ import * as fs from "node:fs";
+ import * as os from "node:os";
+ import * as path from "node:path";
+-import { CONFIG_DIR_NAME, getConfigAgentDirName, getProjectDir } from "@oh-my-pi/pi-utils";
++import { CONFIG_DIR_NAME, getAgentDir, getConfigAgentDirName, getProjectDir } from "@oh-my-pi/pi-utils";
+ import { isUserSourceEnabled } from "./capability";
+ import { resolveClaudePaths } from "./config/claude-paths";
+ import { expandTilde } from "./tools/path-utils";
+@@ -83,7 +83,11 @@ export function getChangelogPath(): string | undefined {
+  */
+ const USER_CONFIG_BASES = priorityList.map(({ dir, globalAgentDir }) => ({
+ 	base: () =>
+-		dir === ".claude" ? resolveClaudePaths().configDir : path.join(os.homedir(), globalAgentDir?.() ?? dir),
++		dir === CONFIG_DIR_NAME && process.env.OMP_USER_ROOT?.trim()
++			? getAgentDir()
++			: dir === ".claude"
++				? resolveClaudePaths().configDir
++				: path.join(os.homedir(), globalAgentDir?.() ?? dir),
+ 	name: dir,
+ }));
+ 
+diff --git a/packages/coding-agent/src/modes/rpc/desktop.ts b/packages/coding-agent/src/modes/rpc/desktop.ts
+new file mode 100644
+index 0000000000..c6c053c0f8
+--- /dev/null
++++ b/packages/coding-agent/src/modes/rpc/desktop.ts
+@@ -0,0 +1,53 @@
++import { orderedSettings } from "../../config/all-settings";
++import { lookup } from "../../config/registry";
++import type { Settings } from "../../config/settings";
++import { BUILTIN_SLASH_COMMANDS_INTERNAL } from "../../slash-commands/builtin-registry";
++
++export interface DesktopSettingsRequest {
++	operation: "list" | "set" | "unset";
++	key?: string;
++	value?: unknown;
++}
++
++export async function desktopSettings(settings: Settings, request: DesktopSettingsRequest): Promise<object> {
++	if (request.operation !== "list") {
++		if (request.operation !== "set" && request.operation !== "unset") throw new Error("Unknown settings operation");
++		const setting = request.key ? lookup(request.key) : undefined;
++		if (!setting) throw new Error(`Unknown setting: ${request.key ?? ""}`);
++		if (request.operation === "unset") setting.unset(settings);
++		else {
++			if (!Object.hasOwn(request, "value")) throw new Error("A setting value is required");
++			setting.assertWritable(request.value);
++			setting.set(settings, request.value);
++		}
++		await settings.flush();
++	}
++	return {
++		settings: orderedSettings().map(setting => ({
++			key: setting.id,
++			path: setting.id,
++			type: setting.type,
++			defaultValue: setting.isCredential ? undefined : setting.default,
++			value: setting.isCredential ? undefined : setting.layered(settings),
++			credential: setting.isCredential,
++			configured: setting.isCredential ? Boolean(setting.layered(settings)) : undefined,
++			enumValues: setting.enumValues,
++			ui: setting.ui,
++			provenance: setting.provenance(settings),
++		})),
++	};
++}
++
++export function desktopCommands(): object {
++	return {
++		commands: BUILTIN_SLASH_COMMANDS_INTERNAL.map(command => ({
++			name: command.name,
++			aliases: command.aliases,
++			description: command.description,
++			inputHint: command.inlineHint,
++			subcommands: command.subcommands,
++			rpc: command.handle !== undefined,
++			tui: command.handleTui !== undefined,
++		})),
++	};
++}
+diff --git a/packages/coding-agent/src/modes/rpc/rpc-mode.ts b/packages/coding-agent/src/modes/rpc/rpc-mode.ts
+index ef2d73db95..53f6515cfd 100644
+--- a/packages/coding-agent/src/modes/rpc/rpc-mode.ts
++++ b/packages/coding-agent/src/modes/rpc/rpc-mode.ts
+@@ -50,7 +50,8 @@ import {
+ import { requestTextPrediction, textPredictionBackend } from "../../predict/client";
+ import { type AgentSession, SessionBusyError } from "../../session/agent-session";
+ import type { MCPManager } from "../../mcp/manager";
+-import { reconnectMcpManagerServer } from "../../mcp/oauth-reauth";
++import { findMcpServerForAuth, reauthorizeMcpServer, reconnectMcpManagerServer } from "../../mcp/oauth-reauth";
++import { cfgMcpEnableProjectConfig } from "../../mcp/settings";
+ import type { RestoredQueuedMessage } from "../../session/agent-session-types";
+ import { CACHE_WARMING_MODES } from "../../session/cache-warmer";
+ import { findMostRecentNonEmptySession } from "../../session/session-listing";
+@@ -79,6 +80,7 @@ import { RpcBtwController } from "./rpc-btw";
+ import { RpcGoalController } from "./rpc-goal";
+ import { RpcLiveBridge, type RpcLiveSessionFactory } from "./rpc-live";
+ import { RpcOutputWriter } from "./rpc-output";
++import { desktopCommands, desktopSettings } from "./desktop";
+ import {
+ 	RpcExtensionUserMessageTracker,
+ 	RpcPromptResults,
+@@ -421,6 +423,7 @@ export function dispatchRpcControlFrame(parsed: unknown, deps: RpcInputFrameDeps
+  * A Set, not a Record: `type` is untrusted input and must not hit prototype keys.
+  */
+ const BACKGROUND_COMMANDS: ReadonlySet<string> = new Set<RpcCommand["type"]>([
++	"login",
+ 	"bash",
+ 	"predict_word",
+ 	"live_start",
+@@ -1886,12 +1889,51 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions
+ 		for (const controller of builtinCommandAborts) controller.abort(reason);
+ 		builtinCommandAborts.clear();
+ 	};
++	if (!headless && setToolUIContext) {
++		options.mcpManager?.setAuthHandler((name, challenge) =>
++			session.waitForUser(async () => {
++				const controller = new AbortController();
++				builtinCommandAborts.add(controller);
++				try {
++					const found = await findMcpServerForAuth(name, session.sessionManager.getCwd(), options.mcpManager, {
++						preferManager: true,
++						enableProjectConfig: cfgMcpEnableProjectConfig.get(session.settings),
++					});
++					if (!found) return undefined;
++					const result = await reauthorizeMcpServer(name, found, {
++						authStorage: session.modelRegistry.authStorage,
++						authChallenge: challenge,
++						mcpManager: options.mcpManager,
++						cwd: session.sessionManager.getCwd(),
++						signal: controller.signal,
++						flowOwner: rpcUiContext,
++						onAuth: info =>
++							output({
++								type: "extension_ui_request",
++								id: Snowflake.next() as string,
++								method: "open_url",
++								url: info.url,
++								instructions: info.instructions,
++							}),
++						onProgress: message => rpcUiContext.notify(message, "info"),
++					});
++					return result.config;
++				} finally {
++					builtinCommandAborts.delete(controller);
++				}
++			}),
++		);
++	}
+ 
+ 	// Handle a single command
+ 	const handleCommand = async (command: RpcCommand): Promise<RpcResponse> => {
+ 		const id = command.id;
+ 
+ 		switch (command.type) {
++			case "desktop_settings":
++				return success(id, "desktop_settings", await desktopSettings(session.settings, command));
++			case "desktop_commands":
++				return success(id, "desktop_commands", desktopCommands());
+ 			case "negotiate_protocol": {
+ 				if (command.protocolVersion !== 2)
+ 					return error(id, "negotiate_protocol", `Unsupported RPC protocol version: ${command.protocolVersion}`);
+@@ -2536,14 +2578,12 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions
+ 					return error(id, "login", `Unknown OAuth provider: ${command.providerId}`);
+ 				}
+ 				const uiCtx = new RpcExtensionUIContext(pendingExtensionRequests, output);
+-				// Track whether onAuth has fired. Providers that require interactive
+-				// input before a browser URL cannot be satisfied headlessly; after
+-				// onAuth, prompt input is the pasted OAuth code/redirect URL path.
+-				let authEmitted = false;
++				const loginController = new AbortController();
++				builtinCommandAborts.add(loginController);
+ 				try {
+ 					await session.modelRegistry.authStorage.oauth.login(command.providerId, {
++						signal: loginController.signal,
+ 						onAuth: info => {
+-							authEmitted = true;
+ 							output({
+ 								type: "extension_ui_request",
+ 								id: Snowflake.next() as string,
+@@ -2557,23 +2597,25 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions
+ 							uiCtx.notify(message, "info");
+ 						},
+ 						onPrompt: async prompt => {
+-							if (prompt.secret) {
+-								throw new Error(
+-									`Provider '${command.providerId}' requires secret input, ` +
+-										"which is not supported in RPC mode. Use the terminal UI to log in.",
+-								);
++							if (headless || !setToolUIContext) {
++								throw new Error(`Provider '${command.providerId}' requires an interactive login surface.`);
+ 							}
+-							if (!authEmitted) {
+-								// onPrompt called before any auth URL — provider requires
+-								// interactive input that cannot be satisfied headlessly.
+-								return Promise.reject(
+-									new Error(
+-										`Provider '${command.providerId}' requires interactive prompts ` +
+-											"which are not supported in RPC mode. Use the terminal UI to log in.",
+-									),
+-								);
+-							}
+-							return (await uiCtx.input(prompt.message, prompt.placeholder, { timeout: 600_000 })) ?? "";
++							const value = await requestRpcDialog(
++								pendingExtensionRequests,
++								output,
++								{ timeout: 600_000, signal: loginController.signal },
++								undefined,
++								{
++									method: "input",
++									title: prompt.message,
++									placeholder: prompt.placeholder,
++									secret: prompt.secret,
++									timeout: 600_000,
++								},
++								response => parseValueDialogResponse(response, undefined),
++							);
++							if (value === undefined) throw new Error("Login cancelled");
++							return value;
+ 						},
+ 					});
+ 					// Provider-scoped online refresh so the just-persisted credential
+@@ -2586,6 +2628,8 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions
+ 					return success(id, "login", { providerId: command.providerId });
+ 				} catch (err: unknown) {
+ 					return error(id, "login", err instanceof Error ? err.message : String(err));
++				} finally {
++					builtinCommandAborts.delete(loginController);
+ 				}
+ 			}
+ 
+diff --git a/packages/coding-agent/src/modes/rpc/rpc-types.ts b/packages/coding-agent/src/modes/rpc/rpc-types.ts
+index e19d6d1f7c..e916bd0a81 100644
+--- a/packages/coding-agent/src/modes/rpc/rpc-types.ts
++++ b/packages/coding-agent/src/modes/rpc/rpc-types.ts
+@@ -33,6 +33,8 @@ import type { BtwHistoryRecord } from "../../session/btw-history";
+ export type RpcMessageUpdates = "full" | "delta";
+ 
+ export type RpcCommand =
++	| { id?: string; type: "desktop_settings"; operation: "list" | "set" | "unset"; key?: string; value?: unknown }
++	| { id?: string; type: "desktop_commands" }
+ 	// Protocol
+ 	| { id?: string; type: "negotiate_protocol"; protocolVersion: number }
+ 
+@@ -369,6 +371,20 @@ export interface RpcSubagentMessagesResult {
+ 
+ // Success responses with data
+ export type RpcResponse =
++	| {
++			id?: string;
++			type: "response";
++			command: "desktop_settings";
++			success: true;
++			data: { settings: Record<string, unknown>[] };
++	  }
++	| {
++			id?: string;
++			type: "response";
++			command: "desktop_commands";
++			success: true;
++			data: { commands: Record<string, unknown>[] };
++	  }
+ 	// Protocol
+ 	| {
+ 			id?: string;
+@@ -707,6 +723,7 @@ export type RpcExtensionUIRequest =
+ 			id: string;
+ 			method: "input";
+ 			title: string;
++			secret?: boolean;
+ 			placeholder?: string;
+ 			timeout?: number;
+ 	  }
+diff --git a/packages/coding-agent/src/modes/rpc/wire/commands.ts b/packages/coding-agent/src/modes/rpc/wire/commands.ts
+index 580eb02ec3..0979ae20d6 100644
+--- a/packages/coding-agent/src/modes/rpc/wire/commands.ts
++++ b/packages/coding-agent/src/modes/rpc/wire/commands.ts
+@@ -32,6 +32,17 @@ export interface RpcCommandSpec {
+ const IMAGES = doc("ImageContent[]", "Images attached to the message.");
+ 
+ export const rpcCommands: readonly RpcCommandSpec[] = [
++	{
++		name: "desktop_settings",
++		doc: "Read or update settings through the runtime registry and persistence layer.",
++		params: { operation: "'list' | 'set' | 'unset'", "key?": "string", "value?": "unknown" },
++		result: { settings: "Record<string, unknown>[]" },
++	},
++	{
++		name: "desktop_commands",
++		doc: "List every built-in command, including terminal presentation commands.",
++		result: { commands: "Record<string, unknown>[]" },
++	},
+ 	{
+ 		name: "negotiate_protocol",
+ 		doc: "Switch the connection to a protocol version advertised by `ready`.",
+diff --git a/packages/coding-agent/src/modes/rpc/wire/frames.ts b/packages/coding-agent/src/modes/rpc/wire/frames.ts
+index 96675b5b48..63b60a3b20 100644
+--- a/packages/coding-agent/src/modes/rpc/wire/frames.ts
++++ b/packages/coding-agent/src/modes/rpc/wire/frames.ts
+@@ -161,6 +161,7 @@ export const frameDefs = {
+ 		id: "string",
+ 		method: "'input'",
+ 		title: "string",
++		"secret?": "boolean",
+ 		"placeholder?": "string",
+ 		"timeout?": "number.integer",
+ 	},
+diff --git a/packages/coding-agent/src/modes/rpc/wire/rpc-wire.generated.ts b/packages/coding-agent/src/modes/rpc/wire/rpc-wire.generated.ts
+index 067aaa4f47..9358dbbb46 100644
+--- a/packages/coding-agent/src/modes/rpc/wire/rpc-wire.generated.ts
++++ b/packages/coding-agent/src/modes/rpc/wire/rpc-wire.generated.ts
+@@ -1219,6 +1219,7 @@ export interface InputUiRequest {
+ 	id: string;
+ 	method: "input";
+ 	title: string;
++	secret?: boolean;
+ 	placeholder?: string;
+ 	timeout?: number;
+ }
+@@ -1454,6 +1455,20 @@ export type RpcNotification = ReadyEvent | PromptResultEvent | SessionSettledEve
+ /** Any frame the server writes to stdout (after reassembling `rpc_chunk` sequences), discriminated by `type`. */
+ export type RpcServerFrame = RpcResponse | RpcHostRequest | RpcNotification;
+ 
++export interface DesktopSettingsParams {
++	operation: "list" | "set" | "unset";
++	key?: string;
++	value?: unknown;
++}
++
++export interface DesktopSettingsResult {
++	settings: Record<string, unknown>[];
++}
++
++export interface DesktopCommandsResult {
++	commands: Record<string, unknown>[];
++}
++
+ export interface NegotiateProtocolParams {
+ 	protocolVersion: number;
+ }
+@@ -1790,6 +1805,8 @@ export interface GetBtwHistoryResult {
+ 
+ /** Every RPC command's parameters and successful response `data`. */
+ export interface RpcWireCommands {
++	desktop_settings: { params: DesktopSettingsParams; result: DesktopSettingsResult };
++	desktop_commands: { params: undefined; result: DesktopCommandsResult };
+ 	negotiate_protocol: { params: NegotiateProtocolParams; result: NegotiateProtocolResult };
+ 	prompt: { params: PromptParams; result: PromptAck };
+ 	steer: { params: SteerParams; result: undefined };
+diff --git a/packages/coding-agent/src/modes/rpc/wire/rpc-wire.schema.json b/packages/coding-agent/src/modes/rpc/wire/rpc-wire.schema.json
+index c39e07b7da..04721b205a 100644
+--- a/packages/coding-agent/src/modes/rpc/wire/rpc-wire.schema.json
++++ b/packages/coding-agent/src/modes/rpc/wire/rpc-wire.schema.json
+@@ -9,6 +9,28 @@
+ 		"serverFrame": "RpcServerFrame",
+ 		"inbound": "RpcInbound",
+ 		"commands": [
++			{
++				"name": "desktop_settings",
++				"doc": "Read or update settings through the runtime registry and persistence layer.",
++				"params": "DesktopSettingsParams",
++				"result": "DesktopSettingsResult",
++				"nullable": false,
++				"unwrap": null,
++				"timeoutMs": null,
++				"completion": null,
++				"clientOmit": []
++			},
++			{
++				"name": "desktop_commands",
++				"doc": "List every built-in command, including terminal presentation commands.",
++				"params": null,
++				"result": "DesktopCommandsResult",
++				"nullable": false,
++				"unwrap": null,
++				"timeoutMs": null,
++				"completion": null,
++				"clientOmit": []
++			},
+ 			{
+ 				"name": "negotiate_protocol",
+ 				"doc": "Switch the connection to a protocol version advertised by `ready`.",
+@@ -4946,6 +4968,9 @@
+ 				"title": {
+ 					"type": "string"
+ 				},
++				"secret": {
++					"type": "boolean"
++				},
+ 				"placeholder": {
+ 					"type": "string"
+ 				},
+@@ -5791,6 +5816,58 @@
+ 			],
+ 			"description": "Any frame the server writes to stdout (after reassembling `rpc_chunk` sequences), discriminated by `type`."
+ 		},
++		"DesktopSettingsParams": {
++			"type": "object",
++			"properties": {
++				"operation": {
++					"enum": [
++						"list",
++						"set",
++						"unset"
++					],
++					"type": "string"
++				},
++				"key": {
++					"type": "string"
++				},
++				"value": {}
++			},
++			"required": [
++				"operation"
++			]
++		},
++		"DesktopSettingsResult": {
++			"type": "object",
++			"properties": {
++				"settings": {
++					"type": "array",
++					"items": {
++						"type": "object",
++						"properties": {},
++						"additionalProperties": {}
++					}
++				}
++			},
++			"required": [
++				"settings"
++			]
++		},
++		"DesktopCommandsResult": {
++			"type": "object",
++			"properties": {
++				"commands": {
++					"type": "array",
++					"items": {
++						"type": "object",
++						"properties": {},
++						"additionalProperties": {}
++					}
++				}
++			},
++			"required": [
++				"commands"
++			]
++		},
+ 		"NegotiateProtocolParams": {
+ 			"type": "object",
+ 			"properties": {
+diff --git a/packages/coding-agent/test/desktop-settings.test.ts b/packages/coding-agent/test/desktop-settings.test.ts
+new file mode 100644
+index 0000000000..7a4ff6f990
+--- /dev/null
++++ b/packages/coding-agent/test/desktop-settings.test.ts
+@@ -0,0 +1,14 @@
++import { describe, expect, it } from "bun:test";
++import { Settings } from "../src/config/settings";
++import { desktopSettings } from "../src/modes/rpc/desktop";
++
++describe("desktop settings", () => {
++	it("rejects invalid values without changing the session setting", async () => {
++		const settings = Settings.isolated();
++		await expect(desktopSettings(settings, { operation: "set", key: "tools.xdev", value: "yes" })).rejects.toThrow();
++		const result = (await desktopSettings(settings, { operation: "list" })) as {
++			settings: { key: string; value: unknown }[];
++		};
++		expect(result.settings.find(setting => setting.key === "tools.xdev")?.value).toBe(true);
++	});
++});
+diff --git a/packages/utils/src/dirs.ts b/packages/utils/src/dirs.ts
+index 883cd89fde..1439fdd81a 100644
+--- a/packages/utils/src/dirs.ts
++++ b/packages/utils/src/dirs.ts
+@@ -114,6 +114,11 @@ function readProfileFromEnvSafe(): string | undefined {
+ 
+ /** Profile-independent config root (~/.omp), shared by every omp profile. */
+ export function getBaseConfigRoot(): string {
++	const userRoot = process.env.OMP_USER_ROOT?.trim();
++	if (userRoot) {
++		if (!path.isAbsolute(userRoot)) throw new Error("OMP_USER_ROOT must be an absolute path");
++		return path.normalize(userRoot);
++	}
+ 	return path.join(os.homedir(), getConfigDirName());
+ }
+ 
+@@ -366,7 +371,7 @@ class DirResolver {
+ 		this.configRoot = getProfileConfigRoot(profile);
+ 
+ 		const defaultAgent = path.join(this.configRoot, "agent");
+-		const agentDirOverride = profile ? undefined : options.agentDirOverride;
++		const agentDirOverride = profile || process.env.OMP_USER_ROOT?.trim() ? undefined : options.agentDirOverride;
+ 		this.agentDir = agentDirOverride ? path.resolve(agentDirOverride) : defaultAgent;
+ 		const isDefault = this.agentDir === defaultAgent;
+ 
+@@ -385,7 +390,8 @@ class DirResolver {
+ 		let xdgData: string | undefined;
+ 		let xdgState: string | undefined;
+ 		let xdgCache: string | undefined;
+-		const xdgPlatform = process.platform === "linux" || process.platform === "darwin";
++		const xdgPlatform =
++			!process.env.OMP_USER_ROOT?.trim() && (process.platform === "linux" || process.platform === "darwin");
+ 		if (xdgPlatform && isDefault) {
+ 			const resolveIf = (envVar: string) => {
+ 				const value = process.env[envVar];
+diff --git a/packages/utils/test/desktop-root.test.ts b/packages/utils/test/desktop-root.test.ts
+new file mode 100644
+index 0000000000..8df37e33fa
+--- /dev/null
++++ b/packages/utils/test/desktop-root.test.ts
+@@ -0,0 +1,42 @@
++import { afterEach, describe, expect, it } from "bun:test";
++import * as path from "node:path";
++import * as os from "node:os";
++import { __resetDirsFromEnvForTests, getAgentDir, getBaseConfigRoot, getConfigRootDir } from "../src/dirs";
++
++const original = {
++	root: process.env.OMP_USER_ROOT,
++	profile: process.env.OMP_PROFILE,
++	agent: process.env.PI_CODING_AGENT_DIR,
++};
++afterEach(() => {
++	for (const [key, value] of Object.entries({
++		OMP_USER_ROOT: original.root,
++		OMP_PROFILE: original.profile,
++		PI_CODING_AGENT_DIR: original.agent,
++	})) {
++		if (value === undefined) delete process.env[key];
++		else process.env[key] = value;
++	}
++	__resetDirsFromEnvForTests();
++});
++
++describe("desktop data root", () => {
++	it("keeps named profiles and the default agent under one absolute root", () => {
++		const root = path.join(os.tmpdir(), "omp-desktop-root-test");
++		process.env.OMP_USER_ROOT = root;
++		process.env.OMP_PROFILE = "work";
++		process.env.PI_CODING_AGENT_DIR = path.join(os.tmpdir(), "unrelated-agent");
++		__resetDirsFromEnvForTests();
++		expect(getBaseConfigRoot()).toBe(root);
++		expect(getConfigRootDir()).toBe(path.join(root, "profiles", "work"));
++		expect(getAgentDir()).toBe(path.join(root, "profiles", "work", "agent"));
++		process.env.OMP_PROFILE = "default";
++		__resetDirsFromEnvForTests();
++		expect(getAgentDir()).toBe(path.join(root, "agent"));
++	});
++
++	it("rejects a relative root instead of silently writing to the launch directory", () => {
++		process.env.OMP_USER_ROOT = "relative-data";
++		expect(() => getBaseConfigRoot()).toThrow("absolute path");
++	});
++});
+diff --git a/sdk/go/omp-rpc/wire.go b/sdk/go/omp-rpc/wire.go
+index cb42006904..b11ff11fd2 100644
+--- a/sdk/go/omp-rpc/wire.go
++++ b/sdk/go/omp-rpc/wire.go
+@@ -5424,6 +5424,7 @@ func (v ConfirmUiRequest) MarshalJSON() ([]byte, error) {
+ type InputUiRequest struct {
+ 	ID          string  `json:"id"`
+ 	Title       string  `json:"title"`
++	Secret      *bool   `json:"secret,omitempty"`
+ 	Placeholder *string `json:"placeholder,omitempty"`
+ 	Timeout     *int64  `json:"timeout,omitempty"`
+ }
+@@ -5439,6 +5440,7 @@ func (v *InputUiRequest) decodeFrom(raw map[string]json.RawMessage) error {
+ 	d.required("id", &out.ID)
+ 	d.constant("method", "input")
+ 	d.required("title", &out.Title)
++	d.optional("secret", &out.Secret)
+ 	d.optional("placeholder", &out.Placeholder)
+ 	d.optional("timeout", &out.Timeout)
+ 	if d.err != nil {
+@@ -6812,6 +6814,44 @@ func (v *RpcServerFrame) UnmarshalJSON(data []byte) error {
+ 	return nil
+ }
+ 
++type DesktopSettingsResult struct {
++	Settings []map[string]json.RawMessage `json:"settings"`
++}
++
++func (v *DesktopSettingsResult) UnmarshalJSON(data []byte) error {
++	return decodeWith(data, "DesktopSettingsResult", v.decodeFrom)
++}
++
++func (v *DesktopSettingsResult) decodeFrom(raw map[string]json.RawMessage) error {
++	var out DesktopSettingsResult
++	d := fieldDecoder{raw: raw, owner: "DesktopSettingsResult"}
++	d.required("settings", &out.Settings)
++	if d.err != nil {
++		return d.err
++	}
++	*v = out
++	return nil
++}
++
++type DesktopCommandsResult struct {
++	Commands []map[string]json.RawMessage `json:"commands"`
++}
++
++func (v *DesktopCommandsResult) UnmarshalJSON(data []byte) error {
++	return decodeWith(data, "DesktopCommandsResult", v.decodeFrom)
++}
++
++func (v *DesktopCommandsResult) decodeFrom(raw map[string]json.RawMessage) error {
++	var out DesktopCommandsResult
++	d := fieldDecoder{raw: raw, owner: "DesktopCommandsResult"}
++	d.required("commands", &out.Commands)
++	if d.err != nil {
++		return d.err
++	}
++	*v = out
++	return nil
++}
++
+ type NegotiateProtocolResult struct {
+ 	ProtocolVersion int64 `json:"protocolVersion"`
+ }
+@@ -7346,6 +7386,48 @@ func (v *GetBtwHistoryResult) decodeFrom(raw map[string]json.RawMessage) error {
+ 	return nil
+ }
+ 
++// DesktopSettingsCommand holds the parameters of "desktop_settings".
++type DesktopSettingsCommand struct {
++	Operation DesktopSettingsCommandOperation `json:"operation"`
++	Key       *string                         `json:"key,omitempty"`
++	Value     json.RawMessage                 `json:"value,omitempty"`
++}
++
++// DesktopSettings sends "desktop_settings": Read or update settings through the runtime registry and persistence layer.
++func (c Commands) DesktopSettings(ctx context.Context, p DesktopSettingsCommand) (DesktopSettingsResult, error) {
++	var out DesktopSettingsResult
++	err := c.call(ctx, "desktop_settings", p, 0, &out)
++	return out, err
++}
++
++type DesktopSettingsCommandOperation string
++
++const (
++	DesktopSettingsCommandOperationList  DesktopSettingsCommandOperation = "list"
++	DesktopSettingsCommandOperationSet   DesktopSettingsCommandOperation = "set"
++	DesktopSettingsCommandOperationUnset DesktopSettingsCommandOperation = "unset"
++)
++
++func (v *DesktopSettingsCommandOperation) UnmarshalJSON(data []byte) error {
++	s, err := decodeString(data, "DesktopSettingsCommandOperation")
++	if err != nil {
++		return err
++	}
++	switch value := DesktopSettingsCommandOperation(s); value {
++	case DesktopSettingsCommandOperationList, DesktopSettingsCommandOperationSet, DesktopSettingsCommandOperationUnset:
++		*v = value
++		return nil
++	}
++	return unknownValue("DesktopSettingsCommandOperation", s)
++}
++
++// DesktopCommands sends "desktop_commands": List every built-in command, including terminal presentation commands.
++func (c Commands) DesktopCommands(ctx context.Context) (DesktopCommandsResult, error) {
++	var out DesktopCommandsResult
++	err := c.call(ctx, "desktop_commands", nil, 0, &out)
++	return out, err
++}
++
+ // NegotiateProtocolCommand holds the parameters of "negotiate_protocol".
+ type NegotiateProtocolCommand struct {
+ 	ProtocolVersion int64 `json:"protocolVersion"`
+diff --git a/sdk/python/omp-rpc/src/omp_rpc/_wire.py b/sdk/python/omp-rpc/src/omp_rpc/_wire.py
+index 57cb2b1cd1..ad62bf4a8b 100644
+--- a/sdk/python/omp-rpc/src/omp_rpc/_wire.py
++++ b/sdk/python/omp-rpc/src/omp_rpc/_wire.py
+@@ -1433,6 +1433,7 @@ class InputUiRequest:
+     id: str
+     method: Literal["input"] = "input"
+     title: str
++    secret: bool | None = None
+     placeholder: str | None = None
+     timeout: int | None = None
+ 
+@@ -1532,6 +1533,7 @@ class ExtensionUiRequest(ExtensionUiRequestMixin):
+     option_details: tuple[SelectOptionDetail, ...] | None = None
+     timeout: int | None = None
+     message: str | None = None
++    secret: bool | None = None
+     placeholder: str | None = None
+     prefill: str | None = None
+     prompt_style: bool | None = None
+@@ -1577,6 +1579,16 @@ class HostUriSchemeDefinition:
+     immutable: bool | None = None
+ 
+ 
++@dataclass(slots=True, frozen=True, kw_only=True)
++class DesktopSettingsResult:
++    settings: tuple[JsonObject, ...]
++
++
++@dataclass(slots=True, frozen=True, kw_only=True)
++class DesktopCommandsResult:
++    commands: tuple[JsonObject, ...]
++
++
+ @dataclass(slots=True, frozen=True, kw_only=True)
+ class NegotiateProtocolResult:
+     protocol_version: int
+@@ -2822,6 +2834,7 @@ def parse_input_ui_request(value: object, path: str = "InputUiRequest") -> Input
+     return InputUiRequest(
+         id=required(payload, "id", decode_str, path),
+         title=required(payload, "title", decode_str, path),
++        secret=optional(payload, "secret", decode_bool, path),
+         placeholder=optional(payload, "placeholder", decode_str, path),
+         timeout=optional(payload, "timeout", decode_int, path),
+     )
+@@ -2937,6 +2950,7 @@ def parse_extension_ui_request(value: object, path: str = "ExtensionUiRequest")
+         option_details=optional(payload, "optionDetails", array(parse_select_option_detail), path),
+         timeout=optional(payload, "timeout", decode_int, path),
+         message=optional(payload, "message", decode_str, path),
++        secret=optional(payload, "secret", decode_bool, path),
+         placeholder=optional(payload, "placeholder", decode_str, path),
+         prefill=optional(payload, "prefill", decode_str, path),
+         prompt_style=optional(payload, "promptStyle", decode_bool, path),
+@@ -2987,6 +3001,20 @@ def parse_host_uri_scheme_definition(value: object, path: str = "HostUriSchemeDe
+     )
+ 
+ 
++def parse_desktop_settings_result(value: object, path: str = "DesktopSettingsResult") -> DesktopSettingsResult:
++    payload = expect_object(value, path)
++    return DesktopSettingsResult(
++        settings=required(payload, "settings", array(decode_json_object), path),
++    )
++
++
++def parse_desktop_commands_result(value: object, path: str = "DesktopCommandsResult") -> DesktopCommandsResult:
++    payload = expect_object(value, path)
++    return DesktopCommandsResult(
++        commands=required(payload, "commands", array(decode_json_object), path),
++    )
++
++
+ def parse_negotiate_protocol_result(value: object, path: str = "NegotiateProtocolResult") -> NegotiateProtocolResult:
+     payload = expect_object(value, path)
+     return NegotiateProtocolResult(
+@@ -3124,6 +3152,21 @@ class WireClient:
+     def _listen(self, frame_type: str, listener: Callable[..., None]) -> Callable[[], None]:
+         raise NotImplementedError
+ 
++    def desktop_settings(self, operation: Literal["list", "set", "unset"], *, key: str | None = None, value: JsonValue | None = None) -> DesktopSettingsResult:
++        """Read or update settings through the runtime registry and persistence layer."""
++        params: dict[str, object] = {}
++        params["operation"] = operation
++        if key is not None:
++            params["key"] = key
++        if value is not None:
++            params["value"] = value
++        return parse_desktop_settings_result(self._command("desktop_settings", params), "desktop_settings")
++
++    def desktop_commands(self) -> DesktopCommandsResult:
++        """List every built-in command, including terminal presentation commands."""
++        params: dict[str, object] = {}
++        return parse_desktop_commands_result(self._command("desktop_commands", params), "desktop_commands")
++
+     def steer(self, message: str, *, images: Sequence[ImageContent] | None = None) -> None:
+         """Queue a steering message."""
+         params: dict[str, object] = {}
+@@ -3779,6 +3822,8 @@ __all__ = [
+     "ConfirmUiRequest",
+     "ContextUsage",
+     "CustomMessage",
++    "DesktopCommandsResult",
++    "DesktopSettingsResult",
+     "DeveloperMessage",
+     "EditorUiRequest",
+     "Effort",
+@@ -3962,6 +4007,8 @@ __all__ = [
+     "parse_confirm_ui_request",
+     "parse_context_usage",
+     "parse_custom_message",
++    "parse_desktop_commands_result",
++    "parse_desktop_settings_result",
+     "parse_developer_message",
+     "parse_editor_ui_request",
+     "parse_extension_error",
+diff --git a/sdk/rust/omp-rpc/src/wire.rs b/sdk/rust/omp-rpc/src/wire.rs
+index a27e29de70..fef5539b0c 100644
+--- a/sdk/rust/omp-rpc/src/wire.rs
++++ b/sdk/rust/omp-rpc/src/wire.rs
+@@ -4389,6 +4389,8 @@ pub struct InputUiRequest {
+ 	pub id: String,
+ 	pub title: String,
+ 	#[serde(default, skip_serializing_if = "Option::is_none")]
++	pub secret: Option<bool>,
++	#[serde(default, skip_serializing_if = "Option::is_none")]
+ 	pub placeholder: Option<String>,
+ 	#[serde(default, skip_serializing_if = "Option::is_none")]
+ 	pub timeout: Option<i64>,
+@@ -5034,6 +5036,25 @@ impl<'de> Deserialize<'de> for RpcServerFrame {
+ 	}
+ }
+ 
++#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
++pub struct DesktopSettingsParams {
++	pub operation: DesktopSettingsParamsOperation,
++	#[serde(default, skip_serializing_if = "Option::is_none")]
++	pub key: Option<String>,
++	#[serde(default, skip_serializing_if = "Option::is_none")]
++	pub value: Option<Value>,
++}
++
++#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
++pub struct DesktopSettingsResult {
++	pub settings: Vec<Map<String, Value>>,
++}
++
++#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
++pub struct DesktopCommandsResult {
++	pub commands: Vec<Map<String, Value>>,
++}
++
+ #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+ pub struct NegotiateProtocolParams {
+ 	#[serde(rename = "protocolVersion")]
+@@ -5778,6 +5799,27 @@ impl HostUriResultContentType {
+ 	}
+ }
+ 
++#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
++pub enum DesktopSettingsParamsOperation {
++	#[serde(rename = "list")]
++	List,
++	#[serde(rename = "set")]
++	Set,
++	#[serde(rename = "unset")]
++	Unset,
++}
++
++impl DesktopSettingsParamsOperation {
++	/// Wire value.
++	pub fn as_str(self) -> &'static str {
++		match self {
++			Self::List => "list",
++			Self::Set => "set",
++			Self::Unset => "unset",
++		}
++	}
++}
++
+ fn default_queued_messages_state_live_steered() -> i64 {
+ 	serde_json::from_str("0").expect("valid wire default")
+ }
+@@ -5878,6 +5920,40 @@ fn default_ask_question_multi() -> bool {
+ 	serde_json::from_str("false").expect("valid wire default")
+ }
+ 
++/// Read or update settings through the runtime registry and persistence layer.
++#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
++pub struct DesktopSettingsCommand {
++	pub operation: DesktopSettingsParamsOperation,
++	#[serde(default, skip_serializing_if = "Option::is_none")]
++	pub key: Option<String>,
++	#[serde(default, skip_serializing_if = "Option::is_none")]
++	pub value: Option<Value>,
++}
++
++impl Command for DesktopSettingsCommand {
++	const NAME: &'static str = "desktop_settings";
++	const TIMEOUT_MS: Option<u64> = None;
++	type Output = DesktopSettingsResult;
++
++	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
++		serde_json::from_value::<DesktopSettingsResult>(data.unwrap_or_else(|| Value::Object(Map::new())))
++	}
++}
++
++/// List every built-in command, including terminal presentation commands.
++#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
++pub struct DesktopCommandsCommand {}
++
++impl Command for DesktopCommandsCommand {
++	const NAME: &'static str = "desktop_commands";
++	const TIMEOUT_MS: Option<u64> = None;
++	type Output = DesktopCommandsResult;
++
++	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
++		serde_json::from_value::<DesktopCommandsResult>(data.unwrap_or_else(|| Value::Object(Map::new())))
++	}
++}
++
+ /// Switch the connection to a protocol version advertised by `ready`.
+ #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+ pub struct NegotiateProtocolCommand {
