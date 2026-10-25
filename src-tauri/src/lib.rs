@@ -151,6 +151,10 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
             request["cursor"].as_str(),
             request["limit"].as_u64().unwrap_or(100) as usize,
         ),
+        "session.stats" => history::stats(root, Path::new(text(&request, "path")?)),
+        "session.activate" => desktop
+            .sessions
+            .activate(app.clone(), request["id"].as_str()),
         "session.open" => {
             let _guard = desktop.data_access.read().unwrap();
             desktop.sessions.open(
@@ -160,9 +164,11 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
                 request["path"].as_str().map(Path::new),
             )
         }
-        "session.rpc" => desktop
-            .sessions
-            .rpc(text(&request, "id")?, request["command"].clone()),
+        "session.rpc" => desktop.sessions.rpc(
+            app.clone(),
+            text(&request, "id")?,
+            request["command"].clone(),
+        ),
         "session.ui" => desktop
             .sessions
             .ui(text(&request, "id")?, request["response"].clone()),

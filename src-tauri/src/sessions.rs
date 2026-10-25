@@ -18,7 +18,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 pub struct Session {
     pub client: Arc<Client>,
@@ -38,6 +38,7 @@ struct Terminal {
 #[derive(Default)]
 pub struct Sessions {
     sessions: Mutex<HashMap<String, Session>>,
+    active: Mutex<Option<String>>,
     terminals: Mutex<HashMap<String, Terminal>>,
     opening: Mutex<()>,
     browser_logins: Arc<crate::browser_login::BrowserLogins>,
@@ -68,6 +69,52 @@ pub fn command(root: &Path) -> Result<Command, String> {
 }
 
 impl Sessions {
+    fn take_inactive_idle(&self) -> Vec<(String, Session)> {
+        let active = self.active.lock().unwrap();
+        let mut sessions = self.sessions.lock().unwrap();
+        let ids: Vec<_> = sessions
+            .iter()
+            .filter(|(id, session)| {
+                active.as_deref() != Some(id.as_str())
+                    && session.settled.load(Ordering::Acquire)
+                    && Arc::strong_count(&session.client) == 1
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        ids.into_iter()
+            .filter_map(|id| sessions.remove(&id).map(|session| (id, session)))
+            .collect()
+    }
+
+    pub(crate) fn release_idle(&self, app: &AppHandle) {
+        let released = self.take_inactive_idle();
+        if released.is_empty() {
+            return;
+        }
+        for (id, session) in &released {
+            self.browser_logins.cancel(id, None);
+            emit(
+                app,
+                id,
+                json!({"type":"desktop_status","status":"released","path":*session.path.lock().unwrap()}),
+            );
+        }
+        // Client 的进程退出等待不能占用会话锁或事件消费线程。
+        thread::spawn(move || drop(released));
+    }
+
+    pub fn activate(&self, app: AppHandle, id: Option<&str>) -> Result<Value, String> {
+        {
+            let mut active = self.active.lock().unwrap();
+            let sessions = self.sessions.lock().unwrap();
+            *active = id
+                .filter(|id| sessions.contains_key(*id))
+                .map(str::to_owned);
+        }
+        self.release_idle(&app);
+        Ok(Value::Null)
+    }
+
     pub fn is_empty(&self) -> bool {
         self.sessions.lock().unwrap().is_empty() && self.terminals.lock().unwrap().is_empty()
     }
@@ -86,12 +133,21 @@ impl Sessions {
         }
         let path = path.map(|p| history::session_path(root, p)).transpose()?;
         if let Some(path) = &path {
-            for (id, session) in self.sessions.lock().unwrap().iter() {
-                if session.path.lock().unwrap().as_ref() == Some(path) {
-                    return Ok(
-                        json!({"id":id,"cwd":session.cwd,"path":path,"state":session.client.call_raw(json!({"type":"get_state"})).map_err(|e|e.to_string())?}),
-                    );
-                }
+            let existing = self
+                .sessions
+                .lock()
+                .unwrap()
+                .iter()
+                .find_map(|(id, session)| {
+                    (session.path.lock().unwrap().as_ref() == Some(path))
+                        .then(|| (id.clone(), session.cwd.clone(), session.client.clone()))
+                });
+            if let Some((id, cwd, client)) = existing {
+                self.activate(app, Some(&id))?;
+                let state = client
+                    .call_raw(json!({"type":"get_state"}))
+                    .map_err(|e| e.to_string())?;
+                return Ok(json!({"id":id,"cwd":cwd,"path":path,"state":state}));
             }
         }
         let id = uuid::Uuid::new_v4().to_string();
@@ -108,9 +164,13 @@ impl Sessions {
             .call_raw(json!({"type":"get_state"}))
             .map_err(|e| e.to_string())?;
         let actual_path = state["sessionFile"].as_str().map(PathBuf::from).or(path);
-        client
-            .call_raw(json!({"type":"set_event_filter","events":null,"messageUpdates":"delta"}))
-            .map_err(|e| e.to_string())?;
+        for frame in [
+            json!({"type":"set_ask_dialog","enabled":true}),
+            json!({"type":"set_event_filter","events":null,"messageUpdates":"delta"}),
+            json!({"type":"set_subagent_subscription","level":"progress"}),
+        ] {
+            client.call_raw(frame).map_err(|e| e.to_string())?;
+        }
         let settled = Arc::new(AtomicBool::new(
             state["isSettled"].as_bool().unwrap_or(false),
         ));
@@ -129,6 +189,8 @@ impl Sessions {
         let browser_logins = self.browser_logins.clone();
         let browser_root = root.to_owned();
         let browser_client = Arc::downgrade(&client);
+        drop(client);
+        self.activate(app.clone(), Some(&id))?;
         thread::spawn(move || {
             // 单独消费事件，控制请求不会排在 UI 渲染之后。
             while let Ok(event) = receiver.recv() {
@@ -168,19 +230,34 @@ impl Sessions {
                     }
                     _ => {}
                 }
+                let finished = event["type"] == "session_settled"
+                    || event["type"] == "prompt_result" && event["sessionSettled"] == true;
                 emit(&app, &id, event);
+                if finished {
+                    app.state::<crate::Desktop>().sessions.release_idle(&app);
+                }
             }
             browser_logins.cancel(&id, None);
-            emit(
-                &app,
-                &id,
-                json!({"type":"desktop_status","status":"disconnected"}),
-            );
+            let session = app
+                .state::<crate::Desktop>()
+                .sessions
+                .sessions
+                .lock()
+                .unwrap()
+                .remove(&id);
+            if let Some(session) = session {
+                emit(
+                    &app,
+                    &id,
+                    json!({"type":"desktop_status","status":"disconnected","path":*session.path.lock().unwrap()}),
+                );
+                thread::spawn(move || drop(session));
+            }
         });
         Ok(result)
     }
 
-    pub fn rpc(&self, id: &str, frame: Value) -> Result<Value, String> {
+    pub fn rpc(&self, app: AppHandle, id: &str, frame: Value) -> Result<Value, String> {
         let (client, settled, path_cell) = {
             let sessions = self.sessions.lock().unwrap();
             let session = sessions
@@ -222,34 +299,37 @@ impl Sessions {
                 );
             }
         }
+        drop(client);
+        self.release_idle(&app);
         result
     }
 
     pub fn ui(&self, id: &str, mut response: Value) -> Result<Value, String> {
         response["type"] = json!("extension_ui_response");
-        let client = self
-            .sessions
-            .lock()
-            .unwrap()
+        let sessions = self.sessions.lock().unwrap();
+        sessions
             .get(id)
             .ok_or("Session is closed.")?
             .client
-            .clone();
-        client
             .send(&RpcInbound::from_value(response).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
         Ok(Value::Null)
     }
 
     pub fn close(&self, id: &str) -> Result<Value, String> {
-        let mut sessions = self.sessions.lock().unwrap();
-        if let Some(session) = sessions.get(id) {
-            if !session.settled.load(Ordering::Acquire) {
-                return Err("This session still has active work. Stop it before closing.".into());
+        let session = {
+            let mut sessions = self.sessions.lock().unwrap();
+            if let Some(session) = sessions.get(id) {
+                if !session.settled.load(Ordering::Acquire) {
+                    return Err(
+                        "This session still has active work. Stop it before closing.".into(),
+                    );
+                }
             }
-        }
+            sessions.remove(id)
+        };
         self.browser_logins.cancel(id, None);
-        sessions.remove(id);
+        drop(session);
         Ok(Value::Null)
     }
 
@@ -286,8 +366,10 @@ impl Sessions {
         {
             thread::sleep(Duration::from_millis(50));
         }
-        self.sessions.lock().unwrap().clear();
-        for (_, mut terminal) in self.terminals.lock().unwrap().drain() {
+        let sessions = std::mem::take(&mut *self.sessions.lock().unwrap());
+        drop(sessions);
+        let terminals = std::mem::take(&mut *self.terminals.lock().unwrap());
+        for (_, mut terminal) in terminals {
             let _ = terminal.child.kill();
             let _ = terminal.child.wait();
         }

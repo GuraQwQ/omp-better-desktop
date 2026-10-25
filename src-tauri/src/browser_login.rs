@@ -49,6 +49,8 @@ impl BrowserLogins {
                 let _ = client.send(&response);
             }
             logins.pending.lock().unwrap().remove(&(session, id));
+            drop(client);
+            app.state::<crate::Desktop>().sessions.release_idle(&app);
         });
     }
 
