@@ -10,7 +10,11 @@
 
 `check.yml` 在 Windows 上安装锁定依赖，检查 TypeScript 和 Rust 格式，再重建锁定 OMP、执行不调用模型的协议烟测与桌面编译检查。
 
-`upstream-runtime.yml` 每 12 小时检查一次最新上游 Release，也可手动运行。只读任务克隆并构建候选，验证后上传 NSIS 安装器、SHA-256 校验和及生成文件差异。独立的写入任务只把生成协议、客户端与版本锁提出 PR；它不构建或执行上游代码。需要在仓库 Actions 设置中允许 GitHub Actions 创建 PR。维护者在合并前复核补丁兼容性与安装器行为；失败候选不更新主分支。
+`upstream-runtime.yml` 每 12 小时检查一次最新上游 Release，也可手动运行。只读任务克隆并构建候选，验证后上传 NSIS 安装器、SHA-256 校验和及生成文件差异。独立的写入任务把生成协议、客户端与版本锁提出 PR；它不构建或执行上游代码。
+
+随后工作流显式触发该 PR 分支上的 `check.yml`，并为本次 PR head 启用 GitHub 原生 squash 自动合并。`main` 分支要求 GitHub Actions 的 `windows` 检查成功、分支与当前基线同步且可以无冲突合并。检查失败、分支落后或存在冲突时，PR 保持打开；下次更新流程会重新准备候选并触发检查。整个验证过程在 GitHub 上执行。
+
+仓库设置需启用 Allow auto-merge、允许 GitHub Actions 创建 PR，并将 `windows` 设为 `main` 的必需状态检查。`GITHUB_TOKEN` 创建的 PR 可能要求批准其自动触发的工作流，因此使用始终可触发运行的 `workflow_dispatch` 明确调度分支检查，见 [GitHub 触发规则](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)。构建任务保持只读；创建 PR 和调度检查/启用自动合并分别在独立任务授予对应写权限。
 
 Bun 1.4.4 是当前已验证的发行工具版本；锁定 OMP、原生 addon 与生成 wire 的原因是协议和 ABI 兼容。更新责任人为仓库维护者，升级时同步重新验证这些输入。
 

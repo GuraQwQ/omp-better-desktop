@@ -81,6 +81,11 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    outputs:
+      number: ${{ steps.pr.outputs.pull-request-number }}
+      head: ${{ steps.pr.outputs.pull-request-head-sha }}
+      branch: ${{ steps.pr.outputs.pull-request-branch }}
+      operation: ${{ steps.pr.outputs.pull-request-operation }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -94,7 +99,8 @@ jobs:
         env:
           UPDATE_PATCH: ${{ runner.temp }}/omp-update/runtime.patch
         run: git apply --include=upstream.lock.json --include=docs/feature-map.md --include='src/generated/*' --include=vendor/omp-rpc/src/client.rs --include=vendor/omp-rpc/src/wire.rs "$UPDATE_PATCH"
-      - uses: peter-evans/create-pull-request@v7
+      - id: pr
+        uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           base: ${{ github.event.repository.default_branch }}
@@ -112,3 +118,25 @@ jobs:
             更新锁定的 OMP 版本及配套协议和功能目录。
 
             独立只读任务已构建运行时、执行无模型调用的协议烟测并生成 Windows 预览安装器；安装器及 SHA-256 校验和见本次 Actions 产物。
+
+            此 PR 的分支检查通过且无冲突时，GitHub 会自动 squash 合并；检查失败或存在冲突时保持打开。
+
+  auto-merge:
+    needs: propose
+    if: needs.propose.outputs.number != '' && needs.propose.outputs.head != '' && needs.propose.outputs.operation != 'closed'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ needs.propose.outputs.number }}
+      PR_HEAD: ${{ needs.propose.outputs.head }}
+      PR_BRANCH: ${{ needs.propose.outputs.branch }}
+    steps:
+      - name: 触发 PR 分支的 Windows 云端检查
+        run: gh workflow run check.yml --ref "$PR_BRANCH"
+      - name: 检查通过且无冲突后自动合并
+        run: gh pr merge "$PR_NUMBER" --auto --squash --match-head-commit "$PR_HEAD"

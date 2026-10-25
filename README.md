@@ -1,6 +1,6 @@
 # Better OMP Desktop
 
-基于 [Oh My Pi（OMP）](https://github.com/can1357/oh-my-pi) 的独立桌面客户端，使用 Tauri、React 和 Rust。当前面向 **Windows x64 早期预览**，与 OMP 官方及参考项目 [oh-my-pi-gui](https://github.com/nornzach/oh-my-pi-gui) 分别维护。
+基于 [Oh My Pi（OMP）](https://github.com/can1357/oh-my-pi) 的独立桌面客户端，使用 Tauri、React 和 Rust。
 
 桌面宿主管理项目、会话、数据位置与运行时；代理能力由随安装包内置的 OMP 提供。上游提交、协议版本与本地补丁由 [upstream.lock.json](upstream.lock.json) 锁定。
 
@@ -53,7 +53,7 @@ bun run clean                                 # 清理本仓库 .cache、build�
 
 请先阅读 [贡献说明](CONTRIBUTING.md)。报告问题时附上应用版本、OMP revision、Windows/WebView2 版本、复现步骤和脱敏日志；不要上传凭据或完整私人会话。
 
-公开 CI 执行类型检查、Rust 格式与编译检查，以及无模型调用的运行时协议烟测。定时上游更新通过验证后提出待审 PR；预览发行由维护者在既有标签上手动运行，先生成草稿。详见 [发行流程](docs/releasing.md)。
+公开 CI 执行类型检查、Rust 格式与编译检查，以及无模型调用的运行时协议烟测。定时上游 Release 更新经过云端构建后提出 PR，通过分支检查且无冲突时自动合并；预览发行由维护者在既有标签上手动运行，先生成草稿。详见 [发行流程](docs/releasing.md)。
 
 ## 许可与来源
 
