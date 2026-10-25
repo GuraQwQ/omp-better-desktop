@@ -1,0 +1,5 @@
+.project-row { display: flex; align-items: center; gap: 1px; }
+.project-row > .project-toggle { padding: 8px 4px; color: var(--secondary); }
+.project-toggle > svg { transition: transform 150ms ease; }
+.project-toggle > svg.rotate { transform: rotate(90deg); }
+.project-row > .project-item { flex: 1; min-width: 0; padding-left: 3px; }

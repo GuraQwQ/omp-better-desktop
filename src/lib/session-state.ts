@@ -10,7 +10,10 @@ export function returnFromTerminal(session: SessionView, runtimeReleased: boolea
 }
 
 export function applyEvent(session: SessionView, event: Json): SessionView {
-  if (event.type === 'desktop_status') return { ...session, status: event.status };
+  if (event.type === 'desktop_status') {
+    if (event.status === 'released' || event.status === 'disconnected') return { ...session, path: event.path ?? session.path, historyOnly: true, status: 'ready', state: { ...session.state, isStreaming: false, isSettled: true } };
+    return { ...session, status: event.status };
+  }
   if (event.type === 'agent_start') return { ...session, status: 'running', state: { ...session.state, isStreaming: true, isSettled: false } };
   if (event.type === 'agent_end') return { ...session, status: event.awaitingAsyncWork ? 'background' : 'ready', state: { ...session.state, isStreaming: false, isSettled: false } };
   if (event.type === 'session_settled') return { ...session, status: 'ready', state: { ...session.state, isStreaming: false, isSettled: true } };

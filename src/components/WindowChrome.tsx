@@ -1,0 +1,50 @@
+import { useEffect, useState } from 'react';
+import type { MouseEvent } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { Copy, Minus, Square, X } from 'lucide-react';
+import { native } from '../lib/bridge';
+import './window-chrome.css';
+
+export default function WindowChrome({ language }: { language: 'zh' | 'en' }) {
+  const [maximized, setMaximized] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const zh = language === 'zh';
+  const labels = zh
+    ? { bar: '窗口标题栏', minimize: '最小化', maximize: '最大化', restore: '还原窗口', close: '关闭窗口', error: '窗口操作失败，请重试。' }
+    : { bar: 'Window title bar', minimize: 'Minimize', maximize: 'Maximize', restore: 'Restore window', close: 'Close window', error: 'Window action failed. Try again.' };
+  const failure = (error: unknown) => { console.error(error); setFailed(true); };
+  const act = async (action: () => Promise<void>) => {
+    if (!native) return;
+    setFailed(false);
+    try { await action(); } catch (error) { failure(error); }
+  };
+  const toggle = () => act(async () => {
+    const current = getCurrentWindow();
+    await current.toggleMaximize();
+    setMaximized(await current.isMaximized());
+  });
+  useEffect(() => {
+    if (!native) return;
+    const current = getCurrentWindow();
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    const refresh = () => current.isMaximized().then(value => { if (!disposed) setMaximized(value); }).catch(error => { if (!disposed) failure(error); });
+    void refresh();
+    void current.onResized(refresh).then(stop => { if (disposed) stop(); else unlisten = stop; }).catch(error => { if (!disposed) failure(error); });
+    return () => { disposed = true; unlisten?.(); };
+  }, []);
+  const drag = (event: MouseEvent<HTMLDivElement>) => {
+    if (!native || event.button !== 0) return;
+    if (event.detail === 2) void toggle();
+    else void act(() => getCurrentWindow().startDragging());
+  };
+  const maximizeLabel = maximized ? labels.restore : labels.maximize;
+  return <header className="window-chrome" aria-label={labels.bar}>
+    <div className="window-drag-region" onMouseDown={drag}><span>Better OMP Desktop</span>{failed && <span className="window-action-error" role="status">{labels.error}</span>}</div>
+    <div className="window-controls">
+      <button type="button" aria-label={labels.minimize} title={labels.minimize} disabled={!native} onClick={() => void act(() => getCurrentWindow().minimize())}><Minus size={14} /></button>
+      <button type="button" aria-label={maximizeLabel} title={maximizeLabel} aria-pressed={maximized} disabled={!native} onClick={() => void toggle()}>{maximized ? <Copy size={12} /> : <Square size={12} />}</button>
+      <button type="button" className="window-close" aria-label={labels.close} title={labels.close} disabled={!native} onClick={() => void act(() => getCurrentWindow().close())}><X size={15} /></button>
+    </div>
+  </header>;
+}

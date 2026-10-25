@@ -7,6 +7,6 @@ export interface Bootstrap { dataRoot: string; runtime: RuntimeRecord | null; pr
 export interface SessionSummary { path: string; id: string; title?: string; cwd: string; updatedAt?: string | number }
 export interface ContentBlock { type: string; text?: string; thinking?: string; name?: string; id?: string; arguments?: any; data?: string; mimeType?: string }
 export interface Message { id: string; role: string; content: string | ContentBlock[]; toolName?: string; toolCallId?: string; isError?: boolean; usage?: Json; timestamp?: number; [key: string]: any }
-export interface SessionView { id: string; cwd: string; path?: string; title: string; messages: Message[]; state: Json; status: string; pending: Json[]; nextCursor?: string; historyOnly?: boolean; draft?: string }
+export interface SessionView { id: string; cwd: string; path?: string; title: string; messages: Message[]; state: Json; status: string; pending: Json[]; nextCursor?: string; historyOnly?: boolean; hidden?: boolean; draft?: string }
 export interface DesktopEvent { sessionId: string; event: Json }
 export interface CatalogEntry { name: string; description?: string; kind?: string; source?: string; surface?: string; args?: string[]; [key: string]: any }

@@ -41,6 +41,15 @@ const en = {
   exploreAction: 'Explore this codebase', explorePrompt: 'Explain the architecture of this project and show me where to start.',
   reviewAction: 'Review recent changes', reviewPrompt: 'Review the current changes and identify concrete bugs or regressions.',
   buildAction: 'Plan the next change', buildPrompt: 'Help me plan the next change. First inspect the project and explain the available options.',
+  desktop: 'Desktop', you: 'You', tool: 'Tool', tools: 'Tools', thinking: 'Thinking', systemPrompt: 'System prompt',
+  compactContext: 'Compact context', shakeContext: 'Run /shake', yes: 'Yes', no: 'No',
+  addContent: 'Add to conversation', attachFile: 'Attach file', attachFolder: 'Attach folder',
+  effortLevels: { off: 'Off', minimal: 'Minimal', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Maximum' },
+  statusLabels: { pending: 'Pending', in_progress: 'In progress', completed: 'Completed', abandoned: 'Abandoned', blocked: 'Blocked', active: 'Active', paused: 'Paused', 'budget-limited': 'Budget limited', complete: 'Complete', dropped: 'Dropped', running: 'Running', failed: 'Failed', aborted: 'Aborted', cancelled: 'Cancelled', error: 'Error', interrupted: 'Interrupted', started: 'Started', connecting: 'Connecting', listening: 'Listening', working: 'Working', speaking: 'Speaking', muted: 'Muted' },
+  commandKinds: { cli: 'CLI command', rpc: 'RPC command', slash: 'Command', tool: 'Tool' },
+  on: 'On', off: 'Off', invalidNumber: 'Enter a valid number.', invalidJson: 'Enter valid JSON.',
+  expandProject: 'Expand project', collapseProject: 'Collapse project',
+  totalTokens: 'Total tokens', cacheHitRate: 'Cache hit rate',
 };
 const zh: typeof en = {
   product: 'Better OMP Desktop', newSession: '新建对话', addProject: '添加项目', projects: '项目',
@@ -83,6 +92,55 @@ const zh: typeof en = {
   exploreAction: '了解这个项目', explorePrompt: '请解释这个项目的架构，告诉我应该从哪里开始阅读。',
   reviewAction: '审查最近的更改', reviewPrompt: '请审查当前更改，找出具体的缺陷或回归问题。',
   buildAction: '规划下一步', buildPrompt: '请先检查项目，再帮助我规划下一步更改并解释可行选项。',
+  desktop: '桌面版', you: '你', tool: '工具', tools: '工具', thinking: '思考过程', systemPrompt: '系统提示词',
+  compactContext: '压缩上下文', shakeContext: '运行 /shake', yes: '是', no: '否',
+  addContent: '添加内容', attachFile: '附加文件', attachFolder: '附加文件夹',
+  effortLevels: { off: '关闭', minimal: '极低', low: '低', medium: '中', high: '高', xhigh: '很高', max: '最高' },
+  statusLabels: { pending: '待处理', in_progress: '进行中', completed: '已完成', abandoned: '已放弃', blocked: '受阻', active: '进行中', paused: '已暂停', 'budget-limited': '已达到预算上限', complete: '已完成', dropped: '已移除', running: '正在运行', failed: '失败', aborted: '已停止', cancelled: '已取消', error: '出错', interrupted: '已中断', started: '已启动', connecting: '连接中', listening: '正在聆听', working: '正在处理', speaking: '正在播报', muted: '已静音' },
+  commandKinds: { cli: '命令行命令', rpc: 'RPC 命令', slash: '命令', tool: '工具' },
+  on: '开启', off: '关闭', invalidNumber: '请输入有效数字。', invalidJson: '请输入有效的 JSON。',
+  expandProject: '展开项目', collapseProject: '收起项目',
+  totalTokens: '累计用量', cacheHitRate: '缓存命中率',
 };
 export type Copy = typeof en;
 export const copy = (language: Language): Copy => language === 'zh' ? zh : en;
+
+export const statusText = (status: string, t: Copy): string => t.statusLabels[status as keyof Copy['statusLabels']] ?? status;
+
+const errorTranslations: Record<string, string> = {
+  'Install a matching OMP runtime in Settings first.': '请先在设置中安装匹配的 OMP 运行时。',
+  'Project folder does not exist.': '项目文件夹不存在。',
+  'Runtime did not start.': '运行时未能启动。',
+  'Session is closed. Reopen it to continue.': '对话已关闭，请重新打开后继续。',
+  'Session is closed.': '对话已关闭。',
+  'This session still has active work. Stop it before closing.': '此对话仍有任务运行，请先停止任务再关闭。',
+  'Open a session first.': '请先打开一个对话。',
+  'Stop the active work before opening its TUI.': '请先停止当前任务，再打开终端界面。',
+  'Install OMP first.': '请先安装 OMP 运行时。',
+  'Terminal is closed.': '终端已关闭。',
+  'File is outside this project.': '文件不在此项目中。',
+  'Choose an existing folder.': '请选择一个已存在的文件夹。',
+  'Close active sessions and terminals before changing the runtime or managed data.': '请先关闭运行中的对话和终端，再更改运行时或托管数据。',
+  'The managed runtime is incomplete. Import its package again.': '托管运行时不完整，请重新导入运行时包。',
+  'The previous runtime is incomplete. Import its package again.': '上一运行时不完整，请重新导入运行时包。',
+  'This runtime package uses an incompatible RPC protocol.': '此运行时包的 RPC 协议不兼容。',
+  'There is no previous runtime to restore.': '没有可恢复的上一运行时。',
+  'Choose an OMP data directory.': '请选择 OMP 数据目录。',
+  'Import source and managed OMP data must be separate directories.': '迁入来源与托管 OMP 数据必须位于不同目录。',
+  'Install a runtime before taking over the omp command.': '请先安装运行时，再接管 omp 命令。',
+  'CLI takeover is available on Windows in this release.': '此版本仅支持在 Windows 上接管命令行入口。',
+  'Missing browser login URL.': '缺少浏览器登录地址。',
+  'Browser login requires an HTTPS URL.': '浏览器登录需要 HTTPS 地址。',
+  'Missing login cookie names.': '缺少登录 Cookie 名称。',
+  'Invalid login cookie name.': '登录 Cookie 名称无效。',
+  'Browser login timed out. Retry sign-in.': '浏览器登录超时，请重试。',
+  'Unsupported URL scheme': '不支持此地址协议。',
+};
+
+export function localizeError(message: string, language: Language): string {
+  const browserOnly: Record<string, [string, string]> = {
+    'Open the desktop application to access local projects and the OMP runtime. / 请打开桌面应用以访问本地项目和 OMP 运行时。': ['Open the desktop application to access local projects and the OMP runtime.', '请打开桌面应用以访问本地项目和 OMP 运行时。'],
+    'Choose a folder from the desktop application. / 请在桌面应用中选择文件夹。': ['Choose a folder from the desktop application.', '请在桌面应用中选择文件夹。'],
+  };
+  return browserOnly[message]?.[language === 'zh' ? 1 : 0] ?? (language === 'zh' ? errorTranslations[message] ?? message : message);
+}

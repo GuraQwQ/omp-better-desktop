@@ -1,4 +1,5 @@
-import type { Json } from './types';
+import type { Json, Language } from './types';
+import { settingsZh } from './settings-zh';
 
 export function settingText(value: unknown): string {
   return value === undefined ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value);
@@ -12,4 +13,13 @@ export function settingOptions(setting: Json): { value: string; label: string }[
     if (!['string', 'number', 'boolean'].includes(typeof value)) return [];
     return [{ value: String(value), label: settingText(option?.label ?? value) }];
   }) ?? [];
+}
+
+export function settingView(setting: Json, language: Language) {
+  const translated = language === 'zh' ? settingsZh[setting.path ?? setting.id] : undefined;
+  return {
+    label: translated?.label ?? settingText(setting.ui?.label ?? setting.label ?? setting.path ?? setting.id),
+    description: translated?.description ?? settingText(setting.ui?.description ?? setting.description),
+    options: settingOptions(setting).map(option => ({ ...option, label: translated?.options?.[option.value] ?? option.label })),
+  };
 }

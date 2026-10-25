@@ -32,7 +32,7 @@ SOFTWARE.
 
 ## oh-my-pi-gui
 
-参考项目：https://github.com/nornzach/oh-my-pi-gui 。参考提交见 `upstream.lock.json` 的 `referenceGui`。作为桌面集成与交付方式的参考，保留原项目许可与归属：
+来源：https://github.com/nornzach/oh-my-pi-gui 。桌面集成参考基线见 `upstream.lock.json` 的 `referenceGui`。`src/lib/settings-zh.ts` 的中文设置文案改编自该项目提交 `0b0127145ea91189cc5fc13f524cc457e1918d16` 的 `schema-zh.ts` 与 `schema-option-zh.ts`，并按当前 OMP 元数据校订。保留原项目许可与归属：
 
 MIT License
 
