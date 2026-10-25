@@ -1,0 +1,18 @@
+.session-search { display: flex; align-items: center; gap: 6px; margin: 0 2px 12px; padding: 0 7px; border: 1px solid var(--line); border-radius: 7px; color: var(--secondary); }
+.session-search:focus-within { border-color: var(--accent); }
+.session-search input { width: 100%; padding: 7px 0; border: 0; background: transparent; border-radius: 0; font-size: 12px; }
+.session-search input:focus { outline: none; }
+.session-search input::-webkit-search-cancel-button { display: none; }
+.session-search .icon-button { padding: 3px; }
+.session-search-results { padding-bottom: 12px; }
+.session-search-results .session-item { align-items: flex-start; }
+.session-search-results .session-item > svg { margin-top: 3px; }
+.session-search-results .search-result-text { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
+.search-result-text > span, .search-result-text > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-result-text > small { font-size: 10px; color: var(--secondary); }
+.search-status { margin: 0; padding: 5px 10px 10px; font-size: 12px; color: var(--secondary); }
+.message-actions { display: flex; align-items: center; gap: 3px; margin-left: 2px; }
+.message-actions .quiet-button { padding: 3px 5px; font-size: 11px; font-weight: 400; }
+.message-actions .icon-button { padding: 4px; }
+.message-actions .copy-message { opacity: 1; }
+.message-error { margin-top: 8px; color: var(--danger); font-size: 12px; white-space: pre-wrap; }

@@ -5,6 +5,16 @@ export function normalizeMessage(value: Json, fallback: string): Message {
   return { ...message, id: value.messageId ?? message.id ?? fallback, role: message.role ?? 'assistant', content: message.content ?? message.text ?? '' };
 }
 
+export function enrichToolMessages(messages: Message[]): Message[] {
+  const calls = new Map<string, { name?: string; arguments?: unknown }>();
+  for (const message of messages) if (Array.isArray(message.content)) {
+    for (const block of message.content) if (block?.type === 'toolCall' && block.id) calls.set(block.id, block);
+  }
+  return messages.map(message => {
+    const call = message.toolCallId ? calls.get(message.toolCallId) : undefined;
+    return call && (message.args === undefined || !message.toolName) ? { ...message, args: message.args ?? call.arguments, toolName: message.toolName ?? call.name } : message;
+  });
+}
 export function returnFromTerminal(session: SessionView, runtimeReleased: boolean): SessionView {
   return runtimeReleased ? { ...session, historyOnly: true } : session;
 }
@@ -60,20 +70,24 @@ export function applyEvent(session: SessionView, event: Json): SessionView {
       }
       message = { ...(previous ?? message), content };
     }
+    const provisional = message.toolCallId ? session.messages.find(item => item.id === `tool-${message.toolCallId}`) : undefined;
+    if (message.role === 'toolResult' || message.role === 'tool') message = { ...provisional, ...message, args: message.args ?? provisional?.args, details: message.details ?? provisional?.details, result: message.result ?? { ...provisional?.result, content: message.content, details: message.details ?? provisional?.details }, running: event.type !== 'message_end' };
     const messages = session.messages.slice();
     if (index >= 0) messages[index] = message;
     else messages.push(message);
-    return { ...session, messages: message.toolCallId && !message.id.startsWith('tool-') ? messages.filter(item => item.id !== `tool-${message.toolCallId}`) : messages };
+    return { ...session, messages: enrichToolMessages(message.toolCallId && !message.id.startsWith('tool-') ? messages.filter(item => item.id !== `tool-${message.toolCallId}`) : messages) };
   }
   if (event.type === 'command_output') return { ...session, messages: [...session.messages, { id: `command-${event.id ?? session.messages.length}`, role: 'assistant', content: event.text ?? event.output ?? '' }] };
   if (event.type === 'tool_execution_start' || event.type === 'tool_execution_update' || event.type === 'tool_execution_end') {
     const id = `tool-${event.toolCallId}`;
     const index = session.messages.findIndex(m => m.id === id);
-    const message: Message = { id, role: 'toolResult', toolName: event.toolName, toolCallId: event.toolCallId, content: event.result?.content ?? event.partialResult?.content ?? '', isError: event.isError, running: event.type !== 'tool_execution_end' };
+    const previous = session.messages[index];
+    const result = event.result ?? event.partialResult;
+    const message: Message = { ...previous, id, role: 'toolResult', toolName: event.toolName ?? previous?.toolName, toolCallId: event.toolCallId, args: event.args ?? previous?.args, result: event.result ?? previous?.result, partialResult: event.partialResult ?? previous?.partialResult, details: result?.details ?? previous?.details, content: result?.content ?? previous?.content ?? '', isError: event.isError ?? previous?.isError, running: event.type !== 'tool_execution_end' };
     const messages = session.messages.slice();
     if (index >= 0) messages[index] = { ...messages[index], ...message };
     else messages.push(message);
-    return { ...session, messages };
+    return { ...session, messages: enrichToolMessages(messages) };
   }
   return session;
 }

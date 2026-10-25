@@ -6,10 +6,10 @@
 
 ## 安装
 
-在本仓库 [Releases](https://github.com/GuraQwQ/omp-better-desktop/releases) 中选择标记为 Pre-release 的 Windows x64 版本（若尚无发行，请从源码构建）。下载 NSIS `.exe` 与 `SHA256SUMS`，用 PowerShell 核对：
+在本仓库 [Releases](https://github.com/GuraQwQ/omp-better-desktop/releases) 中选择标记为 Pre-release 的 Windows x64 版本。下载 NSIS `.exe` 与 `SHA256SUMS`，用 PowerShell 核对：
 
 ```powershell
-Get-FileHash -LiteralPath './Better OMP Desktop_0.1.0_x64-setup.exe' -Algorithm SHA256
+Get-FileHash -LiteralPath './Better-OMP-Desktop_0.1.0_windows-x64-preview.exe' -Algorithm SHA256
 ```
 
 文件名以实际附件为准。预览安装器未签名，Windows 可能提示发布者未知。安装包内置匹配的 OMP；需要系统已有 WebView2，或自行提供解压到其他盘的 Fixed Version WebView2。首次启动选择数据目录，应用数据与安装目录分开管理。详见 [安装、迁移与恢复](docs/install.md)。
@@ -17,6 +17,8 @@ Get-FileHash -LiteralPath './Better OMP Desktop_0.1.0_x64-setup.exe' -Algorithm 
 ## 当前范围
 
 - 项目与会话导航、流式消息、模型选择、设置、提供商登录、文件与差异查看。
+- 按标题、项目、路径和 ID 搜索对话；从用户消息创建编辑分支，失败回合使用 OMP 原生重试。
+- read/edit/bash 工具结果显示路径与行号、差异、命令和退出状态，保留原始输出入口。
 - OMP 运行时随包交付，首次启动校验并激活；保留上一份托管运行时用于回退。
 - 原生命令与 RPC 按实际语义接入；依赖 OMP TUI 的交互通过内嵌终端接管当前会话。
 - 导入既有 OMP 数据时复制源数据并记录进度；会话、凭据、配置和应用文件分别保留。

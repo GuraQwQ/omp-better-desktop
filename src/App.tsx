@@ -1,12 +1,15 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowUp, ArrowUpRight, Bell, ChevronDown, ChevronRight, CircleHelp, Command, FileDiff, FilePlus2, Folder, FolderOpen, FolderPlus, GitBranch, ImagePlus, Layers, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Settings2, Square, TerminalSquare, X } from 'lucide-react';
+import { ArrowUp, ArrowUpRight, Bell, ChevronDown, ChevronRight, CircleHelp, Command, FileDiff, FilePlus2, Folder, FolderOpen, FolderPlus, GitBranch, ImagePlus, Layers, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings2, Square, TerminalSquare, X } from 'lucide-react';
 import { copy, localizeError } from './lib/i18n';
 import { native, onDesktopEvent, pickPath, request, rpc } from './lib/bridge';
 import { applyEvent, normalizeMessage, returnFromTerminal } from './lib/session-state';
+import { editableEntry, messageImages, retryMessageIndex } from './lib/message-actions';
+import { searchSessions } from './lib/session-search';
+import './components/conversation-actions.css';
 import { terminalCommand } from './lib/command-routes';
 import { sessionKey, sessionPathKey, storeSession, uniqueSessions } from './lib/session-identity';
 import './components/project-list.css';
-import type { Bootstrap, CatalogEntry, Json, Project, SessionSummary, SessionView } from './lib/types';
+import type { Bootstrap, CatalogEntry, Json, Message, Project, SessionSummary, SessionView } from './lib/types';
 import type { InspectorTab } from './panels/Inspector';
 import Transcript from './components/Transcript';
 import Question from './components/Question';
@@ -27,6 +30,9 @@ export default function App() {
   const [bootstrap, setBootstrap] = useState(initial);
   const [project, setProject] = useState<Project | null>(null);
   const [history, setHistory] = useState<Record<string, SessionSummary[]>>({});
+  const [sessionQuery, setSessionQuery] = useState('');
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [messageAction, setMessageAction] = useState(false);
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
   const [sessions, setSessions] = useState<Record<string, SessionView>>({});
   const [activeId, commitActiveId] = useState('');
@@ -49,6 +55,9 @@ export default function App() {
   const [images, setImages] = useState<{ type: 'image'; data: string; mimeType: string; name: string }[]>([]);
   const [booting, setBooting] = useState(true);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const actionPending = useRef<'edit' | 'retry' | false>(false);
+  const imageDrafts = useRef<Record<string, typeof images>>({});
   const fileInput = useRef<HTMLInputElement>(null);
   const usageCache = useRef<UsageCache>(new Map());
   const attachmentControl = useRef<HTMLDivElement>(null);
@@ -69,6 +78,7 @@ export default function App() {
   const frame = useRef(0);
   const t = copy(bootstrap.preferences.language);
   const allSessions = uniqueSessions(Object.values(sessions));
+  const searchResults = searchSessions(bootstrap.projects, history, allSessions, sessionQuery);
   const selected = sessions[activeId];
   const session = selected ? allSessions.find(value => sessionKey(value) === sessionKey(selected)) : undefined;
   const cwd = session?.cwd ?? project?.path ?? '';
@@ -108,7 +118,8 @@ export default function App() {
     if (session && session.id !== activeId) { drafts.current[session.id] = drafts.current[activeId] ?? draft; setActiveId(session.id); }
   }, [sessions, activeId]);
   useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
-  useEffect(() => { activeIdRef.current = activeId; setDraft(drafts.current[draftKey] ?? sessionsRef.current[activeId]?.draft ?? ''); }, [activeId, draftKey]);
+  useEffect(() => { activeIdRef.current = activeId; setDraft(drafts.current[draftKey] ?? sessionsRef.current[activeId]?.draft ?? ''); setImages(imageDrafts.current[draftKey] ?? []); }, [activeId, draftKey]);
+  useEffect(() => { imageDrafts.current[draftKey] = images; }, [images]);
   useEffect(() => { drafts.current[draftKey] = draft; }, [draft, draftKey]);
   useEffect(activateRuntime, [session?.id, session?.historyOnly]);
   useEffect(() => {
@@ -119,7 +130,8 @@ export default function App() {
       if (payload.event.type === 'desktop_status' && payload.event.status === 'released') releasedIds.current.add(payload.sessionId);
       if (payload.event.type === 'extension_ui_request' && payload.event.method === 'set_editor_text') { drafts.current[payload.sessionId] = payload.event.text ?? ''; if (payload.sessionId === activeIdRef.current) setDraft(payload.event.text ?? ''); }
       if (payload.event.type === 'extension_error' || payload.event.type === 'notice' && payload.event.level === 'error') showError(payload.event.error ?? payload.event.message);
-      if (['session_settled', 'prompt_result', 'config_update', 'session_info_update'].includes(payload.event.type)) {
+      if (payload.event.type === 'session_settled' && payload.sessionId === activeIdRef.current && !releasedIds.current.has(payload.sessionId)) void refreshSession(payload.sessionId, true).catch(error => { if (!releasedIds.current.has(payload.sessionId)) showError(error); });
+      if (['prompt_result', 'config_update', 'session_info_update'].includes(payload.event.type)) {
         if (sessionsRef.current[payload.sessionId] && !sessionsRef.current[payload.sessionId].historyOnly && !releasedIds.current.has(payload.sessionId)) void rpc(payload.sessionId, 'get_state').then(state => setSessions(old => old[payload.sessionId] && !old[payload.sessionId].historyOnly ? ({ ...old, [payload.sessionId]: { ...old[payload.sessionId], state: { ...old[payload.sessionId].state, ...state }, path: state.sessionFile ?? old[payload.sessionId].path } }) : old)).catch(error => { if (!releasedIds.current.has(payload.sessionId) && !sessionsRef.current[payload.sessionId]?.historyOnly) showError(error); });
       }
       eventQueue.current.push(payload);
@@ -143,8 +155,16 @@ export default function App() {
   }, [bootstrap.preferences]);
   useEffect(() => { if (project) void refreshHistory(project.path); }, [project?.path, activeId]);
   useEffect(() => {
+    if (!sessionQuery.trim()) return;
+    let current = true;
+    setSearchLoading(true);
+    void Promise.all(bootstrap.projects.map(value => refreshHistory(value.path))).finally(() => { if (current) setSearchLoading(false); });
+    return () => { current = false; };
+  }, [!!sessionQuery.trim(), bootstrap.projects]);
+  useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if (terminalId) return;
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') { event.preventDefault(); setSidebar(true); requestAnimationFrame(() => searchInput.current?.focus()); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setCommandsOpen(value => !value); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') { event.preventDefault(); newConversation(); }
       if ((event.ctrlKey || event.metaKey) && event.key === ',') { event.preventDefault(); setSettingsTab('general'); setSettingsOpen(value => !value); }
@@ -197,6 +217,20 @@ export default function App() {
     } catch (error) { showError(error); }
     finally { textarea.current?.focus(); }
   };
+  const readMessages = async (id: string, path: string, limit = 100) => {
+    const page = await request<Json>('session.history', { path, limit: Math.min(limit, 256) });
+    while (page.nextCursor && page.messages.length < limit) {
+      const earlier = await request<Json>('session.history', { path, cursor: page.nextCursor, limit: Math.min(limit - page.messages.length, 256) });
+      page.messages = [...earlier.messages, ...page.messages];
+      page.nextCursor = earlier.nextCursor;
+    }
+    if (page.messages.some((message: Json) => Array.isArray(message.content) && message.content.some((block: Json) => block.type === 'image' && typeof block.data === 'string' && block.data.startsWith('blob:')))) {
+      const tree = await rpc(id, 'get_entries');
+      const entries = new Map<string, Json>(tree.entries.map((entry: Json) => [entry.id, entry]));
+      page.messages = page.messages.map((message: Json) => ({ ...(entries.get(message.id)?.message ?? message), id: message.id }));
+    }
+    return page;
+  };
   const prepareSession = async (forPrompt = false, requested?: SessionTarget): Promise<SessionView> => {
     if (!forPrompt && requested && requested.revision !== selectionRevision.current) throw new DOMException('Cancelled', 'AbortError');
     const captured = requested ? requested.source : sessionsRef.current[activeIdRef.current] ?? session;
@@ -216,13 +250,14 @@ export default function App() {
       let btw: Json = { records: [] };
       if (!releasedIds.current.has(opened.id)) {
         try {
-          if (source?.path) page = await rpc(opened.id, 'get_messages_page', { limit: 100 });
+          if (source?.path) page = await readMessages(opened.id, opened.path ?? source.path, Math.max(100, source.messages.length));
           if (!releasedIds.current.has(opened.id)) btw = await rpc(opened.id, 'get_btw_history');
         } catch (error) { if (!releasedIds.current.has(opened.id)) throw error; }
       }
-      const value: SessionView = { id: opened.id, cwd: targetCwd, path: opened.path ?? source?.path, title: opened.state?.sessionName ?? source?.title ?? t.newTitle, messages: page ? page.messages.map((message: Json, i: number) => normalizeMessage(message, `reopen-${i}`)) : source?.messages ?? existing?.messages ?? [], nextCursor: page ? page.nextCursor : source?.nextCursor, state: { ...opened.state, btwRecords: btw.records }, status: 'ready', pending: source?.pending ?? existing?.pending ?? [], historyOnly: releasedIds.current.has(opened.id), hidden: forPrompt ? false : source ? !!source.hidden : true };
+      const value: SessionView = { id: opened.id, cwd: targetCwd, path: opened.path ?? source?.path, title: opened.state?.sessionName ?? source?.title ?? t.newTitle, messages: page ? page.messages.map((message: Json, i: number) => normalizeMessage({ ...message, entryId: message.id }, `reopen-${i}`)) : source?.messages ?? existing?.messages ?? [], nextCursor: page ? page.nextCursor : source?.nextCursor, state: { ...opened.state, btwRecords: btw.records }, status: 'ready', pending: source?.pending ?? existing?.pending ?? [], historyOnly: releasedIds.current.has(opened.id), hidden: forPrompt ? false : source ? !!source.hidden : true };
       drafts.current[value.id] = drafts.current[sourceDraftKey] ?? draft;
-      if (sourceDraftKey !== value.id) delete drafts.current[sourceDraftKey];
+      imageDrafts.current[value.id] = imageDrafts.current[sourceDraftKey] ?? [];
+      if (sourceDraftKey !== value.id) { delete drafts.current[sourceDraftKey]; delete imageDrafts.current[sourceDraftKey]; }
       putSession(value, source?.id);
       if (selectionRevision.current === revision) setActiveId(value.id);
       else if (!forPrompt) activateRuntime();
@@ -241,7 +276,7 @@ export default function App() {
   };
   const closeSession = async () => {
     if (!session) return;
-    try { if (!session.historyOnly) await request('session.close', { id: session.id }); setSessions(old => { const next = { ...old }; delete next[session.id]; return next; }); setActiveId(''); } catch (error) { showError(error); }
+    try { if (!session.historyOnly) await request('session.close', { id: session.id }); delete drafts.current[session.id]; delete imageDrafts.current[session.id]; setSessions(old => { const next = { ...old }; delete next[session.id]; return next; }); setActiveId(''); } catch (error) { showError(error); }
   };
   const closeTerminal = async (takenOver: boolean) => {
     const id = terminalId;
@@ -267,12 +302,12 @@ export default function App() {
       const current = uniqueSessions(Object.values(sessionsRef.current)).find(value => sessionKey(value) === sessionKey(summary));
       if (current) { setActiveId(current.id); setSettingsOpen(false); return; }
       const id = `history:${sessionPathKey(summary.path)}`;
-      putSession({ id, cwd: summary.cwd, path: summary.path, title: summary.title ?? t.newTitle, messages: result.messages.map((message: Json, i: number) => normalizeMessage(message, `history-${i}`)), state: {}, pending: [], status: 'ready', historyOnly: true, nextCursor: result.nextCursor });
+      putSession({ id, cwd: summary.cwd, path: summary.path, title: summary.title ?? t.newTitle, messages: result.messages.map((message: Json, i: number) => normalizeMessage({ ...message, entryId: message.id }, `history-${i}`)), state: {}, pending: [], status: 'ready', historyOnly: true, nextCursor: result.nextCursor });
       setActiveId(id); setSettingsOpen(false);
     } catch (e) { showError(e); }
   };
   const send = async (text = draft) => {
-    if ((!text.trim() && !images.length) || sending) return;
+    if ((!text.trim() && !images.length) || sending || actionPending.current) return;
     const target: SessionTarget = { source: session, cwd, draftKey, revision: selectionRevision.current };
     const pending = openingSessions.current.get(session?.path ? sessionKey(session) : `new:${session?.id ?? sessionPathKey(cwd)}`)?.promise;
     setSending(true); setError('');
@@ -290,6 +325,7 @@ export default function App() {
         const command = current.state.isStreaming ? delivery === 'follow_up' ? 'follow_up' : 'steer' : 'prompt';
         await rpc(current.id, command, { message: text, ...(images.length ? { images: images.map(({ name: _, ...image }) => image) } : {}) });
         drafts.current[current.id] = '';
+        imageDrafts.current[current.id] = [];
         if (activeIdRef.current === current.id) { setDraft(''); setImages([]); }
         if (current.title === t.newTitle && !text.startsWith('/')) { const title = text.replace(/\s+/g, ' ').slice(0, 70); setSessions(old => old[current.id] ? { ...old, [current.id]: { ...old[current.id], title } } : old); await rpc(current.id, 'set_session_name', { name: title }); }
       });
@@ -310,10 +346,54 @@ export default function App() {
   };
   const prepareCommand = (text: string) => { setDraft(text); setSettingsOpen(false); textarea.current?.focus(); };
   const refreshSession = async (id: string, replaceMessages = false) => {
+    const source = sessionsRef.current[id];
+    if (!source || source.historyOnly) return;
     const state = await rpc(id, 'get_state');
-    const history = replaceMessages ? await rpc(id, 'get_messages_page', { limit: 100 }) : undefined;
+    const path = state.sessionFile ?? sessionsRef.current[id]?.path;
+    const history = replaceMessages && path ? await readMessages(id, path, Math.max(100, sessionsRef.current[id]?.messages.length ?? source.messages.length)) : undefined;
     const btw = replaceMessages ? await rpc(id, 'get_btw_history') : undefined;
-    setSessions(old => old[id] ? ({ ...old, [id]: { ...old[id], state: { ...old[id].state, ...state, ...(btw ? { btwRecords: btw.records } : {}) }, title: state.sessionName ?? t.newTitle, path: state.sessionFile ?? old[id].path, ...(history ? { messages: history.messages.map((message: Json, i: number) => normalizeMessage(message, `reload-${i}`)), nextCursor: history.nextCursor } : {}) } }) : old);
+    if (sessionsRef.current[id]?.path !== source.path || sessionsRef.current[id]?.historyOnly) return;
+    setSessions(old => old[id] ? ({ ...old, [id]: { ...old[id], state: { ...old[id].state, ...state, ...(btw ? { btwRecords: btw.records } : {}) }, title: state.sessionName ?? t.newTitle, path: state.sessionFile ?? old[id].path, ...(history ? { messages: history.messages.map((message: Json, i: number) => normalizeMessage({ ...message, entryId: message.id }, `reload-${i}`)), nextCursor: history.nextCursor } : {}) } }) : old);
+  };
+  const editMessage = async (message: Message) => {
+    if (!session || !message.entryId || busy || sending || actionPending.current) return;
+    const target: SessionTarget = { source: session, cwd, draftKey, revision: selectionRevision.current };
+    const previousDraft = draft;
+    const previousImages = images;
+    actionPending.current = 'edit'; setMessageAction(true); setError('');
+    try {
+      await withRuntime(async () => {
+        const current = await prepareSession(false, target);
+        const tree = await rpc(current.id, 'get_entries');
+        const entry = editableEntry(tree, message.entryId);
+        if (!entry) throw Error(t.messageChanged);
+        if (selectionRevision.current !== target.revision && activeIdRef.current !== current.id) throw new DOMException('Cancelled', 'AbortError');
+        const result = await rpc(current.id, 'branch', { entryId: entry.id });
+        if (result.cancelled) return;
+        const state = await rpc(current.id, 'get_state');
+        const page = await readMessages(current.id, state.sessionFile);
+        if (current.path) {
+          const id = `history:${sessionPathKey(current.path)}`;
+          drafts.current[id] = previousDraft; imageDrafts.current[id] = previousImages;
+          putSession({ ...current, id, historyOnly: true, status: 'ready', pending: [] });
+        }
+        putSession({ ...current, state, path: state.sessionFile, messages: page.messages.map((value: Json, i: number) => normalizeMessage({ ...value, entryId: value.id }, `branch-${i}`)), nextCursor: page.nextCursor, hidden: false, status: 'ready' });
+        drafts.current[current.id] = result.text ?? ''; imageDrafts.current[current.id] = messageImages(entry.message);
+        if (activeIdRef.current === current.id || selectionRevision.current === target.revision) {
+          setActiveId(current.id); setDraft(drafts.current[current.id]); setImages(imageDrafts.current[current.id]); textarea.current?.focus();
+        }
+        await refreshHistory(current.cwd);
+      });
+    } catch (error) { showError(error); } finally { actionPending.current = false; setMessageAction(false); activateRuntime(); }
+  };
+  const retryTurn = async () => {
+    if (!session || retryMessageIndex(session.messages) < 0 || busy || sending || actionPending.current) return;
+    const target: SessionTarget = { source: session, cwd, draftKey, revision: selectionRevision.current };
+    actionPending.current = 'retry'; setMessageAction(true); setError('');
+    try { await withRuntime(async () => {
+      const current = await prepareSession(false, target);
+      await rpc(current.id, 'prompt', { message: '/retry' });
+    }); } catch (error) { showError(error); } finally { actionPending.current = false; setMessageAction(false); activateRuntime(); }
   };
   const navigateCommand = (entry: CatalogEntry, args = '', typed = false): boolean => {
     const run = (action: (current: SessionView) => Promise<void>) => { void withRuntime(async () => action(await prepareSession())).catch(showError); };
@@ -337,7 +417,7 @@ export default function App() {
   };
   const earlier = async () => {
     if (!session?.path || !session.nextCursor) return;
-    try { const result = await request<Json>('session.history', { path: session.path, cursor: session.nextCursor, limit: 100 }); setSessions(old => ({ ...old, [session.id]: { ...old[session.id], messages: [...result.messages.map((message: Json, i: number) => normalizeMessage(message, `history-${session.nextCursor}-${i}`)), ...old[session.id].messages], nextCursor: result.nextCursor } })); } catch (e) { showError(e); }
+    try { const result = await request<Json>('session.history', { path: session.path, cursor: session.nextCursor, limit: 100 }); setSessions(old => ({ ...old, [session.id]: { ...old[session.id], messages: [...result.messages.map((message: Json, i: number) => normalizeMessage({ ...message, entryId: message.id }, `history-${session.nextCursor}-${i}`)), ...old[session.id].messages], nextCursor: result.nextCursor } })); } catch (e) { showError(e); }
   };
   const activeQuestion = session?.pending[0];
   return <div className="window-frame"><WindowChrome language={bootstrap.preferences.language} /><div className={`app-shell ${sidebar ? '' : 'sidebar-hidden'}`}>
@@ -346,7 +426,8 @@ export default function App() {
       <button className="nav-item" onClick={() => setCommandsOpen(true)}><Command size={16} /><span>{t.commands}</span><kbd>Ctrl K</kbd></button>
       {pending.length > 0 && <button className="nav-item pending-nav" onClick={() => { setActiveId(pending[0].sessionId); setSettingsOpen(false); }}><Bell size={16} /><span>{t.pending}</span><b>{pending.length}</b></button>}
       <div className="section-label"><span>{t.projects}</span><button className="icon-button" title={t.addProject} onClick={addProject}><Plus size={15} /></button></div>
-      <div className="project-list">{bootstrap.projects.length ? bootstrap.projects.map(item => {
+      <div className="session-search"><Search size={14} /><input ref={searchInput} type="search" aria-label={t.searchSessions} placeholder={t.searchSessions} value={sessionQuery} onChange={event => setSessionQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); setSessionQuery(''); } }} />{sessionQuery && <button className="icon-button" title={t.clearSearch} onClick={() => { setSessionQuery(''); searchInput.current?.focus(); }}><X size={13} /></button>}</div>
+      <div className="project-list">{sessionQuery.trim() ? <div className="session-search-results"><p className="search-status" role="status">{searchLoading ? t.loading : searchResults.length ? `${searchResults.length} ${t.session}` : t.noResults}</p>{searchResults.map(({ project: item, session: value }) => <button key={sessionKey(value)} className={`session-item ${session && sessionKey(session) === sessionKey(value) ? 'active' : ''}`} title={`${value.title || t.newTitle} · ${item.path}`} onClick={() => { setProject(item); if ('messages' in value) { setActiveId(value.id); setSettingsOpen(false); } else void loadHistory(value); }}><MessageSquare size={12} /><span className="search-result-text"><span>{value.title || t.newTitle}</span><small>{item.name}</small></span></button>)}</div> : bootstrap.projects.length ? bootstrap.projects.map(item => {
         const expanded = !!expandedProjects[item.path];
         const listId = `project-sessions-${encodeURIComponent(item.path)}`;
         const opened = allSessions.filter(value => !value.hidden && sessionPathKey(value.cwd) === sessionPathKey(item.path));
@@ -367,17 +448,17 @@ export default function App() {
         <header className="workspace-header" inert={!!terminalId}><div className="header-location">{!sidebar && <button className="icon-button" title={t.expand} onClick={() => setSidebar(true)}><PanelLeftOpen size={18} /></button>}<Folder size={15} /><button onClick={addProject}>{project?.name ?? t.openProject}</button>{session && <><span className="breadcrumb-divider">/</span><span className="header-title">{session.title}</span></>}</div><div className="workspace-actions"><button className={`quiet-button ${inspector === 'review' ? 'active' : ''}`} disabled={!cwd} onClick={() => setInspector(value => value === 'review' ? null : 'review')}><FileDiff size={15} /><span>{t.review}</span></button><button className="icon-button" title={t.context} disabled={!cwd} onClick={() => setInspector(value => value === 'context' ? null : 'context')}><Layers size={17} /></button><details ref={moreMenu} className="more-menu" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false; }} onClick={event => { if ((event.target as Element).closest("button")) { event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); } }}><summary className="icon-button" title={t.more}><ChevronDown size={16} /></summary><div className="ui-menu">{(['files', 'agents', 'tasks', 'tree'] as InspectorTab[]).map(tab => <button disabled={!cwd} key={tab} onClick={() => setInspector(tab)}>{t[tab]}</button>)}<div className="menu-separator" /><button disabled={!session || session.historyOnly || !session.state.isSettled} onClick={() => { setTerminalInput(''); setTerminalId(session!.id); }}>{t.terminal}</button><button disabled={!session || session.historyOnly} onClick={() => { if (session) rpc(session.id, 'export_html').then(result => prepareCommand(String(result.path ?? result))).catch(showError); }}>{t.export}</button><button disabled={!session || busy} onClick={() => prepareCommand('/fork')}>{t.fork}</button><button disabled={!session || busy} onClick={closeSession}>{t.close} {t.session}</button></div></details></div></header>
         {error && <div className="error-banner" role="alert"><CircleHelp size={16} /><span>{localizeError(error, bootstrap.preferences.language)}</span><button className="icon-button" title={t.dismiss} onClick={() => setError('')}><X size={15} /></button></div>}
         {terminalId ? <Suspense fallback={<div className="page-loading">{t.loading}</div>}><TerminalPanel id={terminalId} initialCommand={terminalInput} t={t} onError={showError} close={closeTerminal} /></Suspense> : <div className="workspace-body"><div className="conversation-column">
-          {session?.messages.length ? <Transcript messages={session.messages} t={t} busy={busy} loadEarlier={session.nextCursor ? earlier : undefined} /> : <div className="welcome"><div className="welcome-symbol"><span /><span /><span /></div><h1>{t.welcome}</h1><p>{t.welcomeText}</p>{!native && <p className="browser-note">{t.nativeOnly}</p>}<div className="starter-actions">{[[t.exploreAction, t.explorePrompt], [t.reviewAction, t.reviewPrompt], [t.buildAction, t.buildPrompt]].map(([label, prompt]) => <button key={label} onClick={() => { setDraft(prompt); textarea.current?.focus(); }}>{label}<ArrowUpRight size={14} /></button>)}</div></div>}
+          {session?.messages.length ? <Transcript messages={session.messages} t={t} busy={busy} actionsDisabled={sending || messageAction} onEdit={editMessage} onRetry={retryTurn} loadEarlier={session.nextCursor ? earlier : undefined} /> : <div className="welcome"><div className="welcome-symbol"><span /><span /><span /></div><h1>{t.welcome}</h1><p>{t.welcomeText}</p>{!native && <p className="browser-note">{t.nativeOnly}</p>}<div className="starter-actions">{[[t.exploreAction, t.explorePrompt], [t.reviewAction, t.reviewPrompt], [t.buildAction, t.buildPrompt]].map(([label, prompt]) => <button key={label} onClick={() => { setDraft(prompt); textarea.current?.focus(); }}>{label}<ArrowUpRight size={14} /></button>)}</div></div>}
           <div className="composer-area">{activeQuestion && session && <Question key={activeQuestion.id} question={activeQuestion} t={t} answer={response => answer(session.id, response).catch(showError)} />}
             {session && !session.historyOnly && <SessionActivity session={session} t={t} refresh={() => refreshSession(session.id)} onError={showError} />}
             {!bootstrap.runtime && !booting && <button className="setup-callout" onClick={() => openSettings('runtime')}><span className="setup-icon"><TerminalSquare size={18} /></span><span><strong>{t.installRuntime}</strong><small>{t.installText}</small></span><ArrowUpRight size={16} /></button>}
             {session && (session.state.queuedMessages?.steering?.length > 0 || session.state.queuedMessages?.followUp?.length > 0) && <div className="queued-messages">{['steering', 'followUp'].flatMap(queue => (session.state.queuedMessages?.[queue] ?? []).map((message: string) => <div key={`${queue}:${message}`}><span>{t.queued}: {message}</span>{queue === 'followUp' && <button className="quiet-button" onClick={() => rpc(session.id, 'promote_queued_message', { message }).catch(showError)}>{t.steer}</button>}<button className="icon-button" title={t.remove} onClick={() => rpc(session.id, 'remove_queued_message', { queue, message }).catch(showError)}><X size={13} /></button></div>))}</div>}
             <div className={`composer ${busy ? 'is-busy' : ''}`}>
-              {images.length > 0 && <div className="attachments">{images.map((image, i) => <div key={i}><img src={`data:${image.mimeType};base64,${image.data}`} alt={image.name} /><span>{image.name}</span><button className="icon-button" title={t.remove} onClick={() => setImages(old => old.filter((_, index) => index !== i))}><X size={12} /></button></div>)}</div>}
-              <textarea ref={textarea} rows={2} value={draft} aria-label={t.prompt} placeholder={t.prompt} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
+              {images.length > 0 && <div className="attachments">{images.map((image, i) => <div key={i}><img src={`data:${image.mimeType};base64,${image.data}`} alt={image.name} /><span>{image.name}</span><button className="icon-button" title={t.remove} disabled={messageAction && actionPending.current === 'edit'} onClick={() => setImages(old => old.filter((_, index) => index !== i))}><X size={12} /></button></div>)}</div>}
+              <textarea ref={textarea} disabled={messageAction && actionPending.current === 'edit'} rows={2} value={draft} aria-label={t.prompt} placeholder={t.prompt} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
               <div className="composer-toolbar"><input className="visually-hidden" type="file" tabIndex={-1} accept="image/*" multiple ref={fileInput} onChange={async e => { for (const file of Array.from(e.target.files ?? [])) { const data = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }); setImages(old => [...old, { type: 'image', data, mimeType: file.type, name: file.name }]); } e.target.value = ''; }} />
                 <div className="attachment-control" ref={attachmentControl} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setAttachmentMenu(false); }}>
-                  <button ref={addButton} className="icon-button" title={t.addContent} aria-haspopup="menu" aria-expanded={attachmentMenu} aria-controls={attachmentMenu ? 'attachment-menu' : undefined} onClick={() => { setAttachmentMenu(value => !value); setModelPicker(false); }}><Plus size={18} /></button>
+                  <button ref={addButton} disabled={messageAction && actionPending.current === 'edit'} className="icon-button" title={t.addContent} aria-haspopup="menu" aria-expanded={attachmentMenu} aria-controls={attachmentMenu ? 'attachment-menu' : undefined} onClick={() => { setAttachmentMenu(value => !value); setModelPicker(false); }}><Plus size={18} /></button>
                   {attachmentMenu && <div id="attachment-menu" className="attachment-menu ui-menu" role="menu" aria-label={t.addContent} onKeyDown={event => {
                     const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
                     const index = items.indexOf(document.activeElement as HTMLButtonElement);
@@ -390,7 +471,7 @@ export default function App() {
                 </div>
                 <div className="model-control" ref={modelControl}><button ref={modelButton} className="model-button" aria-haspopup="dialog" aria-expanded={modelPicker} disabled={!cwd || !bootstrap.runtime} onClick={toggleModels}>{session?.state.model?.name ?? session?.state.model?.id ?? t.chooseModel}<ChevronDown size={12} /></button>{modelPicker && <div className="model-picker ui-menu" role="dialog" aria-label={t.chooseModel}><input autoFocus aria-label={t.search} placeholder={t.search} value={modelQuery} onChange={e => setModelQuery(e.target.value)} /><div>{models.filter(model => `${model.name} ${model.id} ${model.provider}`.toLowerCase().includes(modelQuery.toLowerCase())).map(model => <button key={`${model.provider}:${model.id}`} aria-pressed={session?.state.model?.id === model.id && session?.state.model?.provider === model.provider} onClick={() => chooseModel(model)}><strong>{model.name ?? model.id}</strong><small>{model.provider}</small></button>)}{!models.length && <p>{t.noModels}</p>}{models.length > 0 && !models.some(model => `${model.name} ${model.id} ${model.provider}`.toLowerCase().includes(modelQuery.toLowerCase())) && <p>{t.noResults}</p>}</div></div>}</div>
                 {session && !session.historyOnly && <Select label={t.effort} value={session.state.thinkingLevel ?? 'medium'} options={Object.entries(t.effortLevels).map(([value, label]) => ({ value, label }))} onChange={level => rpc(session.id, 'set_thinking_level', { level }).then(() => setSessions(old => ({ ...old, [session.id]: { ...old[session.id], state: { ...old[session.id].state, thinkingLevel: level } } }))).catch(showError)} />}
-                <span className="spacer" />{busy && <Select label={t.queued} value={delivery} onChange={setDelivery} options={[{ value: 'steer', label: t.steer }, { value: 'follow_up', label: t.followUp }]} />}{busy && !draft ? <button className="send-button stop-button" title={t.stop} onClick={() => rpc(session.id, 'abort').catch(showError)}><Square size={14} fill="currentColor" /></button> : <button className="send-button" title={t.send} disabled={sending || (!draft.trim() && !images.length) || !cwd || !bootstrap.runtime} onClick={() => send()}>{sending ? <LoaderCircle size={16} className="spin" /> : <ArrowUp size={18} />}</button>}
+                <span className="spacer" />{busy && <Select label={t.queued} value={delivery} onChange={setDelivery} options={[{ value: 'steer', label: t.steer }, { value: 'follow_up', label: t.followUp }]} />}{busy && !draft ? <button className="send-button stop-button" title={t.stop} onClick={() => rpc(session.id, 'abort').catch(showError)}><Square size={14} fill="currentColor" /></button> : <button className="send-button" title={t.send} disabled={sending || messageAction || (!draft.trim() && !images.length) || !cwd || !bootstrap.runtime} onClick={() => send()}>{sending || messageAction ? <LoaderCircle size={16} className="spin" /> : <ArrowUp size={18} />}</button>}
               </div>
             </div><div className="composer-footnote"><span><span className={`status-dot ${busy ? 'working' : 'connected'}`} />{busy ? t.running : session?.pending.length ? t.waiting : t.ready}</span><span>{cwd ? <><FolderOpen size={12} />{cwd}</> : <button onClick={addProject}>{t.openProject}</button>}</span></div>
             <SessionUsage session={session} language={bootstrap.preferences.language} cache={usageCache.current} />
