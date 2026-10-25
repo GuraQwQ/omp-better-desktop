@@ -61,8 +61,12 @@ jobs:
           New-Item -ItemType Directory -Force artifacts/release | Out-Null
           $installers = @(Get-ChildItem -LiteralPath build/desktop-msvc/release/bundle/nsis -Filter '*.exe')
           if (-not $installers.Count) { throw '没有生成 Windows 安装器' }
-          foreach ($installer in $installers) { Copy-Item -LiteralPath $installer.FullName -Destination (Join-Path artifacts/release "$env:PREVIEW_TAG-$($installer.Name)") }
-          Get-ChildItem -LiteralPath artifacts/release -Filter '*.exe' | ForEach-Object { "$( (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() )  $($_.Name)" } | Set-Content artifacts/release/SHA256SUMS -Encoding utf8
+          if ($installers.Count -ne 1) { throw '应生成一个 Windows x64 安装器' }
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $installerName = "Better-OMP-Desktop_${version}_windows-x64-preview.exe"
+          Copy-Item -LiteralPath $installers[0].FullName -Destination (Join-Path artifacts/release $installerName)
+          $sum = (Get-FileHash -LiteralPath (Join-Path artifacts/release $installerName) -Algorithm SHA256).Hash.ToLowerInvariant()
+          [IO.File]::WriteAllText((Join-Path $PWD 'artifacts/release/SHA256SUMS'), "$sum  $installerName`n", [Text.UTF8Encoding]::new($false))
           Copy-Item LICENSE,THIRD-PARTY-NOTICES.md -Destination artifacts/release
       - uses: actions/upload-artifact@v4
         with:
