@@ -2,13 +2,14 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import assert from 'node:assert/strict';
 
 const executable = path.resolve(process.argv[2] ?? 'artifacts/runtime-windows-x64/omp.exe');
 const tempRoot = path.resolve(process.env.OMP_DESKTOP_CACHE ?? path.join(import.meta.dir, '..', '.cache'));
 if (process.platform === 'win32' && /^[cC]:[\/]/.test(tempRoot)) throw new Error('Choose a non-C: smoke-test directory.');
 await fs.mkdir(tempRoot, { recursive: true });
 const root = await fs.mkdtemp(path.join(tempRoot, 'omp-desktop-smoke-'));
-const child = spawn(executable, ['--mode', 'rpc-ui', '--no-session', '--no-extensions', '--no-skills', '--model', 'openai-codex/gpt-5.6-luna'], {
+const child = spawn(executable, ['--mode', 'rpc-ui', '--no-session', '--no-extensions', '--no-skills'], {
   cwd: root,
   env: { ...process.env, OMP_USER_ROOT: root, PI_NO_PTY: '1', PI_NOTIFICATIONS: 'off' },
   stdio: ['pipe', 'pipe', 'pipe'],
@@ -43,7 +44,11 @@ try {
   while ((await nextFrame()).type !== 'ready') {}
   await request('smoke-negotiate', 'negotiate_protocol', { protocolVersion: 2 });
   await request('smoke-state', 'get_state');
-  console.log('OMP RPC ready, protocol v2 negotiated, get_state passed.');
+  const providers = await request('smoke-login-providers', 'get_login_providers');
+  assert(Array.isArray(providers.providers), 'OMP 未返回登录提供商目录');
+  const settings = await request('smoke-desktop-settings', 'desktop_settings', { operation: 'list' });
+  assert(Array.isArray(settings.settings), 'OMP 未返回桌面设置目录');
+  console.log('OMP RPC 已就绪，协议 v2、状态、登录目录和桌面设置检查通过。');
 } finally {
   clearTimeout(timeout);
   lines.close();

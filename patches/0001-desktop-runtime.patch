@@ -893,3 +893,17 @@ index a27e29de70..fef5539b0c 100644
  /// Switch the connection to a protocol version advertised by `ready`.
  #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
  pub struct NegotiateProtocolCommand {
+diff --git a/packages/coding-agent/src/main.ts b/packages/coding-agent/src/main.ts
+index 5128aa2ccb..27891aea36 100644
+--- a/packages/coding-agent/src/main.ts
++++ b/packages/coding-agent/src/main.ts
+@@ -2614,7 +2614,8 @@ export async function runRootCommand(
+ 				notifs.push({ kind: "error", message: modelRegistryError.message });
+ 			}
+ 
+-			if (!isInteractive && !session.model) {
++			// RPC 先提供登录和模型设置入口，发送消息时仍由会话检查模型。
++			if (!isInteractive && mode !== "rpc" && mode !== "rpc-ui" && !session.model) {
+ 				if (modelRegistryError) {
+ 					process.stderr.write(`${chalk.red(modelRegistryError.message)}\n\n`);
+ 				}
