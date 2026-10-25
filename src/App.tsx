@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowUp, ArrowUpRight, Bell, ChevronDown, ChevronRight, CircleHelp, Command, FileDiff, Folder, FolderOpen, GitBranch, Layers, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Settings2, Square, TerminalSquare, X } from 'lucide-react';
+import { ArrowUp, ArrowUpRight, Bell, ChevronDown, ChevronRight, CircleHelp, Command, FileDiff, FilePlus2, Folder, FolderOpen, FolderPlus, GitBranch, ImagePlus, Layers, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Settings2, Square, TerminalSquare, X } from 'lucide-react';
 import { copy } from './lib/i18n';
 import { native, onDesktopEvent, pickPath, request, rpc } from './lib/bridge';
 import { applyEvent, normalizeMessage, returnFromTerminal } from './lib/session-state';
@@ -9,6 +9,8 @@ import type { InspectorTab } from './panels/Inspector';
 import Transcript from './components/Transcript';
 import Question from './components/Question';
 import SessionActivity from './components/SessionActivity';
+import Select from './components/Select';
+import SessionUsage from './components/SessionUsage';
 
 const Settings = lazy(() => import('./panels/Settings'));
 const Inspector = lazy(() => import('./panels/Inspector'));
@@ -36,18 +38,25 @@ export default function App() {
   const [models, setModels] = useState<Json[]>([]);
   const [modelPicker, setModelPicker] = useState(false);
   const [modelQuery, setModelQuery] = useState('');
+  const [attachmentMenu, setAttachmentMenu] = useState(false);
   const [sending, setSending] = useState(false);
   const [delivery, setDelivery] = useState('steer');
   const [images, setImages] = useState<{ type: 'image'; data: string; mimeType: string; name: string }[]>([]);
   const [booting, setBooting] = useState(true);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const attachmentControl = useRef<HTMLDivElement>(null);
+  const addButton = useRef<HTMLButtonElement>(null);
+  const modelControl = useRef<HTMLDivElement>(null);
+  const modelButton = useRef<HTMLButtonElement>(null);
+  const moreMenu = useRef<HTMLDetailsElement>(null);
   const sessionsRef = useRef(sessions);
   const activeIdRef = useRef(activeId);
   const drafts = useRef<Record<string, string>>({});
   const eventQueue = useRef<{ sessionId: string; event: Json }[]>([]);
   const frame = useRef(0);
   const t = copy(bootstrap.preferences.language);
+  const zh = bootstrap.preferences.language === 'zh';
   const session = sessions[activeId];
   const cwd = session?.cwd ?? project?.path ?? '';
   const busy = !!session?.state.isStreaming || session?.status === 'running';
@@ -93,13 +102,38 @@ export default function App() {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') { event.preventDefault(); setActiveId(''); setDraft(''); setSettingsOpen(false); }
       if ((event.ctrlKey || event.metaKey) && event.key === ',') { event.preventDefault(); setSettingsTab('general'); setSettingsOpen(value => !value); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b') { event.preventDefault(); setSidebar(value => !value); }
-      if (event.key === 'Escape') setModelPicker(false);
+      if (event.key === 'Escape') {
+        if (attachmentMenu) addButton.current?.focus();
+        else if (modelPicker) modelButton.current?.focus();
+        else if (moreMenu.current?.open) moreMenu.current.querySelector('summary')?.focus();
+        setModelPicker(false); setAttachmentMenu(false);
+        if (moreMenu.current) moreMenu.current.open = false;
+      }
     };
     window.addEventListener('keydown', keydown); return () => window.removeEventListener('keydown', keydown);
-  }, [terminalId]);
+  }, [terminalId, modelPicker, attachmentMenu]);
+  useEffect(() => {
+    const outside = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!attachmentControl.current?.contains(target)) setAttachmentMenu(false);
+      if (!modelControl.current?.contains(target)) setModelPicker(false);
+      if (moreMenu.current && !moreMenu.current.contains(target)) moreMenu.current.open = false;
+    };
+    document.addEventListener('pointerdown', outside);
+    return () => document.removeEventListener('pointerdown', outside);
+  }, []);
+  useEffect(() => { if (attachmentMenu) attachmentControl.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus(); }, [attachmentMenu]);
   useEffect(() => { if (textarea.current) { textarea.current.style.height = 'auto'; textarea.current.style.height = `${Math.min(textarea.current.scrollHeight, 180)}px`; } }, [draft]);
 
   const addProject = async () => { try { const path = await pickPath(); if (!path) return; const projects = await request<Project[]>('project.add', { path }); setBootstrap(old => ({ ...old, projects })); setProject(projects.find(p => p.path === path) ?? projects.at(-1)!); setActiveId(''); setSettingsOpen(false); } catch (e) { showError(e); } };
+  const attachPath = async (directory: boolean) => {
+    setAttachmentMenu(false);
+    try {
+      const path = await pickPath(directory);
+      if (path) setDraft(old => `${old}${old && !/\s$/.test(old) ? ' ' : ''}@"${path.replaceAll('\\', '/')}" `);
+    } catch (error) { showError(error); }
+    finally { textarea.current?.focus(); }
+  };
   const openSession = async (): Promise<SessionView> => {
     if (session && !session.historyOnly) return session;
     if (!cwd) throw Error(t.selectProject);
@@ -162,11 +196,12 @@ export default function App() {
     } catch (e) { showError(e); } finally { setSending(false); }
   };
   const toggleModels = async () => {
-    setModelPicker(value => !value);
+    if (modelPicker) { setModelPicker(false); return; }
+    setAttachmentMenu(false); setModelPicker(true);
     try { const current = await openSession(); const result = await rpc(current.id, 'get_available_models'); setModels(result.models ?? result); } catch (e) { showError(e); }
   };
   const chooseModel = async (model: Json) => {
-    try { const current = await openSession(); const result = await rpc(current.id, 'set_model', { provider: model.provider, modelId: model.id }); setSessions(old => ({ ...old, [current.id]: { ...old[current.id], state: { ...old[current.id].state, model: result.model ?? result ?? model } } })); setModelPicker(false); } catch (e) { showError(e); }
+    try { const current = await openSession(); const result = await rpc(current.id, 'set_model', { provider: model.provider, modelId: model.id }); setSessions(old => ({ ...old, [current.id]: { ...old[current.id], state: { ...old[current.id].state, model: result.model ?? result ?? model } } })); setModelPicker(false); modelButton.current?.focus(); } catch (e) { showError(e); }
   };
   const answer = async (id: string, response: Json) => {
     const question = sessions[id]?.pending.find(p => p.id === response.id);
@@ -217,7 +252,7 @@ export default function App() {
     </aside>}
     <main className="main-area">
       {settingsOpen ? <Suspense fallback={<div className="page-loading">{t.loading}</div>}><Settings key={`${settingsTab}:${settingsQuery}`} initialQuery={settingsQuery} initialTab={settingsTab} bootstrap={bootstrap} t={t} sessionId={session && !session.historyOnly ? session.id : undefined} update={setBootstrap} onError={showError} close={() => setSettingsOpen(false)} /></Suspense> : <>
-        <header className="workspace-header" inert={!!terminalId}><div className="header-location">{!sidebar && <button className="icon-button" title={t.expand} onClick={() => setSidebar(true)}><PanelLeftOpen size={18} /></button>}<Folder size={15} /><button onClick={addProject}>{project?.name ?? t.openProject}</button>{session && <><span className="breadcrumb-divider">/</span><span className="header-title">{session.title}</span></>}</div><div className="workspace-actions"><button className={`quiet-button ${inspector === 'review' ? 'active' : ''}`} disabled={!cwd} onClick={() => setInspector(value => value === 'review' ? null : 'review')}><FileDiff size={15} /><span>{t.review}</span></button><button className="icon-button" title={t.context} disabled={!cwd} onClick={() => setInspector(value => value === 'context' ? null : 'context')}><Layers size={17} /></button><details className="more-menu"><summary className="icon-button" title={t.more}><ChevronDown size={16} /></summary><div>{(['files', 'agents', 'tasks', 'tree'] as InspectorTab[]).map(tab => <button disabled={!cwd} key={tab} onClick={() => setInspector(tab)}>{t[tab]}</button>)}<button disabled={!session || session.historyOnly || !session.state.isSettled} onClick={() => { setTerminalInput(''); setTerminalId(session!.id); }}>{t.terminal}</button><button disabled={!session || session.historyOnly} onClick={() => { if (session) rpc(session.id, 'export_html').then(result => prepareCommand(String(result.path ?? result))).catch(showError); }}>{t.export}</button><button disabled={!session || busy} onClick={() => prepareCommand('/fork')}>{t.fork}</button><button disabled={!session || busy} onClick={closeSession}>{t.close} {t.session}</button></div></details></div></header>
+        <header className="workspace-header" inert={!!terminalId}><div className="header-location">{!sidebar && <button className="icon-button" title={t.expand} onClick={() => setSidebar(true)}><PanelLeftOpen size={18} /></button>}<Folder size={15} /><button onClick={addProject}>{project?.name ?? t.openProject}</button>{session && <><span className="breadcrumb-divider">/</span><span className="header-title">{session.title}</span></>}</div><div className="workspace-actions"><button className={`quiet-button ${inspector === 'review' ? 'active' : ''}`} disabled={!cwd} onClick={() => setInspector(value => value === 'review' ? null : 'review')}><FileDiff size={15} /><span>{t.review}</span></button><button className="icon-button" title={t.context} disabled={!cwd} onClick={() => setInspector(value => value === 'context' ? null : 'context')}><Layers size={17} /></button><details ref={moreMenu} className="more-menu" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false; }} onClick={event => { if ((event.target as Element).closest("button")) { event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); } }}><summary className="icon-button" title={t.more}><ChevronDown size={16} /></summary><div className="ui-menu">{(['files', 'agents', 'tasks', 'tree'] as InspectorTab[]).map(tab => <button disabled={!cwd} key={tab} onClick={() => setInspector(tab)}>{t[tab]}</button>)}<div className="menu-separator" /><button disabled={!session || session.historyOnly || !session.state.isSettled} onClick={() => { setTerminalInput(''); setTerminalId(session!.id); }}>{t.terminal}</button><button disabled={!session || session.historyOnly} onClick={() => { if (session) rpc(session.id, 'export_html').then(result => prepareCommand(String(result.path ?? result))).catch(showError); }}>{t.export}</button><button disabled={!session || busy} onClick={() => prepareCommand('/fork')}>{t.fork}</button><button disabled={!session || busy} onClick={closeSession}>{t.close} {t.session}</button></div></details></div></header>
         {error && <div className="error-banner" role="alert"><CircleHelp size={16} /><span>{error}</span><button className="icon-button" title={t.dismiss} onClick={() => setError('')}><X size={15} /></button></div>}
         {terminalId ? <Suspense fallback={<div className="page-loading">{t.loading}</div>}><TerminalPanel id={terminalId} initialCommand={terminalInput} t={t} onError={showError} close={closeTerminal} /></Suspense> : <div className="workspace-body"><div className="conversation-column">
           {session?.messages.length ? <Transcript messages={session.messages} t={t} busy={busy} loadEarlier={session.nextCursor ? earlier : undefined} /> : <div className="welcome"><div className="welcome-symbol"><span /><span /><span /></div><h1>{t.welcome}</h1><p>{t.welcomeText}</p>{!native && <p className="browser-note">{t.nativeOnly}</p>}<div className="starter-actions">{[[t.exploreAction, t.explorePrompt], [t.reviewAction, t.reviewPrompt], [t.buildAction, t.buildPrompt]].map(([label, prompt]) => <button key={label} onClick={() => { setDraft(prompt); textarea.current?.focus(); }}>{label}<ArrowUpRight size={14} /></button>)}</div></div>}
@@ -228,12 +263,25 @@ export default function App() {
             <div className={`composer ${busy ? 'is-busy' : ''}`}>
               {images.length > 0 && <div className="attachments">{images.map((image, i) => <div key={i}><img src={`data:${image.mimeType};base64,${image.data}`} alt={image.name} /><span>{image.name}</span><button className="icon-button" title={t.remove} onClick={() => setImages(old => old.filter((_, index) => index !== i))}><X size={12} /></button></div>)}</div>}
               <textarea ref={textarea} rows={2} value={draft} aria-label={t.prompt} placeholder={t.prompt} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
-              <div className="composer-toolbar"><input className="visually-hidden" type="file" accept="image/*" multiple ref={fileInput} onChange={async e => { for (const file of Array.from(e.target.files ?? [])) { const data = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }); setImages(old => [...old, { type: 'image', data, mimeType: file.type, name: file.name }]); } e.target.value = ''; }} /><button className="icon-button" title={t.addImage} onClick={() => fileInput.current?.click()}><Plus size={18} /></button>
-                <div className="model-control"><button className="model-button" disabled={!cwd || !bootstrap.runtime} onClick={toggleModels}>{session?.state.model?.name ?? session?.state.model?.id ?? t.chooseModel}<ChevronDown size={12} /></button>{modelPicker && <div className="model-picker"><input autoFocus placeholder={t.search} value={modelQuery} onChange={e => setModelQuery(e.target.value)} /><div>{models.filter(model => `${model.name} ${model.id} ${model.provider}`.toLowerCase().includes(modelQuery.toLowerCase())).map(model => <button key={`${model.provider}:${model.id}`} onClick={() => chooseModel(model)}><strong>{model.name ?? model.id}</strong><small>{model.provider}</small></button>)}{!models.length && <p>{t.noModels}</p>}</div></div>}</div>
-                {session && !session.historyOnly && <select className="effort-select" aria-label={t.effort} value={session.state.thinkingLevel ?? 'medium'} onChange={e => rpc(session.id, 'set_thinking_level', { level: e.target.value }).then(() => setSessions(old => ({ ...old, [session.id]: { ...old[session.id], state: { ...old[session.id].state, thinkingLevel: e.target.value } } }))).catch(showError)}>{['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map(level => <option key={level}>{level}</option>)}</select>}
-                <span className="spacer" />{busy && <select className="delivery-select" value={delivery} onChange={e => setDelivery(e.target.value)} aria-label={t.queued}><option value="steer">{t.steer}</option><option value="follow_up">{t.followUp}</option></select>}{busy && !draft ? <button className="send-button stop-button" title={t.stop} onClick={() => rpc(session.id, 'abort').catch(showError)}><Square size={14} fill="currentColor" /></button> : <button className="send-button" title={t.send} disabled={sending || (!draft.trim() && !images.length) || !cwd || !bootstrap.runtime} onClick={() => send()}>{sending ? <LoaderCircle size={16} className="spin" /> : <ArrowUp size={18} />}</button>}
+              <div className="composer-toolbar"><input className="visually-hidden" type="file" tabIndex={-1} accept="image/*" multiple ref={fileInput} onChange={async e => { for (const file of Array.from(e.target.files ?? [])) { const data = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }); setImages(old => [...old, { type: 'image', data, mimeType: file.type, name: file.name }]); } e.target.value = ''; }} />
+                <div className="attachment-control" ref={attachmentControl} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setAttachmentMenu(false); }}>
+                  <button ref={addButton} className="icon-button" title={zh ? '添加内容' : 'Add to conversation'} aria-haspopup="menu" aria-expanded={attachmentMenu} aria-controls={attachmentMenu ? 'attachment-menu' : undefined} onClick={() => { setAttachmentMenu(value => !value); setModelPicker(false); }}><Plus size={18} /></button>
+                  {attachmentMenu && <div id="attachment-menu" className="attachment-menu ui-menu" role="menu" aria-label={zh ? '添加内容' : 'Add to conversation'} onKeyDown={event => {
+                    const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+                    const index = items.indexOf(document.activeElement as HTMLButtonElement);
+                    if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) { event.preventDefault(); items[event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length]?.focus(); }
+                  }}>
+                    <button role="menuitem" onClick={() => { setAttachmentMenu(false); addButton.current?.focus(); fileInput.current?.click(); }}><ImagePlus size={16} />{t.addImage}</button>
+                    <button role="menuitem" disabled={!native} title={!native ? t.nativeOnly : undefined} onClick={() => void attachPath(false)}><FilePlus2 size={16} />{zh ? '附加文件' : 'Attach file'}</button>
+                    <button role="menuitem" disabled={!native} title={!native ? t.nativeOnly : undefined} onClick={() => void attachPath(true)}><FolderPlus size={16} />{zh ? '附加文件夹' : 'Attach folder'}</button>
+                  </div>}
+                </div>
+                <div className="model-control" ref={modelControl}><button ref={modelButton} className="model-button" aria-haspopup="dialog" aria-expanded={modelPicker} disabled={!cwd || !bootstrap.runtime} onClick={toggleModels}>{session?.state.model?.name ?? session?.state.model?.id ?? t.chooseModel}<ChevronDown size={12} /></button>{modelPicker && <div className="model-picker ui-menu" role="dialog" aria-label={t.chooseModel}><input autoFocus aria-label={t.search} placeholder={t.search} value={modelQuery} onChange={e => setModelQuery(e.target.value)} /><div>{models.filter(model => `${model.name} ${model.id} ${model.provider}`.toLowerCase().includes(modelQuery.toLowerCase())).map(model => <button key={`${model.provider}:${model.id}`} aria-pressed={session?.state.model?.id === model.id && session?.state.model?.provider === model.provider} onClick={() => chooseModel(model)}><strong>{model.name ?? model.id}</strong><small>{model.provider}</small></button>)}{!models.length && <p>{t.noModels}</p>}{models.length > 0 && !models.some(model => `${model.name} ${model.id} ${model.provider}`.toLowerCase().includes(modelQuery.toLowerCase())) && <p>{t.noResults}</p>}</div></div>}</div>
+                {session && !session.historyOnly && <Select label={t.effort} value={session.state.thinkingLevel ?? 'medium'} options={['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map(level => ({ value: level, label: level }))} onChange={level => rpc(session.id, 'set_thinking_level', { level }).then(() => setSessions(old => ({ ...old, [session.id]: { ...old[session.id], state: { ...old[session.id].state, thinkingLevel: level } } }))).catch(showError)} />}
+                <span className="spacer" />{busy && <Select label={t.queued} value={delivery} onChange={setDelivery} options={[{ value: 'steer', label: t.steer }, { value: 'follow_up', label: t.followUp }]} />}{busy && !draft ? <button className="send-button stop-button" title={t.stop} onClick={() => rpc(session.id, 'abort').catch(showError)}><Square size={14} fill="currentColor" /></button> : <button className="send-button" title={t.send} disabled={sending || (!draft.trim() && !images.length) || !cwd || !bootstrap.runtime} onClick={() => send()}>{sending ? <LoaderCircle size={16} className="spin" /> : <ArrowUp size={18} />}</button>}
               </div>
             </div><div className="composer-footnote"><span><span className={`status-dot ${busy ? 'working' : 'connected'}`} />{busy ? t.running : session?.pending.length ? t.waiting : t.ready}</span><span>{cwd ? <><FolderOpen size={12} />{cwd}</> : <button onClick={addProject}>{t.openProject}</button>}</span></div>
+            <SessionUsage session={session} language={bootstrap.preferences.language} />
           </div>
         </div>{inspector && <Suspense fallback={<aside className="inspector"><p>{t.loading}</p></aside>}><Inspector onSessionChanged={() => session ? refreshSession(session.id, true) : Promise.resolve()} tab={inspector} session={session} cwd={cwd} t={t} onError={showError} close={() => setInspector(null)} send={prepareCommand} /></Suspense>}</div>}
       </>}

@@ -1,0 +1,9 @@
+.session-usage { display: flex; align-items: center; justify-content: space-between; gap: 5px 18px; flex-wrap: wrap; padding: 8px 3px 0; color: var(--secondary); font-size: 10px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.session-context, .session-token-usage { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.session-usage span { white-space: nowrap; }
+.session-usage strong { color: var(--text); font-weight: 500; }
+.session-context-meter { width: 52px; height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.session-context-meter > span { display: block; height: 100%; background: var(--accent); }
+.session-token-usage > span { cursor: help; }
+.cache-hit-rate { margin-left: 8px; }
+@media (max-width: 1120px) { .session-usage { gap: 4px 12px; } .session-context, .session-token-usage { gap: 8px; } }
