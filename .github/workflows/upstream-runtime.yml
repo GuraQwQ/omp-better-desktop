@@ -43,36 +43,24 @@ jobs:
         name: 检查上游发行版本
         run: bun run update:upstream
       - if: steps.upstream.outputs.changed == 'true'
-        name: 构建、协议烟测与打包
+        name: 构建并验证候选运行时
         env:
           OMP_UPSTREAM_VERSION: ${{ steps.upstream.outputs.version }}
           OMP_UPSTREAM_REVISION: ${{ steps.upstream.outputs.revision }}
           OMP_UPSTREAM_ROOT: ${{ steps.upstream.outputs.upstreamRoot }}
-        run: bun run build:desktop
+        run: bun run build:runtime
       - if: steps.upstream.outputs.changed == 'true'
-        name: 整理更新补丁和校验和
+        name: 整理更新补丁
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force artifacts/update | Out-Null
           git diff --binary --output=artifacts/update/runtime.patch -- upstream.lock.json docs/feature-map.md src/generated vendor/omp-rpc/src/client.rs vendor/omp-rpc/src/wire.rs
-          $installers = @(Get-ChildItem -LiteralPath build/desktop-msvc/release/bundle/nsis -Filter '*.exe')
-          if (-not $installers.Count) { throw '没有生成 Windows 安装器' }
-          $installers | ForEach-Object { "$( (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() )  $($_.Name)" } | Set-Content artifacts/SHA256SUMS -Encoding utf8
       - if: steps.upstream.outputs.changed == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: omp-update-source
           path: artifacts/update/runtime.patch
           if-no-files-found: error
-      - if: steps.upstream.outputs.changed == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: better-omp-desktop-windows-${{ steps.upstream.outputs.version }}
-          path: |
-            build/desktop-msvc/release/bundle/nsis/*.exe
-            artifacts/SHA256SUMS
-          if-no-files-found: error
-          retention-days: 30
 
   propose:
     needs: build
@@ -83,7 +71,6 @@ jobs:
       pull-requests: write
     outputs:
       number: ${{ steps.pr.outputs.pull-request-number }}
-      head: ${{ steps.pr.outputs.pull-request-head-sha }}
       branch: ${{ steps.pr.outputs.pull-request-branch }}
       operation: ${{ steps.pr.outputs.pull-request-operation }}
     steps:
@@ -117,26 +104,20 @@ jobs:
           body: |
             更新锁定的 OMP 版本及配套协议和功能目录。
 
-            独立只读任务已构建运行时、执行无模型调用的协议烟测并生成 Windows 预览安装器；安装器及 SHA-256 校验和见本次 Actions 产物。
+            独立只读任务已构建 OMP 运行时并执行无模型调用的协议烟测。
 
-            此 PR 的分支检查通过且无冲突时，GitHub 会自动 squash 合并；检查失败或存在冲突时保持打开。
+            此 PR 分支完成 Windows 检查及安装器构建且无冲突时，GitHub 会自动 squash 合并，再将对应预构建包发布为预览 Release；检查失败或存在冲突时保持打开。
 
-  auto-merge:
+  check-pr:
     needs: propose
-    if: needs.propose.outputs.number != '' && needs.propose.outputs.head != '' && needs.propose.outputs.operation != 'closed'
+    if: needs.propose.outputs.number != '' && needs.propose.outputs.branch != '' && needs.propose.outputs.operation != 'closed'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
       actions: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
-      PR_NUMBER: ${{ needs.propose.outputs.number }}
-      PR_HEAD: ${{ needs.propose.outputs.head }}
       PR_BRANCH: ${{ needs.propose.outputs.branch }}
     steps:
       - name: 触发 PR 分支的 Windows 云端检查
         run: gh workflow run check.yml --ref "$PR_BRANCH"
-      - name: 检查通过且无冲突后自动合并
-        run: gh pr merge "$PR_NUMBER" --auto --squash --match-head-commit "$PR_HEAD"

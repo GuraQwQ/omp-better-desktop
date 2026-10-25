@@ -35,5 +35,29 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run check
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-      - name: 构建锁定运行时并检查桌面编译
-        run: bun run build:runtime
+      - name: 构建并检查 Windows 发行输入
+        run: bun run ${{ github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/automation/omp-') && 'build:desktop' || 'build:runtime' }}
+      - name: 整理预构建发行包
+        if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/automation/omp-')
+        shell: pwsh
+        run: |
+          git diff --exit-code
+          if ($LASTEXITCODE) { throw '构建生成文件与已提交的候选不一致' }
+          $installers = @(Get-ChildItem -LiteralPath build/desktop-msvc/release/bundle/nsis -Filter '*.exe')
+          if ($installers.Count -ne 1) { throw '应生成一个 Windows x64 安装器' }
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $upstream = Get-Content upstream.lock.json -Raw | ConvertFrom-Json
+          New-Item -ItemType Directory -Force artifacts/prebuilt | Out-Null
+          Copy-Item -LiteralPath $installers[0].FullName -Destination "artifacts/prebuilt/Better-OMP-Desktop_${version}_windows-x64-preview.exe"
+          Copy-Item LICENSE,THIRD-PARTY-NOTICES.md -Destination artifacts/prebuilt
+          [ordered]@{sourceSha=$env:GITHUB_SHA;desktopVersion=$version;upstreamVersion=$upstream.runtimeVersion;upstreamRevision=$upstream.revision} | ConvertTo-Json | Set-Content artifacts/prebuilt/build-info.json -Encoding utf8
+          $files = @("artifacts/prebuilt/Better-OMP-Desktop_${version}_windows-x64-preview.exe", 'artifacts/prebuilt/LICENSE', 'artifacts/prebuilt/THIRD-PARTY-NOTICES.md', 'artifacts/prebuilt/build-info.json')
+          $sums = $files | ForEach-Object { "$( (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant() )  $(Split-Path -Leaf $_)" }
+          [IO.File]::WriteAllText((Join-Path $PWD 'artifacts/prebuilt/SHA256SUMS'), ($sums -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/automation/omp-')
+        with:
+          name: omp-windows-${{ github.run_attempt }}
+          path: artifacts/prebuilt/*
+          if-no-files-found: error
+          retention-days: 30

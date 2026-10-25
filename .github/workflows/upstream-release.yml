@@ -1,0 +1,117 @@
+name: 合并并发布上游更新
+
+on:
+  workflow_run:
+    workflows: [Windows 检查]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-release-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'workflow_dispatch' && startsWith(github.event.workflow_run.head_branch, 'automation/omp-')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      BASE_BRANCH: ${{ github.event.repository.default_branch }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      BUILD_RUN: ${{ github.event.workflow_run.id }}
+      BUILD_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+          name: omp-windows-${{ github.event.workflow_run.run_attempt }}
+          path: release
+      - name: 合并已检查候选并发布预构建包
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --paginate --slurp "repos/$GH_REPO/commits/$HEAD_SHA/pulls?per_page=100" > "$RUNNER_TEMP/pulls.json"
+          PR_NUMBER=$(jq -r --arg repo "$GH_REPO" --arg sha "$HEAD_SHA" --arg branch "$HEAD_BRANCH" --arg base "$BASE_BRANCH" '
+            [.[][] | select(.head.repo.full_name == $repo and .head.sha == $sha and .head.ref == $branch and .base.ref == $base and .user.login == "github-actions[bot]" and (.draft | not) and (.state == "open" or .merged_at != null))] | first | .number // empty
+          ' "$RUNNER_TEMP/pulls.json")
+          if [[ -z "$PR_NUMBER" ]]; then
+            echo '::notice::该构建已不对应当前上游更新 PR，跳过发布'
+            exit 0
+          fi
+
+          jq -e --arg sha "$HEAD_SHA" '.sourceSha == $sha and (.desktopVersion | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) and (.upstreamVersion | test("^[0-9A-Za-z.+-]+$"))' release/build-info.json > /dev/null
+          VERSION=$(jq -r .desktopVersion release/build-info.json)
+          UPSTREAM_VERSION=$(jq -r .upstreamVersion release/build-info.json)
+          INSTALLER="release/Better-OMP-Desktop_${VERSION}_windows-x64-preview.exe"
+          ASSETS=("$INSTALLER" release/SHA256SUMS release/LICENSE release/THIRD-PARTY-NOTICES.md release/build-info.json)
+          for file in "${ASSETS[@]}"; do test -s "$file"; done
+          (cd release && sha256sum --check --strict SHA256SUMS)
+
+          MERGE_SHA=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER" --jq 'if .merged then .merge_commit_sha else empty end')
+          if [[ -z "$MERGE_SHA" ]]; then
+            # 其他请求可能同时完成合并，随后以 PR 的实际状态为准。
+            gh pr merge "$PR_NUMBER" --squash --match-head-commit "$HEAD_SHA" || true
+            MERGE_SHA=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER" --jq 'if .merged then .merge_commit_sha else empty end')
+          fi
+          if [[ -z "$MERGE_SHA" ]]; then
+            echo '::error::PR 尚未合并，保留候选产物'
+            exit 1
+          fi
+          SOURCE_TREE=$(gh api "repos/$GH_REPO/git/commits/$HEAD_SHA" --jq .tree.sha)
+          MERGE_TREE=$(gh api "repos/$GH_REPO/git/commits/$MERGE_SHA" --jq .tree.sha)
+          if [[ "$SOURCE_TREE" != "$MERGE_TREE" ]]; then
+            echo '::error::合并后的源码与预构建输入不同，停止发布'
+            exit 1
+          fi
+
+          TAG="v${VERSION}-preview.pr.${PR_NUMBER}"
+          TITLE="Better OMP Desktop ${VERSION} · OMP ${UPSTREAM_VERSION}"
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          Windows x64 预览版，内置 OMP ${UPSTREAM_VERSION}。
+
+          安装器未签名，需要已有 WebView2 或手动配置 Fixed Version WebView2。使用 SHA256SUMS 校验附件；build-info.json 记录预构建来源。
+
+          更新 PR：https://github.com/$GH_REPO/pull/$PR_NUMBER
+          云端构建：https://github.com/$GH_REPO/actions/runs/$BUILD_RUN/attempts/$BUILD_ATTEMPT
+          候选提交：$HEAD_SHA
+          合并提交：$MERGE_SHA
+          EOF
+          if ! gh api "repos/$GH_REPO/git/ref/tags/$TAG" --silent; then
+            gh api --method POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$MERGE_SHA" --silent || true
+          fi
+          TARGET=$(gh api "repos/$GH_REPO/commits/$TAG" --jq .sha)
+          if [[ "$TARGET" != "$MERGE_SHA" ]]; then
+            echo '::error::已有标签指向不同提交，停止发布'
+            exit 1
+          fi
+          gh api --paginate --slurp "repos/$GH_REPO/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
+          jq --arg tag "$TAG" '[.[][] | select(.tag_name == $tag)] | first // null' "$RUNNER_TEMP/releases.json" > "$RUNNER_TEMP/existing-release.json"
+          if jq -e '. != null' "$RUNNER_TEMP/existing-release.json" > /dev/null; then
+            if [[ $(jq -r .draft "$RUNNER_TEMP/existing-release.json") == false ]]; then
+              for file in "${ASSETS[@]}"; do
+                NAME=$(basename "$file")
+                DIGEST="sha256:$(sha256sum "$file" | cut -d ' ' -f 1)"
+                REMOTE_DIGEST=$(jq -r --arg name "$NAME" '.assets[] | select(.name == $name) | .digest' "$RUNNER_TEMP/existing-release.json")
+                if [[ "$REMOTE_DIGEST" != "$DIGEST" ]]; then
+                  echo "::error::公开附件 $NAME 与候选不同，保留已有发行"
+                  exit 1
+                fi
+              done
+              echo "发行已存在且附件一致：https://github.com/$GH_REPO/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          else
+            gh release create "$TAG" --verify-tag --draft --prerelease --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
+          gh release upload "$TAG" "${ASSETS[@]}" --clobber
+          gh release edit "$TAG" --draft=false --prerelease --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.md"
+          echo "已发布预构建包：https://github.com/$GH_REPO/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"

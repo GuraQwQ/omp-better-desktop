@@ -53,7 +53,7 @@ bun run clean                                 # 清理本仓库 .cache、build�
 
 请先阅读 [贡献说明](CONTRIBUTING.md)。报告问题时附上应用版本、OMP revision、Windows/WebView2 版本、复现步骤和脱敏日志；不要上传凭据或完整私人会话。
 
-公开 CI 执行类型检查、Rust 格式与编译检查，以及无模型调用的运行时协议烟测。定时上游 Release 更新经过云端构建后提出 PR，通过分支检查且无冲突时自动合并；预览发行由维护者在既有标签上手动运行，先生成草稿。详见 [发行流程](docs/releasing.md)。
+公开 CI 执行类型检查、Rust 格式与编译检查，以及无模型调用的运行时协议烟测。定时上游 Release 更新提出 PR 后，在云端构建匹配的 Windows 安装包；检查通过且无冲突时自动合并，并将预构建包发布为预览 Release。维护者也可手动创建预览草稿。详见 [发行流程](docs/releasing.md)。
 
 ## 许可与来源
 
