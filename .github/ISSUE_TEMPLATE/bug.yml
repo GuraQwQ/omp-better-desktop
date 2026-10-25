@@ -1,0 +1,21 @@
+name: 问题报告
+description: 报告可复现的桌面或运行时问题
+body:
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境与版本
+      description: 应用版本、OMP revision、Windows 和 WebView2 版本
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤、预期与实际结果
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 脱敏日志或截图
+      description: 请移除凭据、个人路径与私人会话内容

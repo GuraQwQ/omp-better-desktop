@@ -1,0 +1,114 @@
+name: 更新内置 OMP
+
+on:
+  schedule:
+    - cron: "19 */12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-runtime
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      changed: ${{ steps.upstream.outputs.changed }}
+      version: ${{ steps.upstream.outputs.version }}
+    env:
+      OMP_DESKTOP_CACHE: ${{ github.workspace }}/.cache
+      CARGO_HOME: ${{ github.workspace }}/.cache/cargo
+      CARGO_TARGET_DIR: ${{ github.workspace }}/build/desktop-msvc
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: bun install --frozen-lockfile
+      - id: upstream
+        name: 检查上游发行版本
+        run: bun run update:upstream
+      - if: steps.upstream.outputs.changed == 'true'
+        name: 构建、协议烟测与打包
+        env:
+          OMP_UPSTREAM_VERSION: ${{ steps.upstream.outputs.version }}
+          OMP_UPSTREAM_REVISION: ${{ steps.upstream.outputs.revision }}
+          OMP_UPSTREAM_ROOT: ${{ steps.upstream.outputs.upstreamRoot }}
+        run: bun run build:desktop
+      - if: steps.upstream.outputs.changed == 'true'
+        name: 整理更新补丁和校验和
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/update | Out-Null
+          git diff --binary --output=artifacts/update/runtime.patch -- upstream.lock.json docs/feature-map.md src/generated vendor/omp-rpc/src/client.rs vendor/omp-rpc/src/wire.rs
+          $installers = @(Get-ChildItem -LiteralPath build/desktop-msvc/release/bundle/nsis -Filter '*.exe')
+          if (-not $installers.Count) { throw '没有生成 Windows 安装器' }
+          $installers | ForEach-Object { "$( (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() )  $($_.Name)" } | Set-Content artifacts/SHA256SUMS -Encoding utf8
+      - if: steps.upstream.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: omp-update-source
+          path: artifacts/update/runtime.patch
+          if-no-files-found: error
+      - if: steps.upstream.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: better-omp-desktop-windows-${{ steps.upstream.outputs.version }}
+          path: |
+            build/desktop-msvc/release/bundle/nsis/*.exe
+            artifacts/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+
+  propose:
+    needs: build
+    if: needs.build.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: omp-update-source
+          path: ${{ runner.temp }}/omp-update
+      - name: 应用生成文件补丁
+        env:
+          UPDATE_PATCH: ${{ runner.temp }}/omp-update/runtime.patch
+        run: git apply --include=upstream.lock.json --include=docs/feature-map.md --include='src/generated/*' --include=vendor/omp-rpc/src/client.rs --include=vendor/omp-rpc/src/wire.rs "$UPDATE_PATCH"
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: ${{ github.event.repository.default_branch }}
+          branch: automation/omp-${{ needs.build.outputs.version }}
+          delete-branch: true
+          add-paths: |
+            upstream.lock.json
+            docs/feature-map.md
+            src/generated
+            vendor/omp-rpc/src/client.rs
+            vendor/omp-rpc/src/wire.rs
+          title: "构建：内置 OMP ${{ needs.build.outputs.version }}"
+          commit-message: "构建：更新内置 OMP ${{ needs.build.outputs.version }}"
+          body: |
+            更新锁定的 OMP 版本及配套协议和功能目录。
+
+            独立只读任务已构建运行时、执行无模型调用的协议烟测并生成 Windows 预览安装器；安装器及 SHA-256 校验和见本次 Actions 产物。

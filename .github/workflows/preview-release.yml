@@ -1,0 +1,100 @@
+name: Windows 预览发行
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 已有的预览标签，例如 v0.1.0-preview.1
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      OMP_DESKTOP_CACHE: ${{ github.workspace }}/.cache
+      CARGO_HOME: ${{ github.workspace }}/.cache/cargo
+      CARGO_TARGET_DIR: ${{ github.workspace }}/build/desktop-msvc
+    steps:
+      - name: 校验标签格式
+        shell: pwsh
+        env:
+          PREVIEW_TAG: ${{ inputs.tag }}
+        run: |
+          if ($env:PREVIEW_TAG -notmatch '^v\d+\.\d+\.\d+-preview\.\d+$') { throw '请选择 vX.Y.Z-preview.N 标签' }
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - name: 校验版本一致
+        shell: pwsh
+        env:
+          PREVIEW_TAG: ${{ inputs.tag }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tauriVersion = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $cargoVersion = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version = "([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          if ($version -ne $tauriVersion -or $version -ne $cargoVersion -or $env:PREVIEW_TAG -notmatch ('^v' + [regex]::Escape($version) + '-preview\.\d+$')) { throw '标签与桌面版本不一致' }
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: bun install --frozen-lockfile
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - run: bun run build:desktop
+      - name: 整理发行附件
+        shell: pwsh
+        env:
+          PREVIEW_TAG: ${{ inputs.tag }}
+        run: |
+          New-Item -ItemType Directory -Force artifacts/release | Out-Null
+          $installers = @(Get-ChildItem -LiteralPath build/desktop-msvc/release/bundle/nsis -Filter '*.exe')
+          if (-not $installers.Count) { throw '没有生成 Windows 安装器' }
+          foreach ($installer in $installers) { Copy-Item -LiteralPath $installer.FullName -Destination (Join-Path artifacts/release "$env:PREVIEW_TAG-$($installer.Name)") }
+          Get-ChildItem -LiteralPath artifacts/release -Filter '*.exe' | ForEach-Object { "$( (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() )  $($_.Name)" } | Set-Content artifacts/release/SHA256SUMS -Encoding utf8
+          Copy-Item LICENSE,THIRD-PARTY-NOTICES.md -Destination artifacts/release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-preview
+          path: artifacts/release/*
+          if-no-files-found: error
+
+  draft:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-preview
+          path: release
+      - name: 创建或更新预览草稿
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PREVIEW_TAG: ${{ inputs.tag }}
+        run: |
+          cat > notes.md <<'EOF'
+          Windows x64 早期预览版，内置匹配的 OMP 运行时。
+
+          安装器未签名，Windows 可能显示发布者未知提示。需要已有 WebView2 或手动配置 Fixed Version WebView2。使用 SHA256SUMS 校验附件；功能边界和数据迁移说明见仓库文档。
+          EOF
+          if gh release view "$PREVIEW_TAG" --json isDraft --jq .isDraft > draft-state; then
+            test "$(cat draft-state)" = true || { echo '该发行已公开，停止覆盖附件'; exit 1; }
+            gh release edit "$PREVIEW_TAG" --draft --prerelease --title "Better OMP Desktop $PREVIEW_TAG" --notes-file notes.md
+          else
+            gh release create "$PREVIEW_TAG" --verify-tag --draft --prerelease --title "Better OMP Desktop $PREVIEW_TAG" --notes-file notes.md
+          fi
+          gh release upload "$PREVIEW_TAG" release/* --clobber

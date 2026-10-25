@@ -1,0 +1,10 @@
+name: 功能建议
+description: 提出明确的用户场景与期望行为
+body:
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 用户场景与期望行为
+      description: 如涉及 OMP 内置功能，请提供命令名或上游说明
+    validations:
+      required: true
