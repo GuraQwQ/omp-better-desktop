@@ -51,6 +51,7 @@ fn find_sessions(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
 }
 
 pub fn list(root: &Path, cwd: Option<&str>) -> Result<Value, String> {
+    let canonical_cwd = cwd.and_then(|cwd| fs::canonicalize(cwd).ok());
     let mut files = Vec::new();
     find_sessions(&root.join("omp/agent/sessions"), &mut files)?;
     let profiles = root.join("omp/profiles");
@@ -68,23 +69,29 @@ pub fn list(root: &Path, cwd: Option<&str>) -> Result<Value, String> {
     let mut sessions = Vec::new();
     for path in files {
         let rows = entries(&path)?;
-        let Some(header) = rows.first().filter(|v| v["type"] == "session") else {
+        let Some(header) = rows.iter().find(|v| v["type"] == "session") else {
             continue;
         };
-        if cwd.is_some_and(|cwd| header["cwd"].as_str() != Some(cwd)) {
+        if cwd.is_some_and(|cwd| {
+            !header["cwd"].as_str().is_some_and(|saved| {
+                saved == cwd
+                    || canonical_cwd.as_ref().is_some_and(|canonical| {
+                        fs::canonicalize(saved).ok().as_ref() == Some(canonical)
+                    })
+            })
+        }) {
             continue;
         }
         let title = rows
             .iter()
             .rev()
             .find_map(|row| {
-                if row["type"] == "session_info" {
-                    row["name"].as_str().or(row["title"].as_str())
+                if row["type"] == "title_change" || row["type"] == "title" {
+                    row["title"].as_str()
                 } else {
                     None
                 }
             })
-            .or(header["name"].as_str())
             .or(header["title"].as_str())
             .unwrap_or("Untitled session");
         let modified = fs::metadata(&path)
