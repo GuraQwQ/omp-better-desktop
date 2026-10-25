@@ -912,7 +912,7 @@ impl Client {
 		Ok(C::decode(response.data)?)
 	}
 
-	/// 桌面桥透传同版本 schema 的命令，复用请求关联和超时处理。
+	/// Desktop bridge forwards commands from the matching protocol schema.
 	pub fn call_raw(&self, mut frame: Value) -> Result<Value, Error> {
 		let name = frame.get("type").and_then(Value::as_str)
 			.ok_or_else(|| Error::InvalidArgument("Missing command type".into()))?.to_owned();

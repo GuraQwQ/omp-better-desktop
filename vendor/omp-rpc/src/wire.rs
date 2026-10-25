@@ -4389,6 +4389,8 @@ pub struct InputUiRequest {
 	pub id: String,
 	pub title: String,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub secret: Option<bool>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub placeholder: Option<String>,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub timeout: Option<i64>,
@@ -4472,6 +4474,16 @@ pub struct OpenUrlUiRequest {
 	pub instructions: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BrowserSessionUiRequest {
+	pub id: String,
+	pub url: String,
+	#[serde(rename = "cookieNames")]
+	pub cookie_names: Vec<String>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub timeout: Option<i64>,
+}
+
 /// Extension UI request, discriminated by `method`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExtensionUiRequest {
@@ -4489,6 +4501,7 @@ pub enum ExtensionUiRequest {
 	SetTitle(SetTitleUiRequest),
 	SetEditorText(SetEditorTextUiRequest),
 	OpenUrl(OpenUrlUiRequest),
+	BrowserSession(BrowserSessionUiRequest),
 }
 
 impl ExtensionUiRequest {
@@ -4507,6 +4520,7 @@ impl ExtensionUiRequest {
 			Some("setTitle") => |value| serde_json::from_value(value).map(Self::SetTitle),
 			Some("set_editor_text") => |value| serde_json::from_value(value).map(Self::SetEditorText),
 			Some("open_url") => |value| serde_json::from_value(value).map(Self::OpenUrl),
+			Some("browser_session") => |value| serde_json::from_value(value).map(Self::BrowserSession),
 			other => {
 				return Err(serde_json::Error::custom(format!("unknown ExtensionUiRequest method {other:?}")));
 			}
@@ -4530,6 +4544,7 @@ impl Serialize for ExtensionUiRequest {
 			Self::SetTitle(member) => serialize_tagged(member, &[("type", "extension_ui_request"), ("method", "setTitle")], serializer),
 			Self::SetEditorText(member) => serialize_tagged(member, &[("type", "extension_ui_request"), ("method", "set_editor_text")], serializer),
 			Self::OpenUrl(member) => serialize_tagged(member, &[("type", "extension_ui_request"), ("method", "open_url")], serializer),
+			Self::BrowserSession(member) => serialize_tagged(member, &[("type", "extension_ui_request"), ("method", "browser_session")], serializer),
 		}
 	}
 }

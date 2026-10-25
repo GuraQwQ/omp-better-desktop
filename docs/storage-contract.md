@@ -1,21 +1,19 @@
-# Storage module contract
+# 数据与运行时契约
 
-`src-tauri/src/storage.rs` is owned by the storage task. It needs `sha2`, `rusqlite` with `bundled,backup`, and Windows-only `winreg` in addition to serde/serde_json. The application must not start managed sessions while `data.import` runs; it must reject import while any session is open.
+`src-tauri/src/storage.rs` 管理数据根下的运行时、迁移日志与 CLI 接管；`bootstrap.rs` 在创建 WebView 前确定根目录并配置运行时。宿主在迁移、切换运行时和清理时持有数据操作锁，并要求活动会话与终端先关闭。
 
-All operations take `root: &Path`. API: `current_runtime(root) -> Result<Option<PathBuf>, String>`; `runtime_info(root)`, `install_runtime(root, source: &Path)`, `rollback_runtime(root)`, `discover_omp(root)`, `import_omp(root, source: &Path)`, `takeover(root, enabled: bool)`, `clean_cache(root)` return `Result<Value,String>`.
+## 运行时
 
-The managed OMP user root is `root.join("omp")`; the application passes it as `OMP_USER_ROOT` to GUI and CLI processes. Runtime manifests are `runtime-manifest.json` with `{version,revision,protocolVersion,executable,files:[{path,sha256}]}`. Each path is relative to the manifest directory. `executable` must be included in `files`. A local manifest path or its containing directory is accepted. The revision and protocol version must match `upstream.lock.json`. A deterministic digest of the compatibility metadata and file inventory names the runtime directory. `runtime_info` returns null or `{path,version,revision,protocolVersion,id}`.
+运行时包包含 `runtime-manifest.json`，字段为 `{version,revision,protocolVersion,executable,files:[{path,sha256}]}`，发行包另含 `patchDigest`。路径相对于包目录，清单包含可执行文件和许可材料。安装逐项校验路径、文件唯一性与哈希，以兼容信息和文件内容确定安装标识。
 
-Migration copies an entire discovered OMP user root (including named profiles), taking SQLite snapshots. Discovery never prints or reads credentials. Import journal stores file paths and content digests, never contents. Source data remains untouched. Generated Windows CLI shims set `OMP_USER_ROOT`, resolve the active runtime selector on every invocation and preserve argument forwarding. Takeover does not modify user shell profile scripts.
+包复制到独立的 `runtimes/<id>`，使用进行中标记记录未完成安装；成功后写入 `runtime.json` 当前与前一个版本选择器。重复安装会校验并复用相同内容，部分完成可以重试，旧版本供回退使用。托管运行时的协议必须与桌面期望一致。
 
-Storage verification requires a working C compiler for bundled SQLite. The installed Rust GNU linker stub is insufficient (`cc1` is missing); use the desktop's MSVC build environment.
+## OMP 数据
 
-Implementation status: `storage.rs` is complete and rustfmt-clean. An isolated `cargo check --tests` and both embedded tests passed on 2026-10-22. The isolated test harness uses the same Rust source, SQLite's external-link feature and the existing Windows `winsqlite3.dll` copied to its F: cache; the desktop still uses bundled SQLite and needs the normal MSVC build. Tests cover verified/idempotent runtime activation + rollback and WAL-backed SQLite migration + preservation of subsequent local edits. No real user PATH or OMP data was changed during these checks.
+托管 OMP 用户根为 `<dataRoot>/omp`，宿主通过 `OMP_USER_ROOT` 传给 GUI RPC 与 CLI 子进程。应用数据根还包含桌面配置、浏览器数据与临时缓存。外部原始 OMP 目录只用于发现和导入。
 
-## Relocatable startup follow-up
+导入按文件记录路径与摘要，不把凭据内容写入日志；SQLite 使用备份接口复制一致性快照，源数据保留。迁移日志让重复执行跳过已处理文件，同时保留导入后的本地修改。
 
-New `bootstrap.rs` is ready for root integration. Before starting any Tauri threads, `run()` should call `bootstrap::resolve_root()`, then `bootstrap::install_pending_runtime(&root)`, then `bootstrap::prepare_webview(&root)`. On error, call `bootstrap::show_startup_error(&error)` and return. All return `Result<_,String>`; `resolve_root` returns `PathBuf`, the others `()`. Add `mod bootstrap;` and replace the old hardcoded directory/environment setup. This module sets TEMP, TMP and WEBVIEW2_USER_DATA_FOLDER before WebView creation.
+CLI 接管通过独立 shim 传入托管用户根，并在每次调用时解析当前运行时选择器；撤销接管恢复原调用路径。用户 shell profile 不用于存放接管脚本。
 
-Root resolution: OMP_DESKTOP_HOME, executable-adjacent portable.json, then native Windows folder selection (F: default offered). `OMP_WEBVIEW2_RUNTIME` / WEBVIEW2_BROWSER_EXECUTABLE_FOLDER / portable.json fixed-runtime path is supported; otherwise `tauri::webview_version()` detects Evergreen, with a native picker if absent. No download or global environment write occurs. A `runtime-install.json` marker triggers the normal verified installation before UI startup and is removed only on success. The local `scripts/install.ps1` makes this marker, installs a relocatable portable.json, and validates/copies files idempotently. See docs/install.md.
-
-Ownership remains bootstrap.rs, scripts/install.ps1 and docs/install.md; root owns lib.rs integration. PowerShell parser, rustfmt and the portable path unit test pass. The local installer was exercised twice with synthetic executables/manifests: it retained relative data paths and a Fixed Version runtime path, and rejected a C: destination before writing. Native startup checks follow integration.
+安装与恢复操作见 [安装说明](install.md)。

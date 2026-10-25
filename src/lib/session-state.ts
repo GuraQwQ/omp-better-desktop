@@ -5,6 +5,10 @@ export function normalizeMessage(value: Json, fallback: string): Message {
   return { ...message, id: value.messageId ?? message.id ?? fallback, role: message.role ?? 'assistant', content: message.content ?? message.text ?? '' };
 }
 
+export function returnFromTerminal(session: SessionView, runtimeReleased: boolean): SessionView {
+  return runtimeReleased ? { ...session, historyOnly: true } : session;
+}
+
 export function applyEvent(session: SessionView, event: Json): SessionView {
   if (event.type === 'desktop_status') return { ...session, status: event.status };
   if (event.type === 'agent_start') return { ...session, status: 'running', state: { ...session.state, isStreaming: true, isSettled: false } };
@@ -13,6 +17,18 @@ export function applyEvent(session: SessionView, event: Json): SessionView {
   if (event.type === 'prompt_result') return { ...session, status: event.sessionSettled ? 'ready' : session.status, state: { ...session.state, ...(event.sessionSettled ? { isStreaming: false, isSettled: true } : {}) } };
   if (event.type === 'queue_update') return { ...session, state: { ...session.state, queuedMessages: { steering: event.steering ?? [], followUp: event.followUp ?? [] } } };
   if (event.type === 'session_info_update') return { ...session, title: event.title ?? event.sessionName ?? event.name ?? session.title, path: event.sessionFile ?? session.path };
+  if (event.type === 'btw_record') return { ...session, state: { ...session.state, btwRecords: [event.record, ...(session.state.btwRecords ?? []).filter((record: Json) => record.id !== event.record.id)] } };
+  if (event.type === 'btw_delta') return { ...session, state: { ...session.state, btwRecords: (session.state.btwRecords ?? []).map((record: Json) => {
+    if (record.id !== event.recordId) return record;
+    if (!record.followUps?.length) return { ...record, answer: record.answer + event.delta };
+    const followUps = record.followUps.slice();
+    const last = followUps.length - 1;
+    followUps[last] = { ...followUps[last], answer: followUps[last].answer + event.delta };
+    return { ...record, followUps };
+  }) } };
+  if (event.type === 'live_phase') return { ...session, state: { ...session.state, live: { ...session.state.live, phase: event.phase, active: true } } };
+  if (event.type === 'live_transcript') return { ...session, state: { ...session.state, live: { ...session.state.live, transcript: event.text } } };
+  if (event.type === 'live_end') return { ...session, state: { ...session.state, live: { ...session.state.live, active: false, error: event.error } } };
   if (event.type === 'extension_ui_request') {
     if (event.method === 'set_editor_text') return { ...session, draft: event.text ?? '' };
     if (event.method === 'cancel') return { ...session, pending: session.pending.filter(p => p.id !== event.targetId) };

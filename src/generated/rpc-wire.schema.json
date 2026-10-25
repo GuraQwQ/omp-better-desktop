@@ -5228,6 +5228,39 @@
 				"url"
 			]
 		},
+		"BrowserSessionUiRequest": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"const": "extension_ui_request"
+				},
+				"id": {
+					"type": "string"
+				},
+				"method": {
+					"const": "browser_session"
+				},
+				"url": {
+					"type": "string"
+				},
+				"cookieNames": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"timeout": {
+					"type": "integer"
+				}
+			},
+			"required": [
+				"type",
+				"id",
+				"method",
+				"url",
+				"cookieNames"
+			]
+		},
 		"ExtensionUiRequest": {
 			"anyOf": [
 				{
@@ -5265,6 +5298,9 @@
 				},
 				{
 					"$ref": "#/$defs/OpenUrlUiRequest"
+				},
+				{
+					"$ref": "#/$defs/BrowserSessionUiRequest"
 				}
 			],
 			"description": "Extension UI request, discriminated by `method`."

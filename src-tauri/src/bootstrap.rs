@@ -106,7 +106,8 @@ fn prepare_root(path: PathBuf) -> Result<PathBuf, String> {
     // 此函数必须在线程和 WebView 启动之前执行。
     unsafe {
         env::set_var("OMP_DESKTOP_HOME", &root);
-        env::set_var("WEBVIEW2_USER_DATA_FOLDER", root.join("webview"));
+        // 全局覆盖会取代登录窗口的独立目录，各窗口改用显式配置。
+        env::remove_var("WEBVIEW2_USER_DATA_FOLDER");
         env::set_var("TEMP", root.join("cache/tmp"));
         env::set_var("TMP", root.join("cache/tmp"));
     }
@@ -202,21 +203,26 @@ pub fn install_pending_runtime(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
+pub fn install_bundled_runtime(root: &Path, package: &Path) -> Result<(), String> {
+    let manifest_path = package.join("runtime-manifest.json");
+    if !manifest_path.is_file() {
+        return Err(format!(
+            "The bundled OMP runtime is missing: {}",
+            manifest_path.display()
+        ));
+    }
+    crate::storage::install_bundled_runtime(root, package)?;
+    match fs::remove_file(executable_directory()?.join("runtime-install.json")) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!(
+            "Clear completed runtime installation request: {error}"
+        )),
+    }
+}
+
 #[cfg(windows)]
 fn choose_root() -> Result<PathBuf, String> {
-    if Path::new("F:\\").is_dir() {
-        let answer = message(
-            "Application data / 应用数据目录",
-            "Use F:\\omp-better-desktop for application data?\n\nYes: use this directory.\nNo: choose another directory.\nCancel: close without installing.\n\n是否使用 F:\\omp-better-desktop 保存应用数据？\n选择“否”可指定其他目录。",
-            0x23,
-        );
-        if answer == 6 {
-            return Ok(PathBuf::from("F:\\omp-better-desktop"));
-        }
-        if answer == 2 {
-            return Err("Application setup was cancelled. No runtime was installed.".into());
-        }
-    }
     loop {
         let path = choose_folder(
             "Choose an application data directory outside C: / 选择 C 盘以外的应用数据目录",

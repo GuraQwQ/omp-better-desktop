@@ -1,4 +1,5 @@
 mod bootstrap;
+mod browser_login;
 mod history;
 mod platform;
 mod sessions;
@@ -281,11 +282,18 @@ async fn desktop_command(app: tauri::AppHandle, request: Value) -> Result<Value,
 
 pub fn run() {
     let initialized = bootstrap::resolve_root().and_then(|root| {
-        bootstrap::install_pending_runtime(&root)?;
         bootstrap::prepare_webview(&root)?;
         Ok(root)
     });
-    let root = match initialized { Ok(root) => root, Err(error) => { bootstrap::show_startup_error(&error); return; } };
+    let root = match initialized {
+        Ok(root) => root,
+        Err(error) => {
+            bootstrap::show_startup_error(&error);
+            return;
+        }
+    };
+    let mut context = tauri::generate_context!();
+    context.config_mut().app.windows[0].create = false;
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Desktop {
@@ -295,8 +303,26 @@ pub fn run() {
             data_access: std::sync::RwLock::new(()),
             exiting: AtomicBool::new(false),
         })
+        .setup(|app| {
+            let resources = app.path().resource_dir()?;
+            let desktop = app.state::<Desktop>();
+            let bundled = resources.join("runtime-windows-x64");
+            let package = if bundled.join("runtime-manifest.json").is_file() {
+                bundled
+            } else {
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("../artifacts/runtime-windows-x64")
+            };
+            if let Err(error) = bootstrap::install_bundled_runtime(&desktop.root, &package) {
+                bootstrap::show_startup_error(&error);
+                return Err(std::io::Error::other(error).into());
+            }
+            tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
+                .data_directory(desktop.root.join("webview"))
+                .build()?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![desktop_command])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("Could not start Better OMP Desktop");
     app.run(|app, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {

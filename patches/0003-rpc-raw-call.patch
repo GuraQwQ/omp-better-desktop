@@ -1,0 +1,21 @@
+diff --git a/sdk/rust/omp-rpc/src/client.rs b/sdk/rust/omp-rpc/src/client.rs
+index 418c0bb..f1e7165 100644
+--- a/sdk/rust/omp-rpc/src/client.rs
++++ b/sdk/rust/omp-rpc/src/client.rs
+@@ -912,6 +912,16 @@ impl Client {
+ 		Ok(C::decode(response.data)?)
+ 	}
+ 
++	/// Desktop bridge forwards commands from the matching protocol schema.
++	pub fn call_raw(&self, mut frame: Value) -> Result<Value, Error> {
++		let name = frame.get("type").and_then(Value::as_str)
++			.ok_or_else(|| Error::InvalidArgument("Missing command type".into()))?.to_owned();
++		let id = self.next_id();
++		frame["id"] = Value::String(id.clone());
++		let response = self.request(&id, &name, &frame, self.default_timeout)?;
++		Ok(response.data.unwrap_or(Value::Null))
++	}
++
+ 	/// Queues `frame` and waits for its successful response.
+ 	fn request(
+ 		&self,

@@ -2,8 +2,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$DesktopExe,
-    [Parameter(Mandatory = $true)][string]$RuntimePackage,
-    [string]$Destination = 'F:\omp-better-desktop\app',
+    [string]$RuntimePackage,
+    [Parameter(Mandatory = $true)][string]$Destination,
     [string]$DataRoot,
     [string]$WebView2Runtime,
     [switch]$Launch
@@ -53,7 +53,13 @@ function Copy-Checked([string]$Source, [string]$Target, [string]$Expected) {
 $installDirectory = Resolve-NonSystemPath $Destination
 $desktopSource = (Resolve-Path -LiteralPath $DesktopExe).Path
 if (-not (Test-Path -LiteralPath $desktopSource -PathType Leaf)) { throw 'DesktopExe must be a compiled desktop executable.' }
-$packageSource = (Resolve-Path -LiteralPath $RuntimePackage).Path
+$packageSource = if ($RuntimePackage) {
+    (Resolve-Path -LiteralPath $RuntimePackage).Path
+} else {
+    Join-Path (Split-Path -Parent $desktopSource) 'resources/runtime-windows-x64'
+}
+if (-not (Test-Path -LiteralPath $packageSource)) { throw "OMP runtime package not found: $packageSource" }
+$packageSource = (Resolve-Path -LiteralPath $packageSource).Path
 $manifestPath = if (Test-Path -LiteralPath $packageSource -PathType Container) { Join-Path $packageSource 'runtime-manifest.json' } else { $packageSource }
 $packageSource = Split-Path -Parent $manifestPath
 $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -76,9 +82,7 @@ if ($WebView2Runtime) {
 
 [IO.Directory]::CreateDirectory($installDirectory) | Out-Null
 [IO.Directory]::CreateDirectory($managedRoot) | Out-Null
-$packageId = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
-$packageRelative = Join-Path 'runtime-packages' $packageId
-$packageDestination = Join-Path $installDirectory $packageRelative
+$packageDestination = Join-Path $installDirectory 'resources/runtime-windows-x64'
 [IO.Directory]::CreateDirectory($packageDestination) | Out-Null
 $names = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach ($file in $manifest.files) {
@@ -100,18 +104,20 @@ if (-not $names.Contains($manifest.executable)) { throw 'The runtime executable 
 Copy-Checked $manifestPath (Join-Path $packageDestination 'runtime-manifest.json') (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash
 $installedExe = Join-Path $installDirectory 'omp-better-desktop.exe'
 Copy-Checked $desktopSource $installedExe (Get-FileHash -LiteralPath $desktopSource -Algorithm SHA256).Hash
+foreach ($name in @('LICENSE', 'THIRD-PARTY-NOTICES.md')) {
+    $source = Join-Path (Split-Path $PSScriptRoot) $name
+    Copy-Checked $source (Join-Path $installDirectory $name) (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
+}
 
 $location = [ordered]@{ dataRoot = [IO.Path]::GetRelativePath($installDirectory, $managedRoot) }
 if ($fixedRuntime) { $location.webview2RuntimePath = [IO.Path]::GetRelativePath($installDirectory, $fixedRuntime) }
 elseif ($previous -and $previous.webview2RuntimePath) { $location.webview2RuntimePath = $previous.webview2RuntimePath }
 Write-AtomicText $configPath ($location | ConvertTo-Json)
-Write-AtomicText (Join-Path $installDirectory 'runtime-install.json') (@{ package = $packageRelative } | ConvertTo-Json)
 
 [pscustomobject]@{
     executable = $installedExe
     dataRoot = $managedRoot
     runtimePackage = $packageDestination
-    runtimeActivation = 'Validated and activated on first launch'
     webview2 = if ($location.webview2RuntimePath) { [IO.Path]::GetFullPath($location.webview2RuntimePath, $installDirectory) } else { 'Existing system WebView2; missing installations prompt for an extracted Fixed Version runtime' }
 } | Format-List
 if ($Launch) { Start-Process -FilePath $installedExe -WorkingDirectory $installDirectory -WindowStyle Hidden }

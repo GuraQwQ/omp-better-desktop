@@ -2,15 +2,19 @@
   "name": "omp-better-desktop",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "check": "tsc --noEmit",
-    "test": "bun test test",
     "desktop": "tauri",
     "prepare:upstream": "bun scripts/prepare-upstream.ts",
-    "build:runtime": "bun scripts/build-runtime.ts"
+    "update:upstream": "bun scripts/update-upstream.ts",
+    "build:runtime": "bun scripts/build-runtime.ts",
+    "smoke:runtime": "bun scripts/smoke-runtime.ts",
+    "build:desktop": "bun scripts/build-runtime.ts --bundle-desktop",
+    "clean": "bun scripts/clean.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",

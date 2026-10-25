@@ -5,6 +5,7 @@ import { lock, projectRoot, upstreamRoot } from './prepare-upstream';
 
 interface Entry { name: string; kind: string; description: string; surface: string; source: string; rpc?: boolean; args?: string[] }
 const entries: Entry[] = [];
+const outputRoot = path.resolve(process.env.OMP_DESKTOP_STAGING_ROOT ?? process.env.OMP_DESKTOP_OUTPUT_ROOT ?? projectRoot);
 const sourceRoot = path.join(upstreamRoot, 'packages/coding-agent/src');
 const panels: Record<string, string> = {
   settings: 'settings', setup: 'settings', model: 'models', switch: 'models', login: 'providers', logout: 'providers',
@@ -65,10 +66,11 @@ const schemaPath = path.join(sourceRoot, 'modes/rpc/wire/rpc-wire.schema.json');
 const schema = await Bun.file(schemaPath).json();
 for (const command of schema['x-rpc'].commands) entries.push({ name: command.name, kind: 'rpc', description: command.doc, surface: 'rpc', source: 'packages/coding-agent/src/modes/rpc/wire/commands.ts' });
 
-await fs.mkdir(path.join(projectRoot, 'src/generated'), { recursive: true });
-await Bun.write(path.join(projectRoot, 'src/generated/catalog.json'), JSON.stringify(entries, null, 2) + '\n');
-await fs.copyFile(schemaPath, path.join(projectRoot, 'src/generated/rpc-wire.schema.json'));
-await fs.copyFile(path.join(sourceRoot, 'modes/rpc/wire/rpc-wire.generated.ts'), path.join(projectRoot, 'src/generated/rpc-wire.ts'));
+await fs.mkdir(path.join(outputRoot, 'src/generated'), { recursive: true });
+await fs.mkdir(path.join(outputRoot, 'docs'), { recursive: true });
+await Bun.write(path.join(outputRoot, 'src/generated/catalog.json'), JSON.stringify(entries, null, 2) + '\n');
+await fs.copyFile(schemaPath, path.join(outputRoot, 'src/generated/rpc-wire.schema.json'));
+await fs.copyFile(path.join(sourceRoot, 'modes/rpc/wire/rpc-wire.generated.ts'), path.join(outputRoot, 'src/generated/rpc-wire.ts'));
 const rows = entries.map(entry => `| ${entry.kind} | \`${entry.name}\` | ${entry.surface} |`);
-await Bun.write(path.join(projectRoot, 'docs/feature-map.md'), `# OMP feature map\n\nGenerated from upstream \`${lock.revision}\`. This is an inventory of execution surfaces, not a claim that each surface has been verified. Settings are discovered live using \`desktop_settings\`; every registry entry uses the settings form.\n\n| Kind | Capability | Surface |\n|---|---|---|\n${rows.join('\n')}\n`);
+await Bun.write(path.join(outputRoot, 'docs/feature-map.md'), `# OMP feature map\n\nGenerated from upstream \`${lock.revision}\`. This is an inventory of execution surfaces, not a claim that each surface has been verified. Settings are discovered live using \`desktop_settings\`; every registry entry uses the settings form.\n\n| Kind | Capability | Surface |\n|---|---|---|\n${rows.join('\n')}\n`);
 console.log(`Generated ${entries.length} capability entries and matching RPC contracts.`);

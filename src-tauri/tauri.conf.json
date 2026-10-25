@@ -13,5 +13,5 @@
     "windows": [{ "label": "main", "title": "Better OMP Desktop", "width": 1440, "height": 940, "minWidth": 880, "minHeight": 640, "backgroundColor": "#f8f8f6" }],
     "security": { "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'" }
   },
-  "bundle": { "active": true, "targets": ["nsis"], "icon": ["icons/icon.ico"], "windows": { "webviewInstallMode": { "type": "skip" }, "nsis": { "displayLanguageSelector": true, "languages": ["English", "SimpChinese"], "installMode": "currentUser" } } }
+  "bundle": { "active": true, "targets": ["nsis"], "icon": ["icons/icon.ico"], "resources": { "../artifacts/runtime-windows-x64/": "runtime-windows-x64/", "../LICENSE": "LICENSE", "../THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md" }, "windows": { "webviewInstallMode": { "type": "skip" }, "nsis": { "displayLanguageSelector": true, "languages": ["English", "SimpChinese"], "installMode": "currentUser", "compression": "lzma" } } }
 }

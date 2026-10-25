@@ -40,6 +40,7 @@ pub struct Sessions {
     sessions: Mutex<HashMap<String, Session>>,
     terminals: Mutex<HashMap<String, Terminal>>,
     opening: Mutex<()>,
+    browser_logins: Arc<crate::browser_login::BrowserLogins>,
 }
 
 fn emit(app: &AppHandle, id: &str, event: Value) {
@@ -110,7 +111,9 @@ impl Sessions {
         client
             .call_raw(json!({"type":"set_event_filter","events":null,"messageUpdates":"delta"}))
             .map_err(|e| e.to_string())?;
-        let settled = Arc::new(AtomicBool::new(state["isSettled"].as_bool().unwrap_or(false)));
+        let settled = Arc::new(AtomicBool::new(
+            state["isSettled"].as_bool().unwrap_or(false),
+        ));
         let path_cell = Arc::new(Mutex::new(actual_path.clone()));
         let result = json!({"id":id,"cwd":cwd,"path":actual_path,"state":state});
         self.sessions.lock().unwrap().insert(
@@ -123,10 +126,31 @@ impl Sessions {
                 _job: job,
             },
         );
+        let browser_logins = self.browser_logins.clone();
+        let browser_root = root.to_owned();
+        let browser_client = Arc::downgrade(&client);
         thread::spawn(move || {
             // 单独消费事件，控制请求不会排在 UI 渲染之后。
             while let Ok(event) = receiver.recv() {
                 let event = event_value(event);
+                if event["type"] == "extension_ui_request" {
+                    if event["method"] == "browser_session" {
+                        let Some(client) = browser_client.upgrade() else {
+                            break;
+                        };
+                        browser_logins.start(
+                            app.clone(),
+                            browser_root.clone(),
+                            id.clone(),
+                            client,
+                            event,
+                        );
+                        continue;
+                    }
+                    if event["method"] == "cancel" {
+                        browser_logins.cancel(&id, event["targetId"].as_str());
+                    }
+                }
                 match event["type"].as_str().unwrap_or("") {
                     "agent_start" => {
                         settled.store(false, Ordering::Release);
@@ -146,6 +170,7 @@ impl Sessions {
                 }
                 emit(&app, &id, event);
             }
+            browser_logins.cancel(&id, None);
             emit(
                 &app,
                 &id,
@@ -185,8 +210,17 @@ impl Sessions {
             }
         }
         if is_prompt && result.is_err() || command_type == "get_state" {
-            let state = if command_type == "get_state" { result.as_ref().ok().cloned() } else { client.call_raw(json!({"type":"get_state"})).ok() };
-            if let Some(state) = state { settled.store(state["isSettled"].as_bool().unwrap_or(false), Ordering::Release); }
+            let state = if command_type == "get_state" {
+                result.as_ref().ok().cloned()
+            } else {
+                client.call_raw(json!({"type":"get_state"})).ok()
+            };
+            if let Some(state) = state {
+                settled.store(
+                    state["isSettled"].as_bool().unwrap_or(false),
+                    Ordering::Release,
+                );
+            }
         }
         result
     }
@@ -214,11 +248,15 @@ impl Sessions {
                 return Err("This session still has active work. Stop it before closing.".into());
             }
         }
+        self.browser_logins.cancel(id, None);
         sessions.remove(id);
         Ok(Value::Null)
     }
 
     pub fn shutdown(&self) {
+        for id in self.sessions.lock().unwrap().keys() {
+            self.browser_logins.cancel(id, None);
+        }
         let clients: Vec<_> = self
             .sessions
             .lock()
@@ -281,8 +319,6 @@ impl Sessions {
             (session.cwd.clone(), path)
         };
         let executable = storage::current_runtime(root)?.ok_or("Install OMP first.")?;
-        // 先释放 RPC 写者，再接手同一日志。
-        self.close(id)?;
         let pair = native_pty_system()
             .openpty(PtySize {
                 rows,
@@ -291,6 +327,8 @@ impl Sessions {
                 pixel_height: 0,
             })
             .map_err(|e| e.to_string())?;
+        let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
+        let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
         let mut cmd = CommandBuilder::new(executable);
         cmd.cwd(cwd);
         cmd.env("OMP_USER_ROOT", root.join("omp"));
@@ -298,11 +336,19 @@ impl Sessions {
             cmd.arg("--session");
             cmd.arg(path);
         }
-        let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
+        // 先准备终端资源，再释放 RPC 写者，避免预检失败打断会话。
+        self.close(id)?;
+        let mut child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
         drop(pair.slave);
-        let job = ProcessJob::attach(child.process_id().ok_or("Terminal did not start.")?)?;
-        let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
-        let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
+        let job = child
+            .process_id()
+            .ok_or_else(|| "Terminal did not start.".to_owned())
+            .and_then(ProcessJob::attach)
+            .map_err(|error| {
+                let _ = child.kill();
+                let _ = child.wait();
+                error
+            })?;
         self.terminals.lock().unwrap().insert(
             id.to_owned(),
             Terminal {

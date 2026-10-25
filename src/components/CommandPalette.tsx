@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Command, Play, Search } from 'lucide-react';
-import { request, rpc } from '../lib/bridge';
+import { onDesktopEvent, request, rpc } from '../lib/bridge';
+import { rpcCommand } from '../lib/command-routes';
 import type { Copy } from '../lib/i18n';
 import type { CatalogEntry, Json } from '../lib/types';
 import schema from '../generated/rpc-wire.schema.json';
 
-export default function CommandPalette({ t, sessionId, cwd, close, send, onError, navigate, ensureSession }: { t: Copy; sessionId?: string; cwd: string; close: () => void; send: (text: string) => void; onError: (error: unknown) => void; navigate: (entry: CatalogEntry) => boolean; ensureSession: () => Promise<string> }) {
+export default function CommandPalette({ t, sessionId, cwd, close, send, onError, navigate, ensureSession, onSessionChanged }: { t: Copy; sessionId?: string; cwd: string; close: () => void; send: (text: string) => void; onError: (error: unknown) => void; navigate: (entry: CatalogEntry, args?: string) => boolean; ensureSession: () => Promise<string>; onSessionChanged: (id: string) => Promise<void> }) {
   const [entries, setEntries] = useState<CatalogEntry[]>([]);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<CatalogEntry | null>(null);
@@ -13,6 +14,7 @@ export default function CommandPalette({ t, sessionId, cwd, close, send, onError
   const [output, setOutput] = useState('');
   const [busy, setBusy] = useState(false);
   const [fields, setFields] = useState<Record<string, string>>({});
+  const runningSession = useRef(sessionId);
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     dialog.current?.showModal();
@@ -20,11 +22,21 @@ export default function CommandPalette({ t, sessionId, cwd, close, send, onError
       const list = Array.isArray(catalog) ? catalog : catalog.commands ?? catalog.entries ?? [];
       const dynamic = available.commands ?? available;
       const merged = new Map<string, CatalogEntry>();
-      for (const entry of [...list, ...dynamic]) { const key = `${entry.kind ?? 'slash'}:${entry.name}`; merged.set(key, { ...merged.get(key), ...entry }); }
+      for (const entry of [...list, ...dynamic]) { const kind = entry.kind ?? 'slash'; const key = `${kind}:${entry.name}`; merged.set(key, { ...merged.get(key), ...entry, kind }); }
       setEntries([...merged.values()]);
     }).catch(onError);
     return () => dialog.current?.close();
   }, []);
+  useEffect(() => {
+    let disposed = false;
+    let stop: (() => void) | undefined;
+    void onDesktopEvent(({ sessionId: id, event }) => {
+      if (id !== runningSession.current) return;
+      if (selected?.name === 'btw' && event.type === 'btw_record') setOutput(JSON.stringify(event.record, null, 2));
+      if (selected?.name === 'live_start' && ['live_phase', 'live_transcript', 'live_end'].includes(event.type)) setOutput(JSON.stringify(event, null, 2));
+    }).then(unlisten => { if (disposed) unlisten(); else stop = unlisten; }).catch(onError);
+    return () => { disposed = true; stop?.(); };
+  }, [selected?.name]);
   const commandSpec = schema['x-rpc'].commands.find(command => command.name === selected?.name);
   const params: Json = commandSpec?.params ? (schema.$defs as Json)[commandSpec.params] : {};
   const properties: Record<string, Json> = params?.properties ?? {};
@@ -32,7 +44,7 @@ export default function CommandPalette({ t, sessionId, cwd, close, send, onError
   const run = async () => {
     if (!selected) return;
     if (selected.kind !== 'cli' && selected.kind !== 'rpc') {
-      if (navigate(selected)) { close(); return; }
+      if (navigate(selected, args)) { close(); return; }
       if (selected.kind === 'tool') { send(`Use the ${selected.name} tool to `); close(); return; }
       send(`/${selected.name.replace(/^\//, '')}${args ? ` ${args}` : ''}`); close(); return;
     }
@@ -40,6 +52,7 @@ export default function CommandPalette({ t, sessionId, cwd, close, send, onError
     try {
       if (selected.kind === 'rpc') {
         const id = sessionId ?? await ensureSession();
+        runningSession.current = id;
         const payload: Json = {};
         for (const [key, raw] of Object.entries(fields)) {
           if (raw === '') continue;
@@ -49,6 +62,7 @@ export default function CommandPalette({ t, sessionId, cwd, close, send, onError
         for (const key of params.required ?? []) if (!(key in payload)) throw Error(`${key}: ${t.commandArgs}`);
         const result = await rpc(id, selected.name, payload);
         setOutput(result === undefined || result === null ? t.emptyOutput : JSON.stringify(result, null, 2));
+        await onSessionChanged(id);
         return;
       }
       let argumentList: string[] = [];
@@ -62,8 +76,7 @@ export default function CommandPalette({ t, sessionId, cwd, close, send, onError
   };
   const filtered = entries.filter(entry => `${entry.name} ${entry.description ?? ''}`.toLowerCase().includes(query.toLowerCase()));
   const selectEntry = (entry: CatalogEntry) => {
-    const route: Record<string, string> = { btw: 'btw', goal: 'goal', 'guided-goal': 'goal', live: 'live_start', queue: 'follow_up' };
-    const target = entry.kind === 'slash' ? route[entry.name] : undefined;
+    const target = rpcCommand(entry);
     setSelected(target ? { ...entry, name: target, kind: 'rpc', surface: 'rpc' } : entry);
     setArgs(''); setFields({}); setOutput('');
   };

@@ -1,6 +1,8 @@
 node_modules/
 dist/
 target/
+build/
+NUL
 .codegraph/
 .cache/
 .references/
@@ -12,3 +14,4 @@ AGENTS.md
 PRODUCT.md
 test/
 src-tauri/gen/
+.local-data/

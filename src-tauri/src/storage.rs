@@ -233,11 +233,8 @@ pub fn install_runtime(root: &Path, source: &Path) -> Result<Value> {
         .ok_or("Runtime manifest has no directory.")?;
     let expected: Value = serde_json::from_str(include_str!("../../upstream.lock.json"))
         .map_err(|e| e.to_string())?;
-    if Some(manifest.revision.as_str()) != expected["revision"].as_str()
-        || Some(manifest.protocol_version as u64) != expected["protocolVersion"].as_u64()
-        || Some(manifest.version.as_str()) != expected["runtimeVersion"].as_str()
-    {
-        return Err("This runtime package does not match the desktop build. Import its matching runtime package.".into());
+    if Some(manifest.protocol_version as u64) != expected["protocolVersion"].as_u64() {
+        return Err("This runtime package uses an incompatible RPC protocol.".into());
     }
     let mut names = BTreeSet::new();
     for file in &manifest.files {
@@ -295,6 +292,30 @@ pub fn install_runtime(root: &Path, source: &Path) -> Result<Value> {
             .map_err(|e| context("Remove completed installation marker", &marker, e))?;
     }
     runtime_info(root)
+}
+
+pub fn install_bundled_runtime(root: &Path, package: &Path) -> Result<Value> {
+    let manifest: RuntimeManifest = read_json(&package.join("runtime-manifest.json"))?;
+    let id = format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(&manifest).map_err(|e| e.to_string())?)
+    );
+    let selection: RuntimeSelection = json_or_default(&root.join("runtime.json"))?;
+    let directory = root.join("runtimes").join(&id);
+    if selection.current.as_deref() == Some(&id)
+        && read_json::<RuntimeManifest>(&directory.join("runtime-manifest.json")).is_ok()
+        && !directory.join(".installing.json").exists()
+    {
+        let intact = manifest.files.iter().all(|file| {
+            relative_path(&file.path)
+                .and_then(|path| digest(&directory.join(path)))
+                .is_ok_and(|hash| hash == file.sha256)
+        });
+        if intact {
+            return runtime_info(root);
+        }
+    }
+    install_runtime(root, package)
 }
 
 pub fn rollback_runtime(root: &Path) -> Result<Value> {
@@ -904,6 +925,10 @@ mod tests {
         write_json(&package.join("runtime-manifest.json"), &manifest).unwrap();
         let first = install_runtime(&root, &package).unwrap();
         assert_eq!(first, install_runtime(&root, &package).unwrap());
+        assert_eq!(
+            first["id"],
+            install_bundled_runtime(&root, &package).unwrap()["id"]
+        );
         fs::write(&executable, b"runtime two").unwrap();
         assert!(install_runtime(&root, &package).is_err());
         assert_eq!(first["path"], runtime_info(&root).unwrap()["path"]);

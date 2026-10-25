@@ -4,10 +4,12 @@ import { createHash } from 'node:crypto';
 import { lock, projectRoot, upstreamRoot } from './prepare-upstream';
 
 export async function packageRuntime(): Promise<string> {
-  const output = path.resolve(process.env.OMP_DESKTOP_ARTIFACTS ?? path.join(projectRoot, 'artifacts'), 'runtime-windows-x64');
+  const output = path.resolve(process.env.OMP_DESKTOP_OUTPUT_ROOT ?? path.join(projectRoot, 'artifacts'), 'runtime-windows-x64');
   await fs.mkdir(output, { recursive: true });
   const executable = 'omp.exe';
-  await fs.copyFile(path.join(upstreamRoot, 'packages/coding-agent/dist/omp-windows-x64.exe'), path.join(output, executable));
+  const binary = Bun.file(path.join(upstreamRoot, 'packages/coding-agent/binaries/omp-windows-x64.exe'));
+  if (!await binary.exists()) throw new Error('The OMP release builder did not produce its Windows runtime binary.');
+  await fs.copyFile(path.join(upstreamRoot, 'packages/coding-agent/binaries/omp-windows-x64.exe'), path.join(output, executable));
   await fs.copyFile(path.join(upstreamRoot, 'LICENSE'), path.join(output, 'LICENSE.omp'));
   await fs.copyFile(path.join(upstreamRoot, 'THIRD-PARTY-NOTICES.txt'), path.join(output, 'THIRD-PARTY-NOTICES.txt'));
   const files = [];
