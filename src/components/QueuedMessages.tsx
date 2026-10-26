@@ -28,12 +28,20 @@ export default function QueuedMessages({ session, t, disabled, refresh, restore,
     } catch (error) { onError(error); } finally { lock.current = false; setPending(false); end(); }
   };
   const queues = session.state.queuedMessages;
-  if (!queues?.steering?.length && !queues?.followUp?.length) return null;
-  return <div className="queued-messages">{(['steering', 'followUp'] as const).flatMap(queue => (queues?.[queue] ?? []).map((message: string, index: number) => {
+  const rows = new Map<string, { queue: 'steering' | 'followUp'; message: string; delivered: boolean; count: number }>();
+  // 原生按文本取回首个匹配项；同文归组，让回执决定实际归还的附件。
+  for (const queue of ['steering', 'followUp'] as const) (queues?.[queue] ?? []).forEach((message: string, index: number) => {
     const delivered = queue === 'steering' && index < (queues?.liveSteered ?? 0);
-    return <div key={`${queue}:${index}:${message}`}><span title={message}>{queue === 'steering' ? t.steer : t.followUp}: {message}</span>
+    const key = JSON.stringify([queue, message, delivered]);
+    const row = rows.get(key);
+    if (row) row.count++; else rows.set(key, { queue, message, delivered, count: 1 });
+  });
+  if (!rows.size) return null;
+  return <div className="queued-messages">{[...rows].map(([key, { queue, message, delivered, count }]) => {
+    const label = count > 1 ? t.restoreOneQueued : t.restoreQueued;
+    return <div key={key}><span title={message}>{queue === 'steering' ? t.steer : t.followUp}: {message}{count > 1 && <small> ×{count}</small>}</span>
       {queue === 'followUp' && <button className="quiet-button" disabled={disabled || pending} onClick={() => void act(queue, message, false)}>{t.steer}</button>}
-      <button className="icon-button" title={delivered ? t.queueDelivered : t.restoreQueued} aria-label={t.restoreQueued} disabled={delivered || disabled || pending} onClick={() => void act(queue, message, true)}><Pencil size={13} /></button>
+      <button className="icon-button" title={delivered ? t.queueDelivered : label} aria-label={label} disabled={delivered || disabled || pending} onClick={() => void act(queue, message, true)}><Pencil size={13} /></button>
     </div>;
-  }))}</div>;
+  })}</div>;
 }

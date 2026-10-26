@@ -17,7 +17,7 @@ export function GenerationRateProvider({ session, language, cache, children }: {
   const running = !historyOnly && isSessionRunning(session);
   const [result, setResult] = useState<{ key: string; rate: number | null } | null>(null);
   const serial = useRef<Promise<number | null> | null>(null);
-  const calls = useMemo(() => activeToolCallIds(session?.messages ?? []), [session?.messages]);
+  const calls = useMemo(() => activeToolCallIds(session?.messages ?? [], session?.state.desktopRunAnchor), [session?.messages, session?.state.desktopRunAnchor]);
 
   useEffect(() => {
     if (!id || historyOnly) return;
