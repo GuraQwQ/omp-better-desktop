@@ -1,10 +1,10 @@
-name: Windows 预览发行
+name: Windows 发行
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 已有的预览标签，例如 v0.1.0-preview.1
+        description: 已有的发行标签，例如 v0.2.0 或 v0.2.0-preview.1
         required: true
         type: string
 
@@ -14,6 +14,9 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
     env:
       OMP_DESKTOP_CACHE: ${{ github.workspace }}/.cache
       CARGO_HOME: ${{ github.workspace }}/.cache/cargo
@@ -22,22 +25,31 @@ jobs:
       - name: 校验标签格式
         shell: pwsh
         env:
-          PREVIEW_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          if ($env:PREVIEW_TAG -notmatch '^v\d+\.\d+\.\d+-preview\.\d+$') { throw '请选择 vX.Y.Z-preview.N 标签' }
+          if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+(?:-preview\.\d+)?$') { throw '请选择 vX.Y.Z 或 vX.Y.Z-preview.N 标签' }
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag }}
           persist-credentials: false
       - name: 校验版本一致
+        id: release
         shell: pwsh
         env:
-          PREVIEW_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $tauriVersion = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ($env:RELEASE_TAG -notmatch '^v(?<version>\d+\.\d+\.\d+)(?<preview>-preview\.\d+)?$') { throw '发行标签格式无效' }
+          $tagVersion = $Matches.version
+          $isPreview = [bool]$Matches.preview
+          $version = (Get-Content package.json -Raw -Encoding utf8 | ConvertFrom-Json).version
+          $tauriVersion = (Get-Content src-tauri/tauri.conf.json -Raw -Encoding utf8 | ConvertFrom-Json).version
           $cargoVersion = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version = "([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
-          if ($version -ne $tauriVersion -or $version -ne $cargoVersion -or $env:PREVIEW_TAG -notmatch ('^v' + [regex]::Escape($version) + '-preview\.\d+$')) { throw '标签与桌面版本不一致' }
+          $cargoLock = [regex]::Match((Get-Content src-tauri/Cargo.lock -Raw -Encoding utf8), '(?m)^name = "omp-better-desktop"\r?\nversion = "([^"]+)"')
+          if (-not $cargoLock.Success -or $version -ne $tauriVersion -or $version -ne $cargoVersion -or $version -ne $cargoLock.Groups[1].Value -or $version -ne $tagVersion) { throw '标签与桌面版本不一致' }
+          $suffix = if ($isPreview) { '-preview' } else { '' }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "prerelease=$($isPreview.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "installer_name=Better-OMP-Desktop_${version}_windows-x64${suffix}.exe" >> $env:GITHUB_OUTPUT
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
@@ -53,24 +65,25 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - run: bun run build:desktop
+      - name: 核对生成文件与发行提交一致
+        run: git diff --exit-code
       - name: 整理发行附件
         shell: pwsh
         env:
-          PREVIEW_TAG: ${{ inputs.tag }}
+          INSTALLER_NAME: ${{ steps.release.outputs.installer_name }}
         run: |
           New-Item -ItemType Directory -Force artifacts/release | Out-Null
           $installers = @(Get-ChildItem -LiteralPath build/desktop-msvc/release/bundle/nsis -Filter '*.exe')
           if (-not $installers.Count) { throw '没有生成 Windows 安装器' }
           if ($installers.Count -ne 1) { throw '应生成一个 Windows x64 安装器' }
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $installerName = "Better-OMP-Desktop_${version}_windows-x64-preview.exe"
+          $installerName = $env:INSTALLER_NAME
           Copy-Item -LiteralPath $installers[0].FullName -Destination (Join-Path artifacts/release $installerName)
           $sum = (Get-FileHash -LiteralPath (Join-Path artifacts/release $installerName) -Algorithm SHA256).Hash.ToLowerInvariant()
           [IO.File]::WriteAllText((Join-Path $PWD 'artifacts/release/SHA256SUMS'), "$sum  $installerName`n", [Text.UTF8Encoding]::new($false))
           Copy-Item LICENSE,THIRD-PARTY-NOTICES.md -Destination artifacts/release
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-preview
+          name: windows-release
           path: artifacts/release/*
           if-no-files-found: error
 
@@ -80,25 +93,39 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
-          name: windows-preview
+          name: windows-release
           path: release
-      - name: 创建或更新预览草稿
+      - name: 创建或更新发行草稿
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          PREVIEW_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          DESKTOP_VERSION: ${{ needs.build.outputs.version }}
+          IS_PRERELEASE: ${{ needs.build.outputs.prerelease }}
         run: |
-          cat > notes.md <<'EOF'
-          Windows x64 早期预览版，内置匹配的 OMP 运行时。
+          if test -f "docs/releases/$DESKTOP_VERSION.md"; then
+            cp "docs/releases/$DESKTOP_VERSION.md" notes.md
+          else
+            if test "$IS_PRERELEASE" = true; then
+              printf '%s\n\n' 'Windows x64 早期预览版，内置匹配的 OMP 运行时。' > notes.md
+            else
+              printf '%s\n\n' 'Windows x64 桌面发行包，内置匹配的 OMP 运行时。' > notes.md
+            fi
+            cat >> notes.md <<'EOF'
 
           安装器未签名，Windows 可能显示发布者未知提示。需要已有 WebView2 或手动配置 Fixed Version WebView2。使用 SHA256SUMS 校验附件；功能边界和数据迁移说明见仓库文档。
           EOF
-          if gh release view "$PREVIEW_TAG" --json isDraft --jq .isDraft > draft-state; then
-            test "$(cat draft-state)" = true || { echo '该发行已公开，停止覆盖附件'; exit 1; }
-            gh release edit "$PREVIEW_TAG" --draft --prerelease --title "Better OMP Desktop $PREVIEW_TAG" --notes-file notes.md
-          else
-            gh release create "$PREVIEW_TAG" --verify-tag --draft --prerelease --title "Better OMP Desktop $PREVIEW_TAG" --notes-file notes.md
           fi
-          gh release upload "$PREVIEW_TAG" release/* --clobber
+          if gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft > draft-state; then
+            test "$(cat draft-state)" = true || { echo '该发行已公开，停止覆盖附件'; exit 1; }
+            gh release edit "$RELEASE_TAG" --draft --prerelease="$IS_PRERELEASE" --title "Better OMP Desktop $RELEASE_TAG" --notes-file notes.md
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --prerelease="$IS_PRERELEASE" --title "Better OMP Desktop $RELEASE_TAG" --notes-file notes.md
+          fi
+          gh release upload "$RELEASE_TAG" release/* --clobber

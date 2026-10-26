@@ -1,6 +1,6 @@
-# 预览发行流程
+# Windows 发行流程
 
-当前发行目标为 Windows x64。版本字段保存在 `package.json`、`src-tauri/Cargo.toml` 与 `src-tauri/tauri.conf.json`，发版时同步编辑它们，不生成另一份版本文件。
+当前发行目标为 Windows x64。版本字段保存在 `package.json`、`src-tauri/Cargo.toml` 与 `src-tauri/tauri.conf.json`，发版时同步编辑，并更新 `Cargo.lock` 中的本项目条目，不生成另一份版本文件。
 
 ## 公开基线
 
@@ -22,11 +22,11 @@
 
 Bun 1.4.4 是当前已验证的发行工具版本；锁定 OMP、原生 addon 与生成 wire 的原因是协议和 ABI 兼容。更新责任人为仓库维护者，升级时同步重新验证这些输入。
 
-## 手动创建 Windows 预览草稿
+## 手动创建 Windows 发行草稿
 
-1. 在待发布提交上创建 `vX.Y.Z-preview.N` 标签，`X.Y.Z` 与三处桌面版本一致。
-2. 推送该标签后，在 Actions 手动运行“Windows 预览发行”，填写已有标签。
-3. 流程在只读任务中重新构建运行时与安装器，生成 `SHA256SUMS` 和许可附件；另一个只具发行写权限的任务创建标记为 Pre-release 的草稿。
+1. 在待发布提交上创建正式 `vX.Y.Z` 或预览 `vX.Y.Z-preview.N` 标签，`X.Y.Z` 与桌面各版本字段一致；将版本说明写入 `docs/releases/X.Y.Z.md`。
+2. 推送该标签后，在 Actions 手动运行“Windows 发行”（`preview-release.yml`），填写已有标签。
+3. 流程在只读任务中重新构建运行时与安装器，生成 `SHA256SUMS` 和许可附件；另一个只具发行写权限的任务创建草稿，正式标签使用普通 Release，预览标签使用 Pre-release。
 4. 维护者检查附件哈希、实际安装、首次启动、升级与数据保留，完善版本说明后发布草稿。
 
 同一草稿可重复运行来更新附件；已经公开的发行不会被流程覆盖。当前安装器未签名，发行说明必须保留该事实与 WebView2 要求。后续启用签名时同步修改安装器验证与发行说明。
