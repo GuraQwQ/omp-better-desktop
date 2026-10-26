@@ -2,6 +2,7 @@ mod bootstrap;
 mod browser_login;
 mod history;
 mod platform;
+mod providers;
 mod sessions;
 mod storage;
 
@@ -128,6 +129,18 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
             }
         }
         "data.discover" => storage::discover_omp(root),
+        "providers.config" => {
+            let _access = desktop.data_access.read().unwrap();
+            let result = providers::config(root, &request)?;
+            if request["operation"] == "save" {
+                desktop.sessions.activate(app.clone(), None)?;
+            }
+            Ok(result)
+        }
+        "providers.discover" => {
+            let _access = desktop.data_access.read().unwrap();
+            providers::discover(root, &request)
+        }
         "project.add" | "project.remove" => {
             let _lock = desktop.configuration.lock().unwrap();
             let path = text(&request, "path")?;
