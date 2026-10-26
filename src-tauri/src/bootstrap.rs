@@ -123,7 +123,6 @@ pub fn resolve_root() -> Result<PathBuf, String> {
         return prepare_root(configured_path(&directory, &location.data_root)?);
     }
     let selected = choose_root()?;
-    check_non_system_path(&directory)?;
     let root = prepare_root(selected)?;
     let location = Location {
         data_root: root.to_string_lossy().to_string(),
@@ -173,7 +172,6 @@ pub fn prepare_webview(root: &Path) -> Result<(), String> {
                 webview2_runtime_path: None,
             });
             location.webview2_runtime_path = Some(path.to_string_lossy().to_string());
-            check_non_system_path(&directory)?;
             save_location(&directory, &location)?;
             unsafe {
                 env::set_var("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", path);
