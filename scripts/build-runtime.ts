@@ -72,21 +72,32 @@ const installed: { target: string; backup?: string; directory: boolean }[] = [];
 const lockPath = path.join(projectRoot, 'upstream.lock.json');
 const beforeBuild = await Promise.all(['upstream.lock.json', 'docs/feature-map.md', 'patches/0001-desktop-runtime.patch'].map(file => Bun.file(path.join(projectRoot, file)).bytes()));
 
+async function renameWithRetry(source: string, target: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try { await fs.rename(source, target); return; }
+    catch (error) {
+      if (process.platform !== 'win32' || !['EPERM', 'EBUSY'].includes((error as NodeJS.ErrnoException).code ?? '') || attempt >= 6) throw error;
+      console.warn(`Windows 文件暂被占用，重试重命名 ${path.basename(source)}（${attempt + 1}/6）`);
+      await new Promise(resolve => setTimeout(resolve, 100 * 2 ** attempt));
+    }
+  }
+}
+
 async function install(staged: string, target: string, directory = false): Promise<void> {
   await fs.mkdir(path.dirname(target), { recursive: true });
   let backup: string | undefined;
   try {
     await fs.access(target);
     backup = path.join(stageRoot, 'rollback-' + installed.length);
-    await fs.rename(target, backup);
+    await renameWithRetry(target, backup);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   try {
-    await fs.rename(staged, target);
+    await renameWithRetry(staged, target);
     installed.push({ target, backup, directory });
   } catch (error) {
-    if (backup) await fs.rename(backup, target);
+    if (backup) await renameWithRetry(backup, target);
     throw error;
   }
 }
@@ -94,7 +105,7 @@ async function install(staged: string, target: string, directory = false): Promi
 async function rollback(): Promise<void> {
   for (const item of installed.reverse()) {
     await fs.rm(item.target, { recursive: item.directory, force: true });
-    if (item.backup) await fs.rename(item.backup, item.target);
+    if (item.backup) await renameWithRetry(item.backup, item.target);
   }
 }
 

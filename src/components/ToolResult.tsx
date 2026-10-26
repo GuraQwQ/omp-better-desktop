@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { Check, ChevronRight, FileDiff, FileText, LoaderCircle, Square, TerminalSquare, X } from 'lucide-react';
 import { messageText } from '../lib/session-state';
 import { toolFailed } from '../lib/transcript-items';
+import { ToolGenerationRate } from './GenerationRate';
 import type { Copy } from '../lib/i18n';
 import type { Json, Message } from '../lib/types';
 import './tool-result.css';
 
 const record = (value: unknown): Json => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Json : {};
 const text = (value: unknown): string => typeof value === 'string' ? value : '';
-export const toolLabel = (name: string | undefined, t: Copy): string => name === 'read' ? t.toolRead : name === 'edit' ? t.toolEdit : name === 'bash' ? t.toolRun : name ?? t.tool;
+export const toolLabel = (name: string | undefined, t: Copy): string => name === 'read' ? t.toolRead : name === 'edit' ? t.toolEdit : name === 'write' ? t.toolWrite : name === 'bash' ? t.toolRun : name ?? t.tool;
 
 function Output({ value, t, diff = false, numberAt }: { value: string; t: Copy; diff?: boolean; numberAt?: (index: number) => number | null | undefined }) {
   const [pages, setPages] = useState(1);
@@ -63,12 +64,12 @@ export default function ToolResult({ message, t, active = true, expanded, onExpa
   const firstText = typeof message.content === 'string' ? message.content : message.content?.find(block => block?.type === 'text')?.text ?? '';
   const summary = (kind === 'bash' ? text(args.command) : path) || firstText.split('\n', 1)[0] || '';
   const failed = toolFailed(message);
-  const running = !!message.running && active;
+  const running = !!message.running && active && !failed;
   const stopped = !!message.running && !active;
   const status = failed ? t.statusLabels.error : running ? t.running : stopped ? t.stopped : t.done;
-  const Icon = kind === 'read' ? FileText : kind === 'edit' ? FileDiff : TerminalSquare;
+  const Icon = kind === 'read' || kind === 'write' ? FileText : kind === 'edit' ? FileDiff : TerminalSquare;
   return <details className={`tool-result tool-structured ${failed ? 'is-error' : ''}`} open={open} onToggle={event => { if (event.target !== event.currentTarget) return; const next = event.currentTarget.open; setOwnOpen(next); onExpandedChange?.(next); }}>
-    <summary><ChevronRight size={12} aria-hidden="true" /><Icon size={14} aria-hidden="true" /><strong>{toolLabel(kind, t)}</strong><span className="tool-summary" title={summary.slice(0, 240)}>{summary.slice(0, 140)}</span><span className="tool-result-status" role="img" aria-label={status} title={status}>{failed ? <X size={13} /> : running ? <LoaderCircle className="spin" size={13} /> : stopped ? <Square size={12} /> : <Check size={13} />}</span></summary>
+    <summary><ChevronRight size={12} aria-hidden="true" /><Icon size={14} aria-hidden="true" /><strong>{toolLabel(kind, t)}</strong><span className="tool-summary" title={summary.slice(0, 240)}>{summary.slice(0, 140)}</span>{running && <ToolGenerationRate callId={message.toolCallId} />}<span className="tool-result-status" role="img" aria-label={status} title={status}>{failed ? <X size={13} /> : running ? <LoaderCircle className="spin" size={13} /> : stopped ? <Square size={12} /> : <Check size={13} />}</span></summary>
     {open && <ToolBody message={message} t={t} active={active} />}
   </details>;
 }

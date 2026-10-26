@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: windows-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: windows-latest

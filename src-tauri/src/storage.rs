@@ -46,7 +46,7 @@ fn timestamp() -> u64 {
         .as_secs()
 }
 
-fn storage_lock(root: &Path) -> Result<File> {
+pub(crate) fn storage_lock(root: &Path) -> Result<File> {
     if !root.is_absolute() {
         return Err("The managed data directory must be absolute.".into());
     }
@@ -82,7 +82,7 @@ fn write_json(path: &Path, value: &impl Serialize) -> Result<()> {
     atomic_write(path, &bytes)
 }
 
-fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     let parent = path.parent().ok_or("File has no parent directory.")?;
     fs::create_dir_all(parent).map_err(|e| context("Create", parent, e))?;
     let temporary = path.with_file_name(format!(
@@ -709,6 +709,82 @@ fn remove_managed_child(parent: &Path, child: &Path) -> Result<()> {
         fs::remove_file(&resolved)
     }
     .map_err(|e| context("Remove managed cache", &resolved, e))
+}
+
+#[cfg(windows)]
+pub fn takeover_status(root: &Path) -> Result<Value> {
+    use winreg::{
+        RegKey,
+        enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE},
+    };
+    let read_path = |key: &RegKey, path: &str| -> Result<String> {
+        match key
+            .open_subkey(path)
+            .and_then(|value| value.get_value::<String, _>("Path"))
+        {
+            Ok(value) => Ok(value),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+            Err(_) => Err("Cannot read the CLI command environment.".into()),
+        }
+    };
+    let user = read_path(&RegKey::predef(HKEY_CURRENT_USER), "Environment")?;
+    let machine = read_path(
+        &RegKey::predef(HKEY_LOCAL_MACHINE),
+        "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment",
+    )?;
+    let normalize = |value: &str| {
+        value
+            .trim()
+            .trim_matches('"')
+            .replace('/', "\\")
+            .trim_start_matches("\\\\?\\")
+            .trim_end_matches('\\')
+            .to_lowercase()
+    };
+    let bin = normalize(&root.join("bin").to_string_lossy());
+    let path = format!("{machine};{user}");
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn ExpandEnvironmentStringsW(source: *const u16, target: *mut u16, size: u32) -> u32;
+    }
+    let source: Vec<u16> = path.encode_utf16().chain(Some(0)).collect();
+    let mut expanded = vec![0u16; 256];
+    let path = loop {
+        let size = unsafe {
+            ExpandEnvironmentStringsW(
+                source.as_ptr(),
+                expanded.as_mut_ptr(),
+                expanded.len() as u32,
+            )
+        };
+        if size == 0 {
+            return Err("Cannot expand the CLI command environment.".into());
+        }
+        if size as usize <= expanded.len() {
+            break String::from_utf16_lossy(&expanded[..size as usize - 1]);
+        }
+        expanded.resize(size as usize, 0);
+    };
+    let enabled = path.split(';').any(|entry| normalize(entry) == bin);
+    // 按注册表里的 PATH 解析，避免继承旧终端环境或当前目录的同名程序。
+    let output = crate::platform::hidden(
+        std::process::Command::new("where.exe")
+            .arg("$PATH:omp")
+            .env("PATH", path),
+    )
+    .output()
+    .map_err(|_| "Cannot resolve the CLI command.")?;
+    let first = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .next()
+        .map(normalize);
+    let active = first.is_some_and(|value| value.starts_with(&format!("{bin}\\")));
+    Ok(json!({"enabled":enabled || active,"active":active}))
+}
+
+#[cfg(not(windows))]
+pub fn takeover_status(_root: &Path) -> Result<Value> {
+    Ok(json!({"enabled":false,"active":false}))
 }
 
 #[cfg(windows)]

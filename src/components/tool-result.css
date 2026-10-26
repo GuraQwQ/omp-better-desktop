@@ -19,6 +19,9 @@
 .thinking > summary, .message-body .tool-call > summary { display: flex; align-items: center; gap: 7px; padding: 7px 2px; margin: 0; font-size: 12px; border-radius: 4px; }
 .thinking-body { margin: 3px 0 10px 19px; padding-left: 12px; border-left: 1px solid var(--line); font-size: 13px; }
 .tool-call-state { margin-left: auto; color: var(--muted); font-size: 11px; }
+.tool-live-rate { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tool-live-rate .generation-rate { font-size: 11px; }
+.tool-live-rate + .tool-result-status, .tool-live-rate + .tool-steps-status, .tool-live-rate + .tool-call-state { margin-left: 0; }
 .message-body .tool-call > pre { margin: 1px 0 10px 19px; border-left: 1px solid var(--line); border-radius: 0; padding: 10px 12px; font-size: 12px; max-height: 320px; overflow: auto; }
 .tool-result-status { display: inline-flex; color: var(--success); }
 .tool-structured.is-error .tool-result-status, .tool-exit.is-error { color: var(--danger); }

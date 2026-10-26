@@ -1,0 +1,18 @@
+.custom-providers { margin-bottom: 28px; }
+.custom-providers h3 { margin-bottom: 8px; }
+.provider-scope { color: var(--secondary); font-size: 12px; margin-bottom: 6px; }
+.provider-config-path { display: block; overflow-wrap: anywhere; color: var(--muted); font-size: 11px; margin-bottom: 16px; }
+.provider-picker { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.provider-picker button[aria-pressed="true"] { background: var(--selected); color: var(--text); }
+.provider-form { display: grid; gap: 13px; }
+.provider-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.provider-form label { display: grid; gap: 6px; color: var(--secondary); font-size: 12px; min-width: 0; }
+.provider-form input, .provider-form textarea { width: 100%; font-size: 12px; }
+.provider-form .select { width: 100%; }
+.provider-form > button { justify-self: start; }
+.provider-model-heading, .provider-discovery { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
+.provider-discovery details { min-width: 0; flex: 1; }
+.provider-discovery pre { max-height: 180px; overflow: auto; font-size: 11px; margin-bottom: 0; }
+.provider-error { color: var(--danger); font-size: 12px; margin: 0; }
+.provider-notice { color: var(--success); font-size: 12px; margin: 0; }
+@media (max-width: 1000px) { .provider-fields { grid-template-columns: 1fr; } }
