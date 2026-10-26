@@ -5142,6 +5142,12 @@ pub struct OpenSessionParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GetTokenRateResult {
+	#[serde(rename = "tokensPerSecond", deserialize_with = "Deserialize::deserialize")]
+	pub tokens_per_second: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SetFastModeParams {
 	pub enabled: bool,
 }
@@ -6182,6 +6188,20 @@ impl Command for GetStateCommand {
 
 	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
 		serde_json::from_value::<SessionState>(data.unwrap_or_else(|| Value::Object(Map::new())))
+	}
+}
+
+/// 读取会话原生平滑生成速率，样本不足时为空。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct GetTokenRateCommand {}
+
+impl Command for GetTokenRateCommand {
+	const NAME: &'static str = "get_token_rate";
+	const TIMEOUT_MS: Option<u64> = None;
+	type Output = GetTokenRateResult;
+
+	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
+		serde_json::from_value::<GetTokenRateResult>(data.unwrap_or_else(|| Value::Object(Map::new())))
 	}
 }
 

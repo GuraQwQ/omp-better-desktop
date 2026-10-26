@@ -1388,6 +1388,13 @@
     "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
   },
   {
+    "name": "get_token_rate",
+    "kind": "rpc",
+    "description": "读取会话原生平滑生成速率，样本不足时为空。",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
     "name": "set_fast_mode",
     "kind": "rpc",
     "description": "Enable or disable fast mode for the session.",

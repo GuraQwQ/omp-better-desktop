@@ -190,6 +190,7 @@ Generated from upstream `2d39e5f5d26c12d49b241f58905b5526106d2a1e`. This is an i
 | rpc | `new_session` | rpc |
 | rpc | `open_session` | rpc |
 | rpc | `get_state` | rpc |
+| rpc | `get_token_rate` | rpc |
 | rpc | `set_fast_mode` | rpc |
 | rpc | `set_slow_mode` | rpc |
 | rpc | `goal` | rpc |
