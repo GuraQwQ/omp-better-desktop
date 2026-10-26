@@ -53,6 +53,7 @@ const en = {
   searchSessions: 'Search conversations…', clearSearch: 'Clear search', editMessage: 'Edit message', retryTurn: 'Retry this turn',
   messageChanged: 'This message is no longer on the current branch. Reopen the conversation to refresh it.',
   toolRawOutput: 'Raw output', toolShowMore: 'Show more', toolShowLess: 'Show less', toolExitCode: 'Exit code',
+  toolRead: 'Read', toolEdit: 'Edit', toolRun: 'Run', toolSteps: '{count} steps', toolOther: 'Other',
 };
 const zh: typeof en = {
   product: 'Better OMP Desktop', newSession: '新建对话', addProject: '添加项目', projects: '项目',
@@ -107,6 +108,7 @@ const zh: typeof en = {
   searchSessions: '搜索对话…', clearSearch: '清除搜索', editMessage: '编辑消息', retryTurn: '重试此回合',
   messageChanged: '这条消息已不在当前分支，请重新打开对话后再编辑。',
   toolRawOutput: '原始输出', toolShowMore: '显示更多', toolShowLess: '收起预览', toolExitCode: '退出码',
+  toolRead: '读取', toolEdit: '修改', toolRun: '执行', toolSteps: '{count} 个步骤', toolOther: '其他',
 };
 export type Copy = typeof en;
 export const copy = (language: Language): Copy => language === 'zh' ? zh : en;

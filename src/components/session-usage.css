@@ -1,9 +1,18 @@
-.session-usage { display: flex; align-items: center; justify-content: space-between; gap: 5px 18px; flex-wrap: wrap; padding: 8px 3px 0; color: var(--secondary); font-size: 10px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.session-usage { position: relative; padding: 8px 3px 0; color: var(--secondary); font-size: 12px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.session-usage-summary { display: flex; align-items: center; justify-content: space-between; gap: 5px 18px; flex-wrap: wrap; border-radius: 4px; }
+.session-usage-summary:hover { color: var(--text); }
 .session-context, .session-token-usage { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .session-usage span { white-space: nowrap; }
 .session-usage strong { color: var(--text); font-weight: 500; }
 .session-context-meter { width: 52px; height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
 .session-context-meter > span { display: block; height: 100%; background: var(--accent); }
-.session-token-usage > span { cursor: help; }
 .cache-hit-rate { margin-left: 8px; }
-@media (max-width: 1120px) { .session-usage { gap: 4px 12px; } .session-context, .session-token-usage { gap: 8px; } }
+.session-usage[open] .usage-disclosure-icon { transform: rotate(180deg); }
+.usage-details { position: absolute; z-index: 18; bottom: calc(100% + 9px); right: 0; width: min(360px, 100%); padding: 12px 15px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-raised); box-shadow: var(--shadow); }
+.usage-details header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+.usage-details dl { display: grid; gap: 8px; margin: 0; }
+.usage-details dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: 18px; }
+.usage-details dt { color: var(--secondary); }
+.usage-details dd { margin: 0; color: var(--text); overflow-wrap: anywhere; text-align: right; }
+.usage-details p { margin: 12px 0 0; border-top: 1px solid var(--line-soft); padding-top: 10px; font-size: 11px; }
+@media (max-width: 1120px) { .session-usage-summary { gap: 4px 12px; } .session-context, .session-token-usage { gap: 8px; } }
