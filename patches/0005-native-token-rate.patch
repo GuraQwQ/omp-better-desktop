@@ -1,0 +1,269 @@
+diff --git a/packages/coding-agent/src/modes/rpc/rpc-mode.ts b/packages/coding-agent/src/modes/rpc/rpc-mode.ts
+index 50fd04047a..b19354f3d7 100644
+--- a/packages/coding-agent/src/modes/rpc/rpc-mode.ts
++++ b/packages/coding-agent/src/modes/rpc/rpc-mode.ts
+@@ -428,6 +428,8 @@ const BACKGROUND_COMMANDS: ReadonlySet<string> = new Set<RpcCommand["type"]>([
+ 	"predict_word",
+ 	"live_start",
+ 	"btw_cancel",
++	// 速率采样不能排在长命令后等待。
++	"get_token_rate",
+ ]);
+ 
+ /**
+@@ -2103,6 +2105,9 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions
+ 			// State
+ 			// =================================================================
+ 
++			case "get_token_rate":
++				return success(id, "get_token_rate", { tokensPerSecond: session.tokenRate.rate() });
++
+ 			case "get_state": {
+ 				// A goal exit triggered by the last turn restores tools asynchronously; report after it.
+ 				await goalController.settled();
+diff --git a/packages/coding-agent/src/modes/rpc/rpc-types.ts b/packages/coding-agent/src/modes/rpc/rpc-types.ts
+index 31943ed053..93cd595f41 100644
+--- a/packages/coding-agent/src/modes/rpc/rpc-types.ts
++++ b/packages/coding-agent/src/modes/rpc/rpc-types.ts
+@@ -52,6 +52,7 @@ export type RpcCommand =
+ 
+ 	// State
+ 	| { id?: string; type: "get_state" }
++	| { id?: string; type: "get_token_rate" }
+ 	| { id?: string; type: "set_fast_mode"; enabled: boolean }
+ 	| { id?: string; type: "set_slow_mode"; enabled: boolean }
+ 	| {
+@@ -420,6 +421,7 @@ export type RpcResponse =
+ 
+ 	// State
+ 	| { id?: string; type: "response"; command: "get_state"; success: true; data: RpcSessionState }
++	| { id?: string; type: "response"; command: "get_token_rate"; success: true; data: { tokensPerSecond: number | null } }
+ 	| {
+ 			id?: string;
+ 			type: "response";
+diff --git a/packages/coding-agent/src/modes/rpc/wire/commands.ts b/packages/coding-agent/src/modes/rpc/wire/commands.ts
+index 0979ae20d6..f94346505e 100644
+--- a/packages/coding-agent/src/modes/rpc/wire/commands.ts
++++ b/packages/coding-agent/src/modes/rpc/wire/commands.ts
+@@ -96,6 +96,11 @@ export const rpcCommands: readonly RpcCommandSpec[] = [
+ 	},
+ 
+ 	{ name: "get_state", doc: "Snapshot the session state.", result: "SessionState" },
++	{
++		name: "get_token_rate",
++		doc: "读取会话原生平滑生成速率，样本不足时为空。",
++		result: { tokensPerSecond: "number | null" },
++	},
+ 	{
+ 		name: "set_fast_mode",
+ 		doc: "Enable or disable fast mode for the session.",
+diff --git a/packages/coding-agent/src/modes/rpc/wire/rpc-wire.generated.ts b/packages/coding-agent/src/modes/rpc/wire/rpc-wire.generated.ts
+index 9f767656c3..4e4c04edc5 100644
+--- a/packages/coding-agent/src/modes/rpc/wire/rpc-wire.generated.ts
++++ b/packages/coding-agent/src/modes/rpc/wire/rpc-wire.generated.ts
+@@ -1530,6 +1530,10 @@ export interface OpenSessionParams {
+ 	modelId?: string;
+ }
+ 
++export interface GetTokenRateResult {
++	tokensPerSecond: number | null;
++}
++
+ export interface SetFastModeParams {
+ 	enabled: boolean;
+ }
+@@ -1828,6 +1832,7 @@ export interface RpcWireCommands {
+ 	new_session: { params: NewSessionParams; result: CancellationResult };
+ 	open_session: { params: OpenSessionParams; result: OpenSessionResult };
+ 	get_state: { params: undefined; result: SessionState };
++	get_token_rate: { params: undefined; result: GetTokenRateResult };
+ 	set_fast_mode: { params: SetFastModeParams; result: FastModeResult };
+ 	set_slow_mode: { params: SetSlowModeParams; result: SetSlowModeResult };
+ 	goal: { params: GoalParams; result: GoalResult };
+diff --git a/packages/coding-agent/src/modes/rpc/wire/rpc-wire.schema.json b/packages/coding-agent/src/modes/rpc/wire/rpc-wire.schema.json
+index 791aa96439..80c66931c4 100644
+--- a/packages/coding-agent/src/modes/rpc/wire/rpc-wire.schema.json
++++ b/packages/coding-agent/src/modes/rpc/wire/rpc-wire.schema.json
+@@ -163,6 +163,17 @@
+ 				"completion": null,
+ 				"clientOmit": []
+ 			},
++			{
++				"name": "get_token_rate",
++				"doc": "读取会话原生平滑生成速率，样本不足时为空。",
++				"params": null,
++				"result": "GetTokenRateResult",
++				"nullable": false,
++				"unwrap": null,
++				"timeoutMs": null,
++				"completion": null,
++				"clientOmit": []
++			},
+ 			{
+ 				"name": "set_fast_mode",
+ 				"doc": "Enable or disable fast mode for the session.",
+@@ -6052,6 +6063,24 @@
+ 				"sessionDir"
+ 			]
+ 		},
++		"GetTokenRateResult": {
++			"type": "object",
++			"properties": {
++				"tokensPerSecond": {
++					"anyOf": [
++						{
++							"type": "number"
++						},
++						{
++							"type": "null"
++						}
++					]
++				}
++			},
++			"required": [
++				"tokensPerSecond"
++			]
++		},
+ 		"SetFastModeParams": {
+ 			"type": "object",
+ 			"properties": {
+diff --git a/sdk/go/omp-rpc/wire.go b/sdk/go/omp-rpc/wire.go
+index 01b8824bf1..2891b8c19a 100644
+--- a/sdk/go/omp-rpc/wire.go
++++ b/sdk/go/omp-rpc/wire.go
+@@ -6906,6 +6906,25 @@ func (v *NegotiateProtocolResult) decodeFrom(raw map[string]json.RawMessage) err
+ 	return nil
+ }
+ 
++type GetTokenRateResult struct {
++	TokensPerSecond *float64 `json:"tokensPerSecond"`
++}
++
++func (v *GetTokenRateResult) UnmarshalJSON(data []byte) error {
++	return decodeWith(data, "GetTokenRateResult", v.decodeFrom)
++}
++
++func (v *GetTokenRateResult) decodeFrom(raw map[string]json.RawMessage) error {
++	var out GetTokenRateResult
++	d := fieldDecoder{raw: raw, owner: "GetTokenRateResult"}
++	d.nullable("tokensPerSecond", &out.TokensPerSecond)
++	if d.err != nil {
++		return d.err
++	}
++	*v = out
++	return nil
++}
++
+ type SetSlowModeResult struct {
+ 	Enabled bool `json:"enabled"`
+ }
+@@ -7598,6 +7617,13 @@ func (c Commands) GetState(ctx context.Context) (SessionState, error) {
+ 	return out, err
+ }
+ 
++// GetTokenRate sends "get_token_rate": 读取会话原生平滑生成速率，样本不足时为空。
++func (c Commands) GetTokenRate(ctx context.Context) (GetTokenRateResult, error) {
++	var out GetTokenRateResult
++	err := c.call(ctx, "get_token_rate", nil, 0, &out)
++	return out, err
++}
++
+ // SetFastModeCommand holds the parameters of "set_fast_mode".
+ type SetFastModeCommand struct {
+ 	Enabled bool `json:"enabled"`
+diff --git a/sdk/python/omp-rpc/src/omp_rpc/_wire.py b/sdk/python/omp-rpc/src/omp_rpc/_wire.py
+index b69cf2408b..6be757d3a9 100644
+--- a/sdk/python/omp-rpc/src/omp_rpc/_wire.py
++++ b/sdk/python/omp-rpc/src/omp_rpc/_wire.py
+@@ -1605,6 +1605,11 @@ class NegotiateProtocolResult:
+     protocol_version: int
+ 
+ 
++@dataclass(slots=True, frozen=True, kw_only=True)
++class GetTokenRateResult:
++    tokens_per_second: float | None
++
++
+ @dataclass(slots=True, frozen=True, kw_only=True)
+ class LogoutResult:
+     remaining_source: str | None = None
+@@ -3046,6 +3051,13 @@ def parse_negotiate_protocol_result(value: object, path: str = "NegotiateProtoco
+     )
+ 
+ 
++def parse_get_token_rate_result(value: object, path: str = "GetTokenRateResult") -> GetTokenRateResult:
++    payload = expect_object(value, path)
++    return GetTokenRateResult(
++        tokens_per_second=required(payload, "tokensPerSecond", nullable(decode_float), path),
++    )
++
++
+ def parse_logout_result(value: object, path: str = "LogoutResult") -> LogoutResult:
+     payload = expect_object(value, path)
+     return LogoutResult(
+@@ -3252,6 +3264,11 @@ class WireClient:
+         params: dict[str, object] = {}
+         return parse_session_state(self._command("get_state", params), "get_state")
+ 
++    def get_token_rate(self) -> GetTokenRateResult:
++        """读取会话原生平滑生成速率，样本不足时为空。"""
++        params: dict[str, object] = {}
++        return parse_get_token_rate_result(self._command("get_token_rate", params), "get_token_rate")
++
+     def set_fast_mode(self, enabled: bool) -> FastModeResult:
+         """Enable or disable fast mode for the session."""
+         params: dict[str, object] = {}
+@@ -3859,6 +3876,7 @@ __all__ = [
+     "FastModeResult",
+     "FileMentionItem",
+     "FileMentionMessage",
++    "GetTokenRateResult",
+     "Goal",
+     "GoalModeState",
+     "GoalOp",
+@@ -4043,6 +4061,7 @@ __all__ = [
+     "parse_fast_mode_result",
+     "parse_file_mention_item",
+     "parse_file_mention_message",
++    "parse_get_token_rate_result",
+     "parse_goal",
+     "parse_goal_mode_state",
+     "parse_goal_result",
+diff --git a/sdk/rust/omp-rpc/src/wire.rs b/sdk/rust/omp-rpc/src/wire.rs
+index 156853a0d7..17a47a4cf4 100644
+--- a/sdk/rust/omp-rpc/src/wire.rs
++++ b/sdk/rust/omp-rpc/src/wire.rs
+@@ -5141,6 +5141,12 @@ pub struct OpenSessionParams {
+ 	pub model_id: Option<String>,
+ }
+ 
++#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
++pub struct GetTokenRateResult {
++	#[serde(rename = "tokensPerSecond", deserialize_with = "Deserialize::deserialize")]
++	pub tokens_per_second: Option<f64>,
++}
++
+ #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+ pub struct SetFastModeParams {
+ 	pub enabled: bool,
+@@ -6185,6 +6191,20 @@ impl Command for GetStateCommand {
+ 	}
+ }
+ 
++/// 读取会话原生平滑生成速率，样本不足时为空。
++#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
++pub struct GetTokenRateCommand {}
++
++impl Command for GetTokenRateCommand {
++	const NAME: &'static str = "get_token_rate";
++	const TIMEOUT_MS: Option<u64> = None;
++	type Output = GetTokenRateResult;
++
++	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
++		serde_json::from_value::<GetTokenRateResult>(data.unwrap_or_else(|| Value::Object(Map::new())))
++	}
++}
++
+ /// Enable or disable fast mode for the session.
+ #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+ pub struct SetFastModeCommand {

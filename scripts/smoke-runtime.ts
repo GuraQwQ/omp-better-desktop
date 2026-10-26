@@ -44,11 +44,13 @@ try {
   while ((await nextFrame()).type !== 'ready') {}
   await request('smoke-negotiate', 'negotiate_protocol', { protocolVersion: 2 });
   await request('smoke-state', 'get_state');
+  const rate = await request('smoke-token-rate', 'get_token_rate');
+  assert.deepEqual(rate, { tokensPerSecond: null }, '空会话的原生生成速率应为空，且不附带完整状态');
   const providers = await request('smoke-login-providers', 'get_login_providers');
   assert(Array.isArray(providers.providers), 'OMP 未返回登录提供商目录');
   const settings = await request('smoke-desktop-settings', 'desktop_settings', { operation: 'list' });
   assert(Array.isArray(settings.settings), 'OMP 未返回桌面设置目录');
-  console.log('OMP RPC 已就绪，协议 v2、状态、登录目录和桌面设置检查通过。');
+  console.log('OMP RPC 已就绪，协议 v2、状态、原生速率、登录目录和桌面设置检查通过。');
 } finally {
   clearTimeout(timeout);
   lines.close();

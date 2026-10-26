@@ -164,6 +164,17 @@
 				"clientOmit": []
 			},
 			{
+				"name": "get_token_rate",
+				"doc": "读取会话原生平滑生成速率，样本不足时为空。",
+				"params": null,
+				"result": "GetTokenRateResult",
+				"nullable": false,
+				"unwrap": null,
+				"timeoutMs": null,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
 				"name": "set_fast_mode",
 				"doc": "Enable or disable fast mode for the session.",
 				"params": "SetFastModeParams",
@@ -6050,6 +6061,24 @@
 			},
 			"required": [
 				"sessionDir"
+			]
+		},
+		"GetTokenRateResult": {
+			"type": "object",
+			"properties": {
+				"tokensPerSecond": {
+					"anyOf": [
+						{
+							"type": "number"
+						},
+						{
+							"type": "null"
+						}
+					]
+				}
+			},
+			"required": [
+				"tokensPerSecond"
 			]
 		},
 		"SetFastModeParams": {

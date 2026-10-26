@@ -1530,6 +1530,10 @@ export interface OpenSessionParams {
 	modelId?: string;
 }
 
+export interface GetTokenRateResult {
+	tokensPerSecond: number | null;
+}
+
 export interface SetFastModeParams {
 	enabled: boolean;
 }
@@ -1828,6 +1832,7 @@ export interface RpcWireCommands {
 	new_session: { params: NewSessionParams; result: CancellationResult };
 	open_session: { params: OpenSessionParams; result: OpenSessionResult };
 	get_state: { params: undefined; result: SessionState };
+	get_token_rate: { params: undefined; result: GetTokenRateResult };
 	set_fast_mode: { params: SetFastModeParams; result: FastModeResult };
 	set_slow_mode: { params: SetSlowModeParams; result: SetSlowModeResult };
 	goal: { params: GoalParams; result: GoalResult };
