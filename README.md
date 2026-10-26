@@ -25,10 +25,10 @@
 在本仓库 [Releases](https://github.com/GuraQwQ/omp-better-desktop/releases) 下载 Windows x64 发行包及 `SHA256SUMS`，用 PowerShell 核对：
 
 ```powershell
-Get-FileHash -LiteralPath './Better-OMP-Desktop_0.2.0_windows-x64.exe' -Algorithm SHA256
+Get-FileHash -LiteralPath './Better-OMP-Desktop_0.2.2_windows-x64.exe' -Algorithm SHA256
 ```
 
-文件名以实际附件为准。安装器未签名，Windows 可能提示发布者未知。安装包内置匹配的 OMP；需要系统已有 WebView2，或自行提供解压到其他盘的 Fixed Version WebView2。首次启动选择数据目录，应用数据与安装目录分开管理。详见 [安装、迁移与恢复](docs/install.md) 和 [0.2.0 更新说明](docs/releases/0.2.0.md)。
+文件名以实际附件为准。安装器未签名，Windows 可能提示发布者未知。安装包内置匹配的 OMP；需要系统已有 WebView2，或自行提供解压到其他盘的 Fixed Version WebView2。首次启动选择数据目录，应用数据与安装目录分开管理。详见 [安装、迁移与恢复](docs/install.md) 和 [0.2.2 更新说明](docs/releases/0.2.2.md)。
 
 ## 当前范围
 
