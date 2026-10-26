@@ -206,7 +206,13 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
         "workspace.files" => {
             let output = platform::run(
                 "git",
-                &["ls-files", "--cached", "--others", "--exclude-standard"],
+                &[
+                    "ls-files",
+                    "-z",
+                    "--cached",
+                    "--others",
+                    "--exclude-standard",
+                ],
                 Path::new(text(&request, "cwd")?),
             )?;
             if !output.status.success() {
@@ -214,7 +220,8 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
             }
             Ok(json!(
                 String::from_utf8_lossy(&output.stdout)
-                    .lines()
+                    .split('\0')
+                    .filter(|path| !path.is_empty())
                     .collect::<Vec<_>>()
             ))
         }

@@ -53,7 +53,10 @@ const en = {
   searchSessions: 'Search conversations…', clearSearch: 'Clear search', editMessage: 'Edit message', retryTurn: 'Retry this turn',
   messageChanged: 'This message is no longer on the current branch. Reopen the conversation to refresh it.',
   toolRawOutput: 'Raw output', toolShowMore: 'Show more', toolShowLess: 'Show less', toolExitCode: 'Exit code',
-  toolRead: 'Read', toolEdit: 'Edit', toolRun: 'Run', toolSteps: '{count} steps', toolOther: 'Other',
+  toolRead: 'Read', toolEdit: 'Edit', toolWrite: 'Write', toolRun: 'Run', toolSteps: '{count} steps', toolOther: 'Other',
+  restoreQueued: 'Return to draft', queueDelivered: 'Already delivered to the model', queueImagesDropped: 'Message returned to draft. Its images exceeded the transport limit; attach them again.',
+  mentionFiles: 'Project files', mentionHint: 'Type @ to find a project file',
+  reviewScope: 'Review scope', workspaceChanges: 'Working tree', turnChanges: 'Turn tool changes', turnLabel: 'Turn', earlierTurn: 'Earlier turn records', noTurnChanges: 'No file operations recorded for this turn.', changeRecord: 'Operation record', proposedChange: 'Preview',
 };
 const zh: typeof en = {
   product: 'Better OMP Desktop', newSession: '新建对话', addProject: '添加项目', projects: '项目',
@@ -108,7 +111,10 @@ const zh: typeof en = {
   searchSessions: '搜索对话…', clearSearch: '清除搜索', editMessage: '编辑消息', retryTurn: '重试此回合',
   messageChanged: '这条消息已不在当前分支，请重新打开对话后再编辑。',
   toolRawOutput: '原始输出', toolShowMore: '显示更多', toolShowLess: '收起预览', toolExitCode: '退出码',
-  toolRead: '读取', toolEdit: '修改', toolRun: '执行', toolSteps: '{count} 个步骤', toolOther: '其他',
+  toolRead: '读取', toolEdit: '修改', toolWrite: '写入', toolRun: '执行', toolSteps: '{count} 个步骤', toolOther: '其他',
+  restoreQueued: '取回草稿', queueDelivered: '已送入模型', queueImagesDropped: '消息已取回草稿。图片超过传输上限，请重新附加。',
+  mentionFiles: '项目文件', mentionHint: '输入 @ 查找项目文件',
+  reviewScope: '审阅范围', workspaceChanges: '工作区差异', turnChanges: '回合工具改动', turnLabel: '回合', earlierTurn: '较早回合记录', noTurnChanges: '本回合尚无已记录的文件操作。', changeRecord: '操作记录', proposedChange: '预览',
 };
 export type Copy = typeof en;
 export const copy = (language: Language): Copy => language === 'zh' ? zh : en;

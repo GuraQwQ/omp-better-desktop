@@ -1,0 +1,7 @@
+.review-scope { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; min-width: 0; }
+.review-scope > span { color: var(--secondary); font-size: 12px; flex-shrink: 0; }
+.review-scope .select-control { min-width: 0; flex: 1; }
+.review-scope .select-button { width: 100%; justify-content: space-between; }
+.review-scope .select-button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.turn-review-caption { margin: 0 0 10px; color: var(--secondary); font-size: 12px; }
+.turn-review .turn-record-note { color: var(--muted); font-size: 11px; margin: 8px 0 3px; }

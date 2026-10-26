@@ -1,0 +1,10 @@
+.composer-input { position: relative; }
+.composer-input > textarea { display: block; border: 0; background: transparent; outline: none; width: 100%; resize: none; padding: 7px 5px 10px; min-height: 66px; max-height: 180px; font-size: 14px; line-height: 1.65; }
+.file-mention-menu { position: absolute; bottom: calc(100% + 10px); left: 0; right: 0; z-index: 16; padding: 6px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
+.file-mention-heading { padding: 4px 7px 7px; color: var(--muted); font-size: 11px; }
+.file-mention-menu [role="listbox"] { max-height: min(280px, 42vh); overflow-y: auto; }
+.file-mention-menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px; border-radius: 5px; text-align: left; font-size: 12px; }
+.file-mention-menu button.is-active { background: var(--hover); }
+.file-mention-menu button svg { flex-shrink: 0; color: var(--secondary); }
+.file-mention-menu button span { overflow-wrap: anywhere; }
+.file-mention-menu p { margin: 7px; font-size: 12px; color: var(--secondary); }

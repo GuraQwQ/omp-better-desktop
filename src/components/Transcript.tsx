@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { ChevronRight, Copy, Pencil, RotateCcw } from 'lucide-react';
 import { toolLabel } from './ToolResult';
 import ToolSteps from './ToolSteps';
+import { ToolGenerationRate } from './GenerationRate';
 import { retryMessageIndex } from '../lib/message-actions';
 import { enrichToolMessages, messageText } from '../lib/session-state';
 import { isStoppedMessage, projectTranscript } from '../lib/transcript-items';
@@ -19,7 +20,7 @@ function CollapsedBlock({ block, t, active, stopped }: { block: ContentBlock; t:
   const [open, setOpen] = useState(false);
   const thinking = block.type === 'thinking';
   return <details className={thinking ? 'thinking' : 'tool-call'} onToggle={event => setOpen(event.currentTarget.open)}>
-    <summary><ChevronRight size={12} aria-hidden="true" /><span>{thinking ? t.thinking : toolLabel(block.name, t)}</span>{!thinking && <span className="tool-call-state">{stopped ? t.stopped : active ? t.running : t.statusLabels.pending}</span>}</summary>
+    <summary><ChevronRight size={12} aria-hidden="true" /><span>{thinking ? t.thinking : toolLabel(block.name, t)}</span>{!thinking && active && !stopped && <ToolGenerationRate callId={block.id} />}{!thinking && <span className="tool-call-state">{stopped ? t.stopped : active ? t.running : t.statusLabels.pending}</span>}</summary>
     {open && (thinking ? <div className="thinking-body"><Markdown text={block.thinking ?? block.text ?? ''} /></div> : <pre>{JSON.stringify(block.arguments, null, 2)}</pre>)}
   </details>;
 }
