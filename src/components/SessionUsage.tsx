@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { ChevronUp, X } from 'lucide-react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { ChevronUp, SlidersHorizontal, X } from 'lucide-react';
 import { onDesktopEvent, request, rpc } from '../lib/bridge';
 import type { SessionStats } from '../generated/rpc-wire';
 import type { Language, SessionView } from '../lib/types';
@@ -8,9 +8,11 @@ import { sessionKey } from '../lib/session-identity';
 import './session-usage.css';
 
 export type UsageCache = Map<string, SessionStats>;
+const ContextInspector = lazy(() => import('./ContextInspector'));
 
 export default function SessionUsage({ session, language, cache }: { session?: SessionView; language: Language; cache: UsageCache }) {
   const [expanded, setExpanded] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
   const disclosure = useRef<HTMLDetailsElement>(null);
   const [result, setResult] = useState<{ key: string; stats: SessionStats | null; stale: boolean } | null>(null);
   const inFlight = useRef<Promise<SessionStats> | null>(null);
@@ -28,7 +30,7 @@ export default function SessionUsage({ session, language, cache }: { session?: S
   const provider = session?.state.model?.provider;
   const modelWindow = session?.state.model?.contextWindow;
   const contextWindow = session?.state.contextUsage?.contextWindow;
-  useEffect(() => { setExpanded(false); }, [key]);
+  useEffect(() => { setExpanded(false); setAdvanced(false); }, [key, id, historyOnly]);
   useEffect(() => {
     if (!expanded) return;
     const outside = (event: PointerEvent) => { if (!disclosure.current?.contains(event.target as Node)) setExpanded(false); };
@@ -90,14 +92,14 @@ export default function SessionUsage({ session, language, cache }: { session?: S
   const number = (value: number | null, compact = true) => formatUsageAmount(value, language, compact);
   const percent = (value: number | null) => value === null ? '—' : `${new Intl.NumberFormat(language === 'zh' ? 'zh-CN' : 'en-US', { maximumFractionDigits: 1 }).format(value)}%`;
   const text = language === 'zh' ? {
-    usage: '会话用量', context: '上下文', remaining: '剩余', tokens: '用量', cache: '缓存命中', hit: '命中率', unavailable: '统计不可用',
+    usage: '会话用量', advanced: '进阶', context: '上下文', remaining: '剩余', tokens: '用量', cache: '缓存命中', hit: '命中率', unavailable: '统计不可用',
     input: '未缓存输入', output: '输出', cacheRead: '缓存读取', cacheWrite: '缓存写入', close: '关闭用量详情',
     contextHint: `上下文占用 ${number(usage.used, false)} / ${number(usage.window, false)} tokens，剩余 ${number(usage.remaining, false)} tokens。`,
     tokensHint: `当前会话累计 tokens：输入 ${number(usage.input, false)}，输出 ${number(usage.output, false)}，缓存读取 ${number(usage.cacheRead, false)}，缓存写入 ${number(usage.cacheWrite, false)}；总量 ${number(usage.total, false)}。推理 tokens 已包含在输出中。`,
     cacheHint: '当前会话累计缓存命中率 = 缓存读取 /（输入 + 缓存读取 + 缓存写入）。',
     unknownContext: '历史日志未记录模型上下文容量，无法计算占用和剩余。', recordedContext: '上下文为此会话最近一次运行时统计。', stale: '统计更新暂不可用，显示此会话上次记录。',
   } : {
-    usage: 'Session usage', context: 'Context', remaining: 'Left', tokens: 'Usage', cache: 'Cache hits', hit: 'Hit rate', unavailable: 'Statistics unavailable',
+    usage: 'Session usage', advanced: 'Advanced', context: 'Context', remaining: 'Left', tokens: 'Usage', cache: 'Cache hits', hit: 'Hit rate', unavailable: 'Statistics unavailable',
     input: 'Uncached input', output: 'Output', cacheRead: 'Cache read', cacheWrite: 'Cache write', close: 'Close usage details',
     contextHint: `Context: ${number(usage.used, false)} / ${number(usage.window, false)} tokens; ${number(usage.remaining, false)} tokens remaining.`,
     tokensHint: `Session totals in tokens: input ${number(usage.input, false)}, output ${number(usage.output, false)}, cache read ${number(usage.cacheRead, false)}, cache write ${number(usage.cacheWrite, false)}; total ${number(usage.total, false)}. Reasoning is included in output.`,
@@ -106,7 +108,7 @@ export default function SessionUsage({ session, language, cache }: { session?: S
   };
 
   const close = () => { setExpanded(false); disclosure.current?.querySelector<HTMLElement>('summary')?.focus(); };
-  return <details ref={disclosure} className="session-usage" open={expanded} onToggle={event => setExpanded(event.currentTarget.open)} aria-label={text.usage} title={result?.key === key && result.stale ? text.stale : undefined} onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); close(); } }}>
+  return <><details ref={disclosure} className="session-usage" open={expanded} onToggle={event => setExpanded(event.currentTarget.open)} aria-label={text.usage} title={result?.key === key && result.stale ? text.stale : undefined} onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); close(); } }}>
     <summary className="session-usage-summary">
     <div className="session-context" title={`${text.contextHint}${historyOnly ? usage.window === null ? text.unknownContext : text.recordedContext : ''}`}>
       <span>{text.context} <strong>{percent(usage.contextPercent)}</strong></span>
@@ -136,6 +138,7 @@ export default function SessionUsage({ session, language, cache }: { session?: S
       </dl>
       <p>{text.cacheHint}</p>{historyOnly && <p>{usage.window === null ? text.unknownContext : text.recordedContext}</p>}
       {result?.key === key && result.stale && <p>{text.stale}</p>}
+      <footer><button type="button" className="quiet-button" disabled={!session} aria-haspopup="dialog" onClick={() => { setExpanded(false); setAdvanced(true); }}><SlidersHorizontal size={13} />{text.advanced}</button></footer>
     </section>}
-  </details>;
+  </details>{advanced && session && <Suspense fallback={null}><ContextInspector key={`${key}:${id}:${historyOnly}`} session={session} language={language} close={() => { setAdvanced(false); disclosure.current?.querySelector<HTMLElement>('summary')?.focus(); }} /></Suspense>}</>;
 }

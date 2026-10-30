@@ -1,0 +1,7 @@
+.import-status { margin: 20px 0; padding: 14px 0; border-block: 1px solid var(--line-soft); font-size: 12px; }
+.import-status > strong { font-weight: 550; }
+.import-status.is-complete > strong { color: var(--success); }
+.import-status p { color: var(--secondary); line-height: 1.7; margin: 8px 0; }
+.import-status summary { cursor: pointer; color: var(--secondary); padding: 6px 0; }
+.import-status pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow: auto; font-size: 11px; }
+.import-status > button { margin-top: 8px; }

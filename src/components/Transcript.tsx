@@ -7,7 +7,7 @@ import { toolLabel } from './ToolResult';
 import ToolSteps from './ToolSteps';
 import { ToolGenerationRate } from './GenerationRate';
 import { retryMessageIndex } from '../lib/message-actions';
-import { enrichToolMessages, messageText } from '../lib/session-state';
+import { messageText } from '../lib/session-state';
 import { isStoppedMessage, projectTranscript } from '../lib/transcript-items';
 import type { Copy as CopyText } from '../lib/i18n';
 import type { ContentBlock, Message } from '../lib/types';
@@ -41,8 +41,8 @@ const MessageView = memo(function MessageView({ message, t, disabled, active, ed
   </article>;
 });
 
-export default function Transcript({ messages: source, t, busy, loadEarlier, onEdit, onRetry, actionsDisabled = false }: { messages: Message[]; t: CopyText; busy: boolean; loadEarlier?: () => void; onEdit?: (message: Message) => void; onRetry?: () => void; actionsDisabled?: boolean }) {
-  const items = useMemo(() => projectTranscript(enrichToolMessages(source)), [source]);
+export default function Transcript({ messages: source, t, busy, loadEarlier, loadingEarlier = false, onEdit, onRetry, actionsDisabled = false }: { messages: Message[]; t: CopyText; busy: boolean; loadEarlier?: () => void; loadingEarlier?: boolean; onEdit?: (message: Message) => void; onRetry?: () => void; actionsDisabled?: boolean }) {
+  const items = useMemo(() => projectTranscript(source), [source]);
   const retryId = source[retryMessageIndex(source)]?.id;
   const scrollRef = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
@@ -53,7 +53,7 @@ export default function Transcript({ messages: source, t, busy, loadEarlier, onE
   }, [items.length, last, virtualizer]);
   return <div className="transcript" ref={scrollRef} onScroll={() => { const el = scrollRef.current; if (el) follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; }}>
     <div className="transcript-content">
-      {loadEarlier && <button className="quiet-button history-more" onClick={loadEarlier}>{t.loadEarlier}</button>}
+      {loadEarlier && <button className="quiet-button history-more" disabled={loadingEarlier} onClick={loadEarlier}>{loadingEarlier ? t.loading : t.loadEarlier}</button>}
       <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
         {virtualizer.getVirtualItems().map(item => {
           const row = items[item.index];

@@ -26,6 +26,8 @@ Windows x64 的 NSIS 安装包包含匹配的 OMP 运行时。下载后核对 `S
 
 `scripts/install.ps1` 适用于自行编译的宿主与运行时包。它校验文件清单和 SHA-256，逐文件替换，重复运行会跳过内容相同的文件；中断后可使用相同参数重试。它不替代 NSIS 安装器。
 
+安装后，可执行文件与 `runtime-windows-x64/` 并列；省略 `RuntimePackage` 时，从源可执行文件旁的同名目录读取运行时。OMP 许可证和第三方说明随运行时完整复制，项目许可证和说明放在安装目录。
+
 ```powershell
 ./scripts/install.ps1 `
   -DesktopExe './build/desktop-msvc/release/omp-better-desktop.exe' `

@@ -19,6 +19,8 @@ struct RuntimeManifest {
     version: String,
     revision: String,
     protocol_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    request_capture_version: Option<u32>,
     executable: String,
     files: Vec<RuntimeFile>,
 }
@@ -30,9 +32,12 @@ struct RuntimeFile {
 }
 
 #[derive(Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct RuntimeSelection {
     current: Option<String>,
     previous: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_bundled: Option<String>,
 }
 
 fn context(action: &str, path: &Path, error: impl std::fmt::Display) -> String {
@@ -194,6 +199,33 @@ fn runtime_manifest(root: &Path, id: &str) -> Result<(PathBuf, RuntimeManifest)>
     Ok((directory, manifest))
 }
 
+fn runtime_id(manifest: &RuntimeManifest) -> Result<String> {
+    Ok(format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(manifest).map_err(|e| e.to_string())?)
+    ))
+}
+
+fn runtime_is_intact(root: &Path, id: &str) -> bool {
+    let Ok((directory, manifest)) = runtime_manifest(root, id) else {
+        return false;
+    };
+    let expected: Value =
+        serde_json::from_str(include_str!("../../upstream.lock.json")).unwrap_or_default();
+    Some(manifest.protocol_version as u64) == expected["protocolVersion"].as_u64()
+        && !directory.join(".installing.json").exists()
+        && runtime_id(&manifest).is_ok_and(|actual| actual == id)
+        && manifest
+            .files
+            .iter()
+            .any(|file| file.path == manifest.executable)
+        && manifest.files.iter().all(|file| {
+            relative_path(&file.path)
+                .and_then(|path| digest(&directory.join(path)))
+                .is_ok_and(|hash| hash.eq_ignore_ascii_case(&file.sha256))
+        })
+}
+
 pub fn current_runtime(root: &Path) -> Result<Option<PathBuf>> {
     let selection: RuntimeSelection = json_or_default(&root.join("runtime.json"))?;
     let Some(id) = selection.current else {
@@ -222,6 +254,10 @@ pub fn runtime_info(root: &Path) -> Result<Value> {
 
 pub fn install_runtime(root: &Path, source: &Path) -> Result<Value> {
     let _lock = storage_lock(root)?;
+    install_runtime_locked(root, source, false)
+}
+
+fn install_runtime_locked(root: &Path, source: &Path, bundled: bool) -> Result<Value> {
     let manifest_path = if source.is_dir() {
         source.join("runtime-manifest.json")
     } else {
@@ -256,8 +292,7 @@ pub fn install_runtime(root: &Path, source: &Path) -> Result<Value> {
         .find(|file| file.path == manifest.executable)
         .ok_or("The runtime executable must be present in the package file list.")?;
     // 标识来自全部产物内容，路径或构建机器不会影响运行时身份。
-    let manifest_bytes = serde_json::to_vec(&manifest).map_err(|e| e.to_string())?;
-    let id = format!("{:x}", Sha256::digest(&manifest_bytes));
+    let id = runtime_id(&manifest)?;
     let directory = root.join("runtimes").join(&id);
     fs::create_dir_all(&directory).map_err(|e| context("Create", &directory, e))?;
     write_json(
@@ -283,9 +318,22 @@ pub fn install_runtime(root: &Path, source: &Path) -> Result<Value> {
     write_json(&directory.join("runtime-manifest.json"), &manifest)?;
     let mut selection: RuntimeSelection = json_or_default(&root.join("runtime.json"))?;
     if selection.current.as_deref() != Some(&id) {
-        selection.previous = selection.current.replace(id);
-        write_json(&root.join("runtime.json"), &selection)?;
+        if let Some(current) = selection
+            .current
+            .as_ref()
+            .filter(|id| runtime_is_intact(root, id))
+        {
+            selection.previous = Some(current.clone());
+        }
+        selection.current = Some(id.clone());
     }
+    if selection.previous == selection.current {
+        selection.previous = None;
+    }
+    if bundled {
+        selection.last_bundled = Some(id);
+    }
+    write_json(&root.join("runtime.json"), &selection)?;
     let marker = directory.join(".installing.json");
     if marker.exists() {
         fs::remove_file(&marker)
@@ -295,27 +343,28 @@ pub fn install_runtime(root: &Path, source: &Path) -> Result<Value> {
 }
 
 pub fn install_bundled_runtime(root: &Path, package: &Path) -> Result<Value> {
+    let _lock = storage_lock(root)?;
     let manifest: RuntimeManifest = read_json(&package.join("runtime-manifest.json"))?;
-    let id = format!(
-        "{:x}",
-        Sha256::digest(serde_json::to_vec(&manifest).map_err(|e| e.to_string())?)
-    );
-    let selection: RuntimeSelection = json_or_default(&root.join("runtime.json"))?;
-    let directory = root.join("runtimes").join(&id);
-    if selection.current.as_deref() == Some(&id)
-        && read_json::<RuntimeManifest>(&directory.join("runtime-manifest.json")).is_ok()
-        && !directory.join(".installing.json").exists()
+    let id = runtime_id(&manifest)?;
+    let mut selection: RuntimeSelection = json_or_default(&root.join("runtime.json"))?;
+    let new_bundle = selection
+        .last_bundled
+        .as_ref()
+        .is_some_and(|previous| previous != &id);
+    if !new_bundle
+        && selection
+            .current
+            .as_ref()
+            .is_some_and(|current| runtime_is_intact(root, current))
     {
-        let intact = manifest.files.iter().all(|file| {
-            relative_path(&file.path)
-                .and_then(|path| digest(&directory.join(path)))
-                .is_ok_and(|hash| hash == file.sha256)
-        });
-        if intact {
-            return runtime_info(root);
+        if selection.last_bundled.is_none() {
+            // 旧选择器无法辨认手动选择；迁移先保留有效当前项，之后按随包身份识别升级。
+            selection.last_bundled = Some(id);
+            write_json(&root.join("runtime.json"), &selection)?;
         }
+        return runtime_info(root);
     }
-    install_runtime(root, package)
+    install_runtime_locked(root, package, true)
 }
 
 pub fn rollback_runtime(root: &Path) -> Result<Value> {
@@ -325,11 +374,8 @@ pub fn rollback_runtime(root: &Path) -> Result<Value> {
         .previous
         .as_ref()
         .ok_or("There is no previous runtime to restore.")?;
-    let (directory, manifest) = runtime_manifest(root, previous)?;
-    for file in &manifest.files {
-        if digest(&directory.join(relative_path(&file.path)?))? != file.sha256 {
-            return Err("The previous runtime is incomplete. Import its package again.".into());
-        }
+    if !runtime_is_intact(root, previous) {
+        return Err("The previous runtime is incomplete. Import its package again.".into());
     }
     std::mem::swap(&mut selection.current, &mut selection.previous);
     write_json(&root.join("runtime.json"), &selection)?;
@@ -992,6 +1038,7 @@ mod tests {
             version: "18.12.6".into(),
             revision: "2d39e5f5d26c12d49b241f58905b5526106d2a1e".into(),
             protocol_version: 2,
+            request_capture_version: None,
             executable: "omp.exe".into(),
             files: vec![RuntimeFile {
                 path: "omp.exe".into(),

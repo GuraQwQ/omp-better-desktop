@@ -1,6 +1,6 @@
 [package]
 name = "omp-better-desktop"
-version = "0.2.2"
+version = "0.2.5"
 edition = "2024"
 default-run = "omp-better-desktop"
 
@@ -20,6 +20,7 @@ sha2 = "0.10"
 rusqlite = { version = "0.32", features = ["bundled", "backup"] }
 portable-pty = "0.9"
 uuid = { version = "1", features = ["v4"] }
+ignore = "0.4"
 omp-rpc = { path = "../vendor/omp-rpc" }
 
 [target.'cfg(windows)'.dependencies]

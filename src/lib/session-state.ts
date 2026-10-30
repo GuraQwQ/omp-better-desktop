@@ -19,13 +19,33 @@ export function enrichToolMessages(messages: Message[]): Message[] {
     return call && (message.args === undefined || !message.toolName) ? { ...message, args: message.args ?? call.arguments, toolName: message.toolName ?? call.name } : message;
   });
 }
+export const normalizeHistoryMessages = (messages: Json[], prefix: string): Message[] => enrichToolMessages(messages.map((message, index) => normalizeMessage({ ...message, entryId: message.id }, `${prefix}-${index}`)));
+
+function toolMetadataChanged(event: Json): boolean {
+  return event.type.startsWith('tool_execution_') || ['message_start', 'message_update', 'message_end'].includes(event.type) && (
+    ['tool', 'toolResult'].includes(event.message?.role) || event.assistantMessageEvent?.type?.startsWith('toolcall_') ||
+    Array.isArray(event.message?.content) && event.message.content.some((block: Json) => block?.type === 'toolCall')
+  );
+}
+
+export function applyEvents(session: SessionView, events: Json[]): SessionView {
+  let updated = session;
+  let toolsChanged = false;
+  for (const event of events) {
+    updated = reduceEvent(updated, event);
+    toolsChanged ||= toolMetadataChanged(event);
+  }
+  return toolsChanged && updated.messages !== session.messages ? { ...updated, messages: enrichToolMessages(updated.messages) } : updated;
+}
+
+export const applyEvent = (session: SessionView, event: Json): SessionView => applyEvents(session, [event]);
 export function returnFromTerminal(session: SessionView, runtimeReleased: boolean): SessionView {
   return runtimeReleased ? { ...session, historyOnly: true } : session;
 }
 
-export function applyEvent(session: SessionView, event: Json): SessionView {
+function reduceEvent(session: SessionView, event: Json): SessionView {
   if (event.type === 'desktop_status') {
-    if (event.status === 'released' || event.status === 'disconnected') return { ...session, path: event.path ?? session.path, historyOnly: true, status: 'ready', state: { ...session.state, isStreaming: false, isSettled: true } };
+    if (event.status === 'released' || event.status === 'disconnected') return { ...session, path: event.path === null && !session.messages.length ? undefined : event.path ?? session.path, historyOnly: true, status: 'ready', state: { ...session.state, isStreaming: false, isSettled: true } };
     return { ...session, status: event.status };
   }
   if (event.type === 'agent_start') return { ...session, status: 'running', state: { ...session.state, isStreaming: true, isSettled: false, desktopRunAnchor: session.messages.at(-1)?.id ?? null } };
@@ -82,7 +102,7 @@ export function applyEvent(session: SessionView, event: Json): SessionView {
     const messages = session.messages.slice();
     if (index >= 0) messages[index] = message;
     else messages.push(message);
-    return { ...session, messages: enrichToolMessages(message.toolCallId && !message.id.startsWith('tool-') ? messages.filter(item => item.id !== `tool-${message.toolCallId}`) : messages) };
+    return { ...session, messages: message.toolCallId && !message.id.startsWith('tool-') ? messages.filter(item => item.id !== `tool-${message.toolCallId}`) : messages };
   }
   if (event.type === 'command_output') return { ...session, messages: [...session.messages, { id: `command-${event.id ?? session.messages.length}`, role: 'assistant', content: event.text ?? event.output ?? '' }] };
   if (event.type === 'tool_execution_start' || event.type === 'tool_execution_update' || event.type === 'tool_execution_end') {
@@ -94,7 +114,7 @@ export function applyEvent(session: SessionView, event: Json): SessionView {
     const messages = session.messages.slice();
     if (index >= 0) messages[index] = { ...messages[index], ...message };
     else messages.push(message);
-    return { ...session, messages: enrichToolMessages(messages) };
+    return { ...session, messages };
   }
   return session;
 }

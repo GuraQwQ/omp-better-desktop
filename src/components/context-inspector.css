@@ -1,0 +1,17 @@
+.context-dialog { padding: 0; width: min(840px, calc(100vw - 40px)); max-width: none; max-height: calc(100dvh - 64px); margin: auto; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; color: var(--text); background: var(--surface-raised); box-shadow: var(--shadow); }
+.context-dialog::backdrop { background: #0005; }
+.context-dialog > header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 22px; border-bottom: 1px solid var(--line-soft); }
+.context-dialog h2 { margin: 0; font-size: 16px; }
+.context-dialog header p { margin: 4px 0 0; color: var(--secondary); font-size: 11px; font-variant-numeric: tabular-nums; }
+.context-dialog-actions { display: flex; gap: 4px; }
+.context-dialog-body { max-height: calc(100dvh - 150px); overflow: auto; padding: 18px 22px 24px; scrollbar-color: var(--line) transparent; }
+.context-note { margin: 0 0 8px; max-width: 76ch; color: var(--secondary); font-size: 12px; line-height: 1.7; }
+.context-snapshot-hint { margin-bottom: 20px; color: var(--secondary); font-size: 11px; }
+.context-section-hint { max-width: 76ch; line-height: 1.7; margin: 0 0 14px; }
+.context-load-error { color: var(--danger); font-size: 12px; }
+.context-load-error p { margin-bottom: 8px; overflow-wrap: anywhere; }
+.context-runtime-info { display: grid; gap: 8px; margin: 0 0 16px; font-size: 12px; }
+.context-runtime-info > div { display: flex; justify-content: space-between; gap: 20px; }
+.context-runtime-info dt { color: var(--secondary); }
+.context-runtime-info dd { margin: 0; overflow-wrap: anywhere; text-align: right; }
+@media (max-width: 640px) { .context-dialog { width: calc(100vw - 20px); max-height: calc(100dvh - 24px); } .context-dialog > header { padding: 14px; } .context-dialog-body { max-height: calc(100dvh - 110px); padding: 14px; } }

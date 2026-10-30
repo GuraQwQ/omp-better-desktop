@@ -2,7 +2,9 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowUp, ArrowUpRight, Bell, ChevronDown, ChevronRight, CircleHelp, Command, FileDiff, FilePlus2, Folder, FolderOpen, FolderPlus, GitBranch, ImagePlus, Layers, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings2, Square, TerminalSquare, X } from 'lucide-react';
 import { copy, localizeError } from './lib/i18n';
 import { native, onDesktopEvent, pickPath, request, rpc } from './lib/bridge';
-import { applyEvent, isSessionRunning, normalizeMessage, returnFromTerminal } from './lib/session-state';
+import { applyEvent, applyEvents, isSessionRunning, normalizeHistoryMessages, returnFromTerminal } from './lib/session-state';
+import { acknowledgeDraft, captureDraft, createDraft, updateDraft, type ComposerDraft } from './lib/composer-draft';
+import { prependHistoryPage } from './lib/session-history';
 import { editableEntry, messageImages, retryMessageIndex } from './lib/message-actions';
 import { searchSessions } from './lib/session-search';
 import './components/conversation-actions.css';
@@ -34,6 +36,7 @@ export default function App() {
   const [bootstrap, setBootstrap] = useState(initial);
   const [project, setProject] = useState<Project | null>(null);
   const [history, setHistory] = useState<Record<string, SessionSummary[]>>({});
+  const [historyPageLoading, setHistoryPageLoading] = useState<{ id: string; revision: number } | null>(null);
   const [sessionQuery, setSessionQuery] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
   const [messageAction, setMessageAction] = useState(false);
@@ -52,6 +55,7 @@ export default function App() {
   const [terminalInput, setTerminalInput] = useState('');
   const [models, setModels] = useState<Json[]>([]);
   const [modelPicker, setModelPicker] = useState(false);
+  const [modelsLoading, setModelsLoading] = useState(false);
   const [modelQuery, setModelQuery] = useState('');
   const [attachmentMenu, setAttachmentMenu] = useState(false);
   const [sending, setSending] = useState(false);
@@ -61,7 +65,6 @@ export default function App() {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const actionPending = useRef<'edit' | 'retry' | 'queue' | 'send' | false>(false);
-  const imageDrafts = useRef<Record<string, typeof images>>({});
   const fileInput = useRef<HTMLInputElement>(null);
   const usageCache = useRef<UsageCache>(new Map());
   const attachmentControl = useRef<HTMLDivElement>(null);
@@ -74,10 +77,12 @@ export default function App() {
   const selectionRevision = useRef(0);
   const openingSessions = useRef(new Map<string, { promise: Promise<SessionView>; promote: () => void }>());
   const historyRequests = useRef<Record<string, number>>({});
+  const historyPages = useRef(new Map<string, { revision: number; promise: Promise<void> }>());
   const releasedIds = useRef(new Set<string>());
   const runtimeQueue = useRef<Promise<void>>(Promise.resolve());
   const activationRevision = useRef(0);
-  const drafts = useRef<Record<string, string>>({});
+  const drafts = useRef<Record<string, ComposerDraft<typeof images[number]>>>({});
+  const visibleDraft = useRef<ComposerDraft<typeof images[number]> | null>(null);
   const rateCache = useRef<RateCache>(new Map());
   const eventQueue = useRef<{ sessionId: string; event: Json }[]>([]);
   const frame = useRef(0);
@@ -88,10 +93,16 @@ export default function App() {
   const session = selected ? allSessions.find(value => sessionKey(value) === sessionKey(selected)) : undefined;
   const cwd = session?.cwd ?? project?.path ?? '';
   const draftKey = activeId || `new:${sessionPathKey(cwd)}`;
+  const getDraft = (key: string) => drafts.current[key] ??= createDraft<typeof images[number]>();
+  const composerDraft = getDraft(draftKey);
+  visibleDraft.current = composerDraft;
+  const showDraft = (value: ComposerDraft<typeof images[number]>) => { if (visibleDraft.current === value) { setDraft(value.text); setImages(value.images); } };
+  const changeDraft = (value: ComposerDraft<typeof images[number]>, text: string, attachments = value.images) => { updateDraft(value, text, attachments); showDraft(value); };
   const busy = isSessionRunning(session);
   const pending = Object.values(sessions).flatMap(s => s.pending.map(question => ({ sessionId: s.id, title: s.title, question })));
   const showError = useCallback((value: unknown) => { if (value instanceof DOMException && value.name === 'AbortError') return; setError(value instanceof Error ? value.message : String(value)); }, []);
-  const setActiveId = (id: string) => { selectionRevision.current++; activeIdRef.current = id; commitActiveId(id); };
+  const replaceActiveId = (id: string) => { activeIdRef.current = id; commitActiveId(id); };
+  const setActiveId = (id: string) => { selectionRevision.current++; replaceActiveId(id); };
   const putSession = (value: SessionView, replaceId?: string) => {
     const merge = (previous: Record<string, SessionView>) => { const next = { ...previous }; if (replaceId && replaceId !== value.id) delete next[replaceId]; return storeSession(next, value); };
     sessionsRef.current = merge(sessionsRef.current); setSessions(merge);
@@ -112,28 +123,30 @@ export default function App() {
   };
   const newConversation = () => {
     setModelPicker(false); setAttachmentMenu(false);
-    if (!project) { setActiveId(''); setDraft(''); setSettingsOpen(false); return; }
+    if (!project) { changeDraft(composerDraft, '', []); setActiveId(''); setSettingsOpen(false); return; }
     const id = `draft:${crypto.randomUUID()}`;
-    drafts.current[id] = '';
+    drafts.current[id] = createDraft();
     putSession({ id, cwd: project.path, title: t.newTitle, messages: [], state: {}, status: 'ready', pending: [], historyOnly: true });
     setActiveId(id); setDraft(''); setSettingsOpen(false);
   };
   useEffect(() => {
     if (allSessions.length !== Object.keys(sessions).length) setSessions(Object.fromEntries(allSessions.map(value => [value.id, value])));
-    if (session && session.id !== activeId) { drafts.current[session.id] = drafts.current[activeId] ?? draft; setActiveId(session.id); }
+    if (session && session.id !== activeId) { drafts.current[session.id] = composerDraft; replaceActiveId(session.id); }
   }, [sessions, activeId]);
   useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
-  useEffect(() => { activeIdRef.current = activeId; setDraft(drafts.current[draftKey] ?? sessionsRef.current[activeId]?.draft ?? ''); setImages(imageDrafts.current[draftKey] ?? []); }, [activeId, draftKey]);
-  useEffect(() => { imageDrafts.current[draftKey] = images; }, [images]);
-  useEffect(() => { drafts.current[draftKey] = draft; }, [draft, draftKey]);
+  useEffect(() => { activeIdRef.current = activeId; showDraft(composerDraft); }, [activeId, draftKey]);
   useEffect(activateRuntime, [session?.id, session?.historyOnly]);
   useEffect(() => {
     request<Bootstrap>('bootstrap').then(value => { setBootstrap(value); if (value.projects.length) { setProject(value.projects[0]); setExpandedProjects(previous => ({ ...previous, [value.projects[0].path]: true })); } }).catch(showError).finally(() => setBooting(false));
     let unlisten: (() => void) | undefined;
     let disposed = false;
     void onDesktopEvent(payload => {
-      if (payload.event.type === 'desktop_status' && payload.event.status === 'released') releasedIds.current.add(payload.sessionId);
-      if (payload.event.type === 'extension_ui_request' && payload.event.method === 'set_editor_text') { drafts.current[payload.sessionId] = payload.event.text ?? ''; if (payload.sessionId === activeIdRef.current) setDraft(payload.event.text ?? ''); }
+      if (payload.event.type === 'desktop_status' && ['released', 'disconnected'].includes(payload.event.status)) {
+        releasedIds.current.add(payload.sessionId);
+        const current = sessionsRef.current[payload.sessionId];
+        if (current) sessionsRef.current = { ...sessionsRef.current, [payload.sessionId]: applyEvent(current, payload.event) };
+      }
+      if (payload.event.type === 'extension_ui_request' && payload.event.method === 'set_editor_text') changeDraft(getDraft(payload.sessionId), payload.event.text ?? '');
       if (payload.event.type === 'extension_error' || payload.event.type === 'notice' && payload.event.level === 'error') showError(payload.event.error ?? payload.event.message);
       if (payload.event.type === 'session_settled' && payload.sessionId === activeIdRef.current && !releasedIds.current.has(payload.sessionId)) void refreshSession(payload.sessionId, true).catch(error => { if (!releasedIds.current.has(payload.sessionId)) showError(error); });
       if (['prompt_result', 'config_update', 'session_info_update'].includes(payload.event.type)) {
@@ -145,7 +158,9 @@ export default function App() {
         const events = eventQueue.current.splice(0);
         setSessions(previous => {
           const updated = { ...previous };
-          for (const { sessionId, event } of events) if (updated[sessionId]) updated[sessionId] = applyEvent(updated[sessionId], event);
+          const grouped = new Map<string, Json[]>();
+          for (const { sessionId, event } of events) { if (!grouped.has(sessionId)) grouped.set(sessionId, []); grouped.get(sessionId)!.push(event); }
+          for (const [id, events] of grouped) if (updated[id]) updated[id] = applyEvents(updated[id], events);
           return updated;
         });
       });
@@ -216,9 +231,10 @@ export default function App() {
   const addProject = async () => { try { const path = await pickPath(); if (!path) return; const projects = await request<Project[]>('project.add', { path }); setBootstrap(old => ({ ...old, projects })); const added = projects.find(p => p.path === path) ?? projects.at(-1)!; setExpandedProjects(previous => ({ ...previous, [added.path]: true })); selectProject(added); } catch (e) { showError(e); } };
   const attachPath = async (directory: boolean) => {
     setAttachmentMenu(false);
+    const target = composerDraft;
     try {
       const path = await pickPath(directory);
-      if (path) setDraft(old => `${old}${old && !/\s$/.test(old) ? ' ' : ''}@"${path.replaceAll('\\', '/')}" `);
+      if (path) changeDraft(target, `${target.text}${target.text && !/\s$/.test(target.text) ? ' ' : ''}@"${path.replaceAll('\\', '/')}" `);
     } catch (error) { showError(error); }
     finally { textarea.current?.focus(); }
   };
@@ -239,7 +255,7 @@ export default function App() {
   const prepareSession = async (forPrompt = false, requested?: SessionTarget): Promise<SessionView> => {
     if (!forPrompt && requested && requested.revision !== selectionRevision.current) throw new DOMException('Cancelled', 'AbortError');
     const captured = requested ? requested.source : sessionsRef.current[activeIdRef.current] ?? session;
-    const source = captured ? uniqueSessions(Object.values(sessionsRef.current)).find(value => sessionKey(value) === sessionKey(captured)) ?? { ...captured, historyOnly: true } : undefined;
+    const source = captured ? sessionsRef.current[captured.id] ?? uniqueSessions(Object.values(sessionsRef.current)).find(value => sessionKey(value) === sessionKey(captured)) ?? { ...captured, historyOnly: true } : undefined;
     if (source && !source.historyOnly && !releasedIds.current.has(source.id)) return source;
     const targetCwd = requested?.cwd ?? source?.cwd ?? project?.path ?? '';
     if (!targetCwd) throw Error(t.selectProject);
@@ -248,7 +264,8 @@ export default function App() {
     if (pending) { if (forPrompt) pending.promote(); return pending.promise; }
     const revision = requested?.revision ?? selectionRevision.current;
     const sourceDraftKey = requested?.draftKey ?? (activeIdRef.current || `new:${sessionPathKey(targetCwd)}`);
-    const existing = uniqueSessions(Object.values(sessionsRef.current)).find(value => !value.historyOnly && !releasedIds.current.has(value.id) && (source?.path ? sessionKey(value) === target : value.hidden && !value.messages.length && !(drafts.current[value.id] ?? '').trim() && sessionPathKey(value.cwd) === sessionPathKey(targetCwd)));
+    const sourceDraft = getDraft(sourceDraftKey);
+    const existing = uniqueSessions(Object.values(sessionsRef.current)).find(value => !value.historyOnly && !releasedIds.current.has(value.id) && (source?.path ? sessionKey(value) === target : value.hidden && !value.messages.length && !drafts.current[value.id]?.text.trim() && !drafts.current[value.id]?.images.length && sessionPathKey(value.cwd) === sessionPathKey(targetCwd)));
     const promise = (async () => {
       const opened = existing ? { id: existing.id, path: existing.path, state: existing.state } : await request<Json>('session.open', { cwd: targetCwd, path: source?.path });
       let page: Json | undefined;
@@ -259,12 +276,12 @@ export default function App() {
           if (!releasedIds.current.has(opened.id)) btw = await rpc(opened.id, 'get_btw_history');
         } catch (error) { if (!releasedIds.current.has(opened.id)) throw error; }
       }
-      const value: SessionView = { id: opened.id, cwd: targetCwd, path: opened.path ?? source?.path, title: opened.state?.sessionName ?? source?.title ?? t.newTitle, messages: page ? page.messages.map((message: Json, i: number) => normalizeMessage({ ...message, entryId: message.id }, `reopen-${i}`)) : source?.messages ?? existing?.messages ?? [], nextCursor: page ? page.nextCursor : source?.nextCursor, state: { ...opened.state, btwRecords: btw.records }, status: 'ready', pending: source?.pending ?? existing?.pending ?? [], historyOnly: releasedIds.current.has(opened.id), hidden: forPrompt ? false : source ? !!source.hidden : true };
-      drafts.current[value.id] = drafts.current[sourceDraftKey] ?? draft;
-      imageDrafts.current[value.id] = imageDrafts.current[sourceDraftKey] ?? [];
-      if (sourceDraftKey !== value.id) { delete drafts.current[sourceDraftKey]; delete imageDrafts.current[sourceDraftKey]; }
+      const value: SessionView = { id: opened.id, cwd: targetCwd, path: opened.path ?? source?.path, title: opened.state?.sessionName ?? source?.title ?? t.newTitle, messages: page ? normalizeHistoryMessages(page.messages, 'reopen') : source?.messages ?? existing?.messages ?? [], nextCursor: page ? page.nextCursor : source?.nextCursor, state: { ...opened.state, btwRecords: btw.records }, status: 'ready', pending: source?.pending ?? existing?.pending ?? [], historyOnly: releasedIds.current.has(opened.id), hidden: forPrompt ? false : source ? !!source.hidden : true };
+      // 启动会更换会话 ID，草稿对象及编辑修订随之迁移。
+      drafts.current[value.id] = sourceDraft;
+      if (sourceDraftKey !== value.id && drafts.current[sourceDraftKey] === sourceDraft) delete drafts.current[sourceDraftKey];
       putSession(value, source?.id);
-      if (selectionRevision.current === revision) setActiveId(value.id);
+      if (selectionRevision.current === revision) replaceActiveId(value.id);
       else if (!forPrompt) activateRuntime();
       return value;
     })();
@@ -272,16 +289,15 @@ export default function App() {
     try { return await promise; } finally { if (openingSessions.current.get(target)?.promise === promise) openingSessions.current.delete(target); }
   };
   const openSession = () => {
-    const target: SessionTarget = { source: session, cwd, draftKey, revision: selectionRevision.current };
-    return withRuntime(() => prepareSession(false, target));
+    const revision = selectionRevision.current;
+    return withRuntime(() => prepareSession(false, { source: sessionsRef.current[activeIdRef.current], cwd, draftKey: activeIdRef.current || `new:${sessionPathKey(cwd)}`, revision }));
   };
-  const openSettings = async (tab = 'general', query = '') => {
+  const openSettings = (tab = 'general', query = '') => {
     setModelPicker(false); setAttachmentMenu(false); setSettingsTab(tab); setSettingsQuery(query); setSettingsOpen(true);
-    if (cwd && bootstrap.runtime && (!session || session.historyOnly)) { try { await openSession(); } catch (error) { showError(error); } }
   };
   const closeSession = async () => {
     if (!session) return;
-    try { if (!session.historyOnly) await request('session.close', { id: session.id }); delete drafts.current[session.id]; delete imageDrafts.current[session.id]; setSessions(old => { const next = { ...old }; delete next[session.id]; return next; }); setActiveId(''); } catch (error) { showError(error); }
+    try { if (!session.historyOnly) await request('session.close', { id: session.id }); delete drafts.current[session.id]; const next = { ...sessionsRef.current }; delete next[session.id]; sessionsRef.current = next; setSessions(old => { const next = { ...old }; delete next[session.id]; return next; }); setActiveId(''); } catch (error) { showError(error); }
   };
   const closeTerminal = async (takenOver: boolean) => {
     const id = terminalId;
@@ -307,40 +323,39 @@ export default function App() {
       const current = uniqueSessions(Object.values(sessionsRef.current)).find(value => sessionKey(value) === sessionKey(summary));
       if (current) { setActiveId(current.id); setSettingsOpen(false); return; }
       const id = `history:${sessionPathKey(summary.path)}`;
-      putSession({ id, cwd: summary.cwd, path: summary.path, title: summary.title ?? t.newTitle, messages: result.messages.map((message: Json, i: number) => normalizeMessage({ ...message, entryId: message.id }, `history-${i}`)), state: {}, pending: [], status: 'ready', historyOnly: true, nextCursor: result.nextCursor });
+      putSession({ id, cwd: summary.cwd, path: summary.path, title: summary.title ?? t.newTitle, messages: normalizeHistoryMessages(result.messages, 'history'), state: {}, pending: [], status: 'ready', historyOnly: true, nextCursor: result.nextCursor });
       setActiveId(id); setSettingsOpen(false);
     } catch (e) { showError(e); }
   };
   const send = async (text = draft) => {
     if ((!text.trim() && !images.length) || sending || actionPending.current) return;
     actionPending.current = 'send';
+    const submission = captureDraft(composerDraft);
     const target: SessionTarget = { source: session, cwd, draftKey, revision: selectionRevision.current };
     const pending = openingSessions.current.get(session?.path ? sessionKey(session) : `new:${session?.id ?? sessionPathKey(cwd)}`)?.promise;
     setSending(true); setError('');
     try {
       const slash = /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
-      if (slash && !images.length) {
+      if (slash && !submission.images.length) {
         const catalog = await request<CatalogEntry[]>('command.catalog');
         const entry = catalog.find(item => item.kind === 'slash' && item.name === slash[1]);
-        if (entry && navigateCommand(entry, slash[2] ?? '', true)) { setDraft(''); return; }
+        if (entry && navigateCommand(entry, slash[2] ?? '', true)) { if (acknowledgeDraft(submission)) showDraft(submission.draft); return; }
       }
       await withRuntime(async () => {
         const current = await prepareSession(true, { ...target, source: pending ? await pending : target.source });
         if (current.historyOnly) throw Error(t.launchError);
         setSessions(old => old[current.id] ? { ...old, [current.id]: { ...old[current.id], hidden: false } } : old);
         const command = isSessionRunning(current) ? delivery === 'follow_up' ? 'follow_up' : 'steer' : 'prompt';
-        await rpc(current.id, command, { message: text, ...(images.length ? { images: images.map(({ name: _, ...image }) => image) } : {}) });
-        drafts.current[current.id] = '';
-        imageDrafts.current[current.id] = [];
-        if (activeIdRef.current === current.id) { setDraft(''); setImages([]); }
+        await rpc(current.id, command, { message: text, ...(submission.images.length ? { images: submission.images.map(({ name: _, ...image }) => image) } : {}) });
+        if (acknowledgeDraft(submission)) showDraft(submission.draft);
         if (current.title === t.newTitle && !text.startsWith('/')) { const title = text.replace(/\s+/g, ' ').slice(0, 70); setSessions(old => old[current.id] ? { ...old, [current.id]: { ...old[current.id], title } } : old); await rpc(current.id, 'set_session_name', { name: title }); }
       });
     } catch (e) { showError(e); } finally { actionPending.current = false; setSending(false); activateRuntime(); }
   };
   const toggleModels = async () => {
     if (modelPicker) { setModelPicker(false); return; }
-    setAttachmentMenu(false); setModelPicker(true);
-    try { const current = await openSession(); if (activeIdRef.current !== current.id || current.historyOnly) return; const result = await rpc(current.id, 'get_available_models'); setModels(result.models ?? result); } catch (e) { showError(e); }
+    setAttachmentMenu(false); setModels([]); setModelsLoading(true); setModelPicker(true);
+    try { const current = await openSession(); if (activeIdRef.current !== current.id || current.historyOnly) return; const result = await rpc(current.id, 'get_available_models'); if (activeIdRef.current === current.id && !releasedIds.current.has(current.id)) setModels(result.models ?? result); } catch (e) { setModelPicker(false); showError(e); } finally { setModelsLoading(false); }
   };
   const chooseModel = async (model: Json) => {
     try { const current = await openSession(); const result = await rpc(current.id, 'set_model', { provider: model.provider, modelId: model.id }); setSessions(old => old[current.id] ? ({ ...old, [current.id]: { ...old[current.id], state: { ...old[current.id].state, model: result.model ?? result ?? model } } }) : old); setModelPicker(false); modelButton.current?.focus(); } catch (e) { showError(e); }
@@ -350,7 +365,7 @@ export default function App() {
     if (question?.method !== 'open_url') await request('session.ui', { id, response });
     setSessions(old => ({ ...old, [id]: { ...old[id], pending: old[id].pending.filter(p => p.id !== response.id) } }));
   };
-  const prepareCommand = (text: string) => { setDraft(text); setSettingsOpen(false); textarea.current?.focus(); };
+  const prepareCommand = (text: string) => { changeDraft(composerDraft, text); setSettingsOpen(false); textarea.current?.focus(); };
   const refreshSession = async (id: string, replaceMessages = false) => {
     const source = sessionsRef.current[id];
     if (!source || source.historyOnly) return;
@@ -359,18 +374,12 @@ export default function App() {
     const history = replaceMessages && path ? await readMessages(id, path, Math.max(100, sessionsRef.current[id]?.messages.length ?? source.messages.length)) : undefined;
     const btw = replaceMessages ? await rpc(id, 'get_btw_history') : undefined;
     if (sessionsRef.current[id]?.path !== source.path || sessionsRef.current[id]?.historyOnly) return;
-    setSessions(old => old[id] ? ({ ...old, [id]: { ...old[id], state: { ...old[id].state, ...state, ...(btw ? { btwRecords: btw.records } : {}) }, title: state.sessionName ?? t.newTitle, path: state.sessionFile ?? old[id].path, ...(history ? { messages: history.messages.map((message: Json, i: number) => normalizeMessage({ ...message, entryId: message.id }, `reload-${i}`)), nextCursor: history.nextCursor } : {}) } }) : old);
+    setSessions(old => old[id] ? ({ ...old, [id]: { ...old[id], state: { ...old[id].state, ...state, ...(btw ? { btwRecords: btw.records } : {}) }, title: state.sessionName ?? t.newTitle, path: state.sessionFile ?? old[id].path, ...(history ? { messages: normalizeHistoryMessages(history.messages, 'reload'), nextCursor: history.nextCursor } : {}) } }) : old);
   };
   const restoreQueuedDraft = (id: string, text: string, restoredImages: ReturnType<typeof messageImages>) => {
-    const append = (previous: string) => previous ? `${previous}\n\n${text}` : text;
-    if (activeIdRef.current === id) {
-      setDraft(previous => { const next = append(previous); drafts.current[id] = next; return next; });
-      setImages(previous => { const next = [...previous, ...restoredImages]; imageDrafts.current[id] = next; return next; });
-      textarea.current?.focus();
-    } else {
-      drafts.current[id] = append(drafts.current[id] ?? '');
-      imageDrafts.current[id] = [...(imageDrafts.current[id] ?? []), ...restoredImages];
-    }
+    const value = getDraft(id);
+    changeDraft(value, value.text ? `${value.text}\n\n${text}` : text, [...value.images, ...restoredImages]);
+    if (activeIdRef.current === id) textarea.current?.focus();
   };
   const beginQueueAction = () => {
     if (actionPending.current) return false;
@@ -396,13 +405,13 @@ export default function App() {
         const page = await readMessages(current.id, state.sessionFile);
         if (current.path) {
           const id = `history:${sessionPathKey(current.path)}`;
-          drafts.current[id] = previousDraft; imageDrafts.current[id] = previousImages;
+          drafts.current[id] = createDraft(previousDraft, previousImages);
           putSession({ ...current, id, historyOnly: true, status: 'ready', pending: [] });
         }
-        putSession({ ...current, state, path: state.sessionFile, messages: page.messages.map((value: Json, i: number) => normalizeMessage({ ...value, entryId: value.id }, `branch-${i}`)), nextCursor: page.nextCursor, hidden: false, status: 'ready' });
-        drafts.current[current.id] = result.text ?? ''; imageDrafts.current[current.id] = messageImages(entry.message);
+        putSession({ ...current, state, path: state.sessionFile, messages: normalizeHistoryMessages(page.messages, 'branch'), nextCursor: page.nextCursor, hidden: false, status: 'ready' });
+        changeDraft(getDraft(current.id), result.text ?? '', messageImages(entry.message));
         if (activeIdRef.current === current.id || selectionRevision.current === target.revision) {
-          setActiveId(current.id); setDraft(drafts.current[current.id]); setImages(imageDrafts.current[current.id]); textarea.current?.focus();
+          setActiveId(current.id); showDraft(getDraft(current.id)); textarea.current?.focus();
         }
         await refreshHistory(current.cwd);
       });
@@ -438,8 +447,24 @@ export default function App() {
     return false;
   };
   const earlier = async () => {
-    if (!session?.path || !session.nextCursor) return;
-    try { const result = await request<Json>('session.history', { path: session.path, cursor: session.nextCursor, limit: 100 }); setSessions(old => ({ ...old, [session.id]: { ...old[session.id], messages: [...result.messages.map((message: Json, i: number) => normalizeMessage({ ...message, entryId: message.id }, `history-${session.nextCursor}-${i}`)), ...old[session.id].messages], nextCursor: result.nextCursor } })); } catch (e) { showError(e); }
+    const source = session && sessionsRef.current[session.id];
+    if (!source?.path || !source.nextCursor) return;
+    const revision = selectionRevision.current;
+    const key = JSON.stringify([sessionPathKey(source.path), source.nextCursor]);
+    const pending = historyPages.current.get(key);
+    if (pending?.revision === revision) return pending.promise;
+    setHistoryPageLoading({ id: source.id, revision });
+    const promise = (async () => {
+      try {
+        const page = await request<{ messages: Json[]; nextCursor?: string }>('session.history', { path: source.path, cursor: source.nextCursor, limit: 100 });
+        if (revision !== selectionRevision.current) return;
+        const current = sessionsRef.current[source.id];
+        if (current) { const updated = prependHistoryPage(current, source, page); if (updated !== current) putSession(updated); }
+      } catch (error) { if (revision === selectionRevision.current) showError(error); }
+      finally { setHistoryPageLoading(current => current?.id === source.id && current.revision === revision ? null : current); }
+    })();
+    historyPages.current.set(key, { revision, promise });
+    try { await promise; } finally { if (historyPages.current.get(key)?.promise === promise) historyPages.current.delete(key); }
   };
   const activeQuestion = session?.pending[0];
   return <div className="window-frame"><WindowChrome language={bootstrap.preferences.language} /><div className={`app-shell ${sidebar ? '' : 'sidebar-hidden'}`}>
@@ -466,19 +491,19 @@ export default function App() {
       <div className="sidebar-bottom"><button className={`nav-item ${settingsOpen ? 'selected' : ''}`} onClick={() => settingsOpen ? setSettingsOpen(false) : openSettings('general')}><Settings2 size={16} /><span>{t.settings}</span></button><div className="runtime-pill"><span className={`status-dot ${bootstrap.runtime ? 'connected' : ''}`} /><span>{bootstrap.runtime ? `OMP ${bootstrap.runtime.version}` : t.notInstalled}</span><span className="version">v{version}</span></div></div>
     </aside>}
     <main className="main-area">
-      {settingsOpen ? <Suspense fallback={<div className="page-loading">{t.loading}</div>}><Settings key={`${settingsTab}:${settingsQuery}`} initialQuery={settingsQuery} initialTab={settingsTab} bootstrap={bootstrap} t={t} sessionId={session && !session.historyOnly ? session.id : undefined} update={setBootstrap} onError={showError} close={() => setSettingsOpen(false)} /></Suspense> : <>
+      {settingsOpen ? <Suspense fallback={<div className="page-loading">{t.loading}</div>}><Settings key={`${settingsTab}:${settingsQuery}`} initialQuery={settingsQuery} initialTab={settingsTab} bootstrap={bootstrap} t={t} sessionId={session && !session.historyOnly ? session.id : undefined} ensureSession={cwd && bootstrap.runtime ? () => openSession().then(current => current.id) : undefined} update={setBootstrap} onError={showError} close={() => setSettingsOpen(false)} /></Suspense> : <>
         <header className="workspace-header" inert={!!terminalId}><div className="header-location">{!sidebar && <button className="icon-button" title={t.expand} onClick={() => setSidebar(true)}><PanelLeftOpen size={18} /></button>}<Folder size={15} /><button onClick={addProject}>{project?.name ?? t.openProject}</button>{session && <><span className="breadcrumb-divider">/</span><span className="header-title">{session.title}</span></>}</div><div className="workspace-actions"><button className={`quiet-button ${inspector === 'review' ? 'active' : ''}`} disabled={!cwd} onClick={() => setInspector(value => value === 'review' ? null : 'review')}><FileDiff size={15} /><span>{t.review}</span></button><button className="icon-button" title={t.context} disabled={!cwd} onClick={() => setInspector(value => value === 'context' ? null : 'context')}><Layers size={17} /></button><details ref={moreMenu} className="more-menu" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false; }} onClick={event => { if ((event.target as Element).closest("button")) { event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); } }}><summary className="icon-button" title={t.more}><ChevronDown size={16} /></summary><div className="ui-menu">{(['files', 'agents', 'tasks', 'tree'] as InspectorTab[]).map(tab => <button disabled={!cwd} key={tab} onClick={() => setInspector(tab)}>{t[tab]}</button>)}<div className="menu-separator" /><button disabled={!session || session.historyOnly || !session.state.isSettled} onClick={() => { setTerminalInput(''); setTerminalId(session!.id); }}>{t.terminal}</button><button disabled={!session || session.historyOnly} onClick={() => { if (session) rpc(session.id, 'export_html').then(result => prepareCommand(String(result.path ?? result))).catch(showError); }}>{t.export}</button><button disabled={!session || busy} onClick={() => prepareCommand('/fork')}>{t.fork}</button><button disabled={!session || busy} onClick={closeSession}>{t.close} {t.session}</button></div></details></div></header>
         {error && <div className="error-banner" role="alert"><CircleHelp size={16} /><span>{localizeError(error, bootstrap.preferences.language)}</span><button className="icon-button" title={t.dismiss} onClick={() => setError('')}><X size={15} /></button></div>}
         {terminalId ? <Suspense fallback={<div className="page-loading">{t.loading}</div>}><TerminalPanel id={terminalId} initialCommand={terminalInput} t={t} onError={showError} close={closeTerminal} /></Suspense> : <div className="workspace-body"><GenerationRateProvider session={session} language={bootstrap.preferences.language} cache={rateCache.current}><div className="conversation-column">
-          {session?.messages.length ? <Transcript key={sessionKey(session)} messages={session.messages} t={t} busy={busy} actionsDisabled={sending || messageAction} onEdit={editMessage} onRetry={retryTurn} loadEarlier={session.nextCursor ? earlier : undefined} /> : <div className="welcome"><div className="welcome-symbol"><span /><span /><span /></div><h1>{t.welcome}</h1><p>{t.welcomeText}</p>{!native && <p className="browser-note">{t.nativeOnly}</p>}<div className="starter-actions">{[[t.exploreAction, t.explorePrompt], [t.reviewAction, t.reviewPrompt], [t.buildAction, t.buildPrompt]].map(([label, prompt]) => <button key={label} onClick={() => { setDraft(prompt); textarea.current?.focus(); }}>{label}<ArrowUpRight size={14} /></button>)}</div></div>}
+          {session?.messages.length ? <Transcript key={sessionKey(session)} messages={session.messages} t={t} busy={busy} actionsDisabled={sending || messageAction} onEdit={editMessage} onRetry={retryTurn} loadEarlier={session.nextCursor ? earlier : undefined} loadingEarlier={historyPageLoading?.id === session.id && historyPageLoading.revision === selectionRevision.current} /> : <div className="welcome"><div className="welcome-symbol"><span /><span /><span /></div><h1>{t.welcome}</h1><p>{t.welcomeText}</p>{!native && <p className="browser-note">{t.nativeOnly}</p>}<div className="starter-actions">{[[t.exploreAction, t.explorePrompt], [t.reviewAction, t.reviewPrompt], [t.buildAction, t.buildPrompt]].map(([label, prompt]) => <button key={label} onClick={() => { changeDraft(composerDraft, prompt); textarea.current?.focus(); }}>{label}<ArrowUpRight size={14} /></button>)}</div></div>}
           <div className="composer-area">{activeQuestion && session && <Question key={activeQuestion.id} question={activeQuestion} t={t} answer={response => answer(session.id, response).catch(showError)} />}
             {session && !session.historyOnly && <SessionActivity session={session} t={t} refresh={() => refreshSession(session.id)} onError={showError} />}
             {!bootstrap.runtime && !booting && <button className="setup-callout" onClick={() => openSettings('runtime')}><span className="setup-icon"><TerminalSquare size={18} /></span><span><strong>{t.installRuntime}</strong><small>{t.installText}</small></span><ArrowUpRight size={16} /></button>}
             {session && !session.historyOnly && <QueuedMessages key={sessionKey(session)} begin={beginQueueAction} end={endQueueAction} session={session} t={t} disabled={sending || messageAction} refresh={() => refreshSession(session.id)} restore={(text, images) => restoreQueuedDraft(session.id, text, images)} onError={showError} />}
             <div className={`composer ${busy ? 'is-busy' : ''}`}>
-              {images.length > 0 && <div className="attachments">{images.map((image, i) => <div key={i}><img src={`data:${image.mimeType};base64,${image.data}`} alt={image.name} /><span>{image.name}</span><button className="icon-button" title={t.remove} disabled={messageAction && actionPending.current === 'edit'} onClick={() => setImages(old => old.filter((_, index) => index !== i))}><X size={12} /></button></div>)}</div>}
-              <ComposerInput key={draftKey} textareaRef={textarea} value={draft} onChange={setDraft} onSend={() => void send()} disabled={messageAction && actionPending.current === 'edit'} cwd={cwd} t={t} />
-              <div className="composer-toolbar"><input className="visually-hidden" type="file" tabIndex={-1} accept="image/*" multiple ref={fileInput} onChange={async e => { for (const file of Array.from(e.target.files ?? [])) { const data = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }); setImages(old => [...old, { type: 'image', data, mimeType: file.type, name: file.name }]); } e.target.value = ''; }} />
+              {images.length > 0 && <div className="attachments">{images.map((image, i) => <div key={i}><img src={`data:${image.mimeType};base64,${image.data}`} alt={image.name} /><span>{image.name}</span><button className="icon-button" title={t.remove} disabled={messageAction && actionPending.current === 'edit'} onClick={() => changeDraft(composerDraft, composerDraft.text, composerDraft.images.filter((_, index) => index !== i))}><X size={12} /></button></div>)}</div>}
+              <ComposerInput key={draftKey} textareaRef={textarea} value={draft} onChange={text => changeDraft(composerDraft, text)} onSend={() => void send()} disabled={messageAction && actionPending.current === 'edit'} cwd={cwd} t={t} />
+              <div className="composer-toolbar"><input className="visually-hidden" type="file" tabIndex={-1} accept="image/*" multiple ref={fileInput} onChange={async event => { const input = event.currentTarget; const target = composerDraft; const files = Array.from(input.files ?? []); try { for (const file of files) { const data = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }); changeDraft(target, target.text, [...target.images, { type: 'image', data, mimeType: file.type, name: file.name }]); } } catch (error) { showError(error); } finally { input.value = ''; } }} />
                 <div className="attachment-control" ref={attachmentControl} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setAttachmentMenu(false); }}>
                   <button ref={addButton} disabled={messageAction && actionPending.current === 'edit'} className="icon-button" title={t.addContent} aria-haspopup="menu" aria-expanded={attachmentMenu} aria-controls={attachmentMenu ? 'attachment-menu' : undefined} onClick={() => { setAttachmentMenu(value => !value); setModelPicker(false); }}><Plus size={18} /></button>
                   {attachmentMenu && <div id="attachment-menu" className="attachment-menu ui-menu" role="menu" aria-label={t.addContent} onKeyDown={event => {
@@ -491,14 +516,14 @@ export default function App() {
                     <button role="menuitem" disabled={!native} title={!native ? t.nativeOnly : undefined} onClick={() => void attachPath(true)}><FolderPlus size={16} />{t.attachFolder}</button>
                   </div>}
                 </div>
-                <div className="model-control" ref={modelControl}><button ref={modelButton} className="model-button" aria-haspopup="dialog" aria-expanded={modelPicker} disabled={!cwd || !bootstrap.runtime} onClick={toggleModels}>{session?.state.model?.name ?? session?.state.model?.id ?? t.chooseModel}<ChevronDown size={12} /></button>{modelPicker && <div className="model-picker ui-menu" role="dialog" aria-label={t.chooseModel}><input autoFocus aria-label={t.search} placeholder={t.search} value={modelQuery} onChange={e => setModelQuery(e.target.value)} /><div>{models.filter(model => `${model.name} ${model.id} ${model.provider}`.toLowerCase().includes(modelQuery.toLowerCase())).map(model => <button key={`${model.provider}:${model.id}`} aria-pressed={session?.state.model?.id === model.id && session?.state.model?.provider === model.provider} onClick={() => chooseModel(model)}><strong>{model.name ?? model.id}</strong><small>{model.provider}</small></button>)}{!models.length && <p>{t.noModels}</p>}{models.length > 0 && !models.some(model => `${model.name} ${model.id} ${model.provider}`.toLowerCase().includes(modelQuery.toLowerCase())) && <p>{t.noResults}</p>}</div></div>}</div>
+                <div className="model-control" ref={modelControl}><button ref={modelButton} className="model-button" aria-haspopup="dialog" aria-expanded={modelPicker} disabled={!cwd || !bootstrap.runtime} onClick={toggleModels}>{session?.state.model?.name ?? session?.state.model?.id ?? t.chooseModel}<ChevronDown size={12} /></button>{modelPicker && <div className="model-picker ui-menu" role="dialog" aria-label={t.chooseModel}><input autoFocus aria-label={t.search} placeholder={t.search} value={modelQuery} onChange={e => setModelQuery(e.target.value)} /><div>{models.filter(model => `${model.name} ${model.id} ${model.provider}`.toLowerCase().includes(modelQuery.toLowerCase())).map(model => <button key={`${model.provider}:${model.id}`} aria-pressed={session?.state.model?.id === model.id && session?.state.model?.provider === model.provider} onClick={() => chooseModel(model)}><strong>{model.name ?? model.id}</strong><small>{model.provider}</small></button>)}{!models.length && <p role="status">{modelsLoading ? t.loading : t.noModels}</p>}{models.length > 0 && !models.some(model => `${model.name} ${model.id} ${model.provider}`.toLowerCase().includes(modelQuery.toLowerCase())) && <p>{t.noResults}</p>}</div></div>}</div>
                 {session && !session.historyOnly && <Select label={t.effort} value={session.state.thinkingLevel ?? 'medium'} options={Object.entries(t.effortLevels).map(([value, label]) => ({ value, label }))} onChange={level => rpc(session.id, 'set_thinking_level', { level }).then(() => setSessions(old => ({ ...old, [session.id]: { ...old[session.id], state: { ...old[session.id].state, thinkingLevel: level } } }))).catch(showError)} />}
                 <GenerationRate /><span className="spacer" />{busy && <Select label={t.queued} value={delivery} onChange={setDelivery} options={[{ value: 'steer', label: t.steer }, { value: 'follow_up', label: t.followUp }]} />}{busy && session && !draft ? <button className="send-button stop-button" title={t.stop} onClick={() => rpc(session.id, 'abort').catch(showError)}><Square size={14} fill="currentColor" /></button> : <button className="send-button" title={t.send} disabled={sending || messageAction || (!draft.trim() && !images.length) || !cwd || !bootstrap.runtime} onClick={() => send()}>{sending || messageAction ? <LoaderCircle size={16} className="spin" /> : <ArrowUp size={18} />}</button>}
               </div>
             </div><div className="composer-footnote"><span><span className={`status-dot ${busy ? 'working' : 'connected'}`} />{busy ? t.running : session?.pending.length ? t.waiting : t.ready}</span><span>{cwd ? <><FolderOpen size={12} />{cwd}</> : <button onClick={addProject}>{t.openProject}</button>}</span></div>
             <SessionUsage session={session} language={bootstrap.preferences.language} cache={usageCache.current} />
           </div>
-        </div>{inspector && <Suspense fallback={<aside className="inspector"><p>{t.loading}</p></aside>}><Inspector onSessionChanged={() => session ? refreshSession(session.id, true) : Promise.resolve()} tab={inspector} session={session} cwd={cwd} t={t} onError={showError} close={() => setInspector(null)} send={prepareCommand} /></Suspense>}</GenerationRateProvider></div>}
+        </div>{inspector && <Suspense fallback={<aside className="inspector"><p>{t.loading}</p></aside>}><Inspector language={bootstrap.preferences.language} onSessionChanged={() => session ? refreshSession(session.id, true) : Promise.resolve()} tab={inspector} session={session} cwd={cwd} t={t} onError={showError} close={() => setInspector(null)} send={prepareCommand} /></Suspense>}</GenerationRateProvider></div>}
       </>}
       {settingsOpen && pending.length > 0 && <div className="settings-question"><Question key={pending[0].question.id} question={pending[0].question} t={t} answer={response => answer(pending[0].sessionId, response).catch(showError)} /></div>}{settingsOpen && error && <div className="error-toast" role="alert"><span>{localizeError(error, bootstrap.preferences.language)}</span><button className="icon-button" title={t.dismiss} onClick={() => setError('')}><X size={15} /></button></div>}
     </main>

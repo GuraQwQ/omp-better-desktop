@@ -56,7 +56,7 @@ if (-not (Test-Path -LiteralPath $desktopSource -PathType Leaf)) { throw 'Deskto
 $packageSource = if ($RuntimePackage) {
     (Resolve-Path -LiteralPath $RuntimePackage).Path
 } else {
-    Join-Path (Split-Path -Parent $desktopSource) 'resources/runtime-windows-x64'
+    Join-Path (Split-Path -Parent $desktopSource) 'runtime-windows-x64'
 }
 if (-not (Test-Path -LiteralPath $packageSource)) { throw "OMP runtime package not found: $packageSource" }
 $packageSource = (Resolve-Path -LiteralPath $packageSource).Path
@@ -82,7 +82,7 @@ if ($WebView2Runtime) {
 
 [IO.Directory]::CreateDirectory($installDirectory) | Out-Null
 [IO.Directory]::CreateDirectory($managedRoot) | Out-Null
-$packageDestination = Join-Path $installDirectory 'resources/runtime-windows-x64'
+$packageDestination = Join-Path $installDirectory 'runtime-windows-x64'
 [IO.Directory]::CreateDirectory($packageDestination) | Out-Null
 $names = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach ($file in $manifest.files) {

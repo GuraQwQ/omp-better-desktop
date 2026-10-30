@@ -15,4 +15,5 @@
 .usage-details dt { color: var(--secondary); }
 .usage-details dd { margin: 0; color: var(--text); overflow-wrap: anywhere; text-align: right; }
 .usage-details p { margin: 12px 0 0; border-top: 1px solid var(--line-soft); padding-top: 10px; font-size: 11px; }
+.usage-details footer { display: flex; justify-content: flex-end; margin-top: 8px; }
 @media (max-width: 1120px) { .session-usage-summary { gap: 4px 12px; } .session-context, .session-token-usage { gap: 8px; } }

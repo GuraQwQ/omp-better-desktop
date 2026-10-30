@@ -1,8 +1,13 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
-import { lock, prepareUpstream, projectRoot, run } from './prepare-upstream';
+import { buildInstall, recoverBuildInstalls } from './build-install';
 
+const projectRoot = path.resolve(import.meta.dir, '..');
+const artifactsRoot = path.join(projectRoot, 'artifacts');
+await fs.mkdir(artifactsRoot, { recursive: true });
+await recoverBuildInstalls(projectRoot, artifactsRoot);
+const { lock, prepareUpstream, run } = await import('./prepare-upstream');
 const cacheRoot = path.resolve(process.env.OMP_DESKTOP_CACHE ?? path.join(projectRoot, '.cache'));
 if (process.platform === 'win32' && /^[cC]:[\\/]/.test(cacheRoot)) throw new Error('Choose a non-C: cache directory.');
 const tempRoot = path.join(cacheRoot, 'tmp');
@@ -35,8 +40,6 @@ process.env.CARGO_HOME = cargoHome;
 process.env.TEMP = tempRoot;
 process.env.TMP = tempRoot;
 
-const artifactsRoot = path.join(projectRoot, 'artifacts');
-await fs.mkdir(artifactsRoot, { recursive: true });
 const stageRoot = await fs.mkdtemp(path.join(artifactsRoot, '.staging-runtime-'));
 const buildRoot = process.env.OMP_BUILD_ROOT
   ? path.resolve(process.env.OMP_BUILD_ROOT)
@@ -68,46 +71,9 @@ const env = {
   TEMP: buildTemp,
   TMP: buildTemp,
 };
-const installed: { target: string; backup?: string; directory: boolean }[] = [];
+const { install, rollback, commit } = buildInstall(projectRoot, stageRoot);
+let cleanStage = false;
 const lockPath = path.join(projectRoot, 'upstream.lock.json');
-const beforeBuild = await Promise.all(['upstream.lock.json', 'docs/feature-map.md', 'patches/0001-desktop-runtime.patch'].map(file => Bun.file(path.join(projectRoot, file)).bytes()));
-
-async function renameWithRetry(source: string, target: string): Promise<void> {
-  for (let attempt = 0; ; attempt++) {
-    try { await fs.rename(source, target); return; }
-    catch (error) {
-      if (process.platform !== 'win32' || !['EPERM', 'EBUSY'].includes((error as NodeJS.ErrnoException).code ?? '') || attempt >= 6) throw error;
-      console.warn(`Windows 文件暂被占用，重试重命名 ${path.basename(source)}（${attempt + 1}/6）`);
-      await new Promise(resolve => setTimeout(resolve, 100 * 2 ** attempt));
-    }
-  }
-}
-
-async function install(staged: string, target: string, directory = false): Promise<void> {
-  await fs.mkdir(path.dirname(target), { recursive: true });
-  let backup: string | undefined;
-  try {
-    await fs.access(target);
-    backup = path.join(stageRoot, 'rollback-' + installed.length);
-    await renameWithRetry(target, backup);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-  }
-  try {
-    await renameWithRetry(staged, target);
-    installed.push({ target, backup, directory });
-  } catch (error) {
-    if (backup) await renameWithRetry(backup, target);
-    throw error;
-  }
-}
-
-async function rollback(): Promise<void> {
-  for (const item of installed.reverse()) {
-    await fs.rm(item.target, { recursive: item.directory, force: true });
-    if (item.backup) await renameWithRetry(item.backup, item.target);
-  }
-}
 
 try {
   console.log('Checking out locked OMP source ' + lock.revision + '...');
@@ -170,19 +136,17 @@ try {
   await run(['cargo', 'check', '--manifest-path', path.join(projectRoot, 'src-tauri/Cargo.toml')], projectRoot, env);
   await run(['bun', 'run', 'check'], projectRoot, env);
   if (process.argv.includes('--bundle-desktop')) await run([bunExecutable, 'run', 'desktop', 'build', '--bundles', 'nsis'], projectRoot, env);
+  await commit();
+  cleanStage = true;
   console.log('OMP ' + manifest.version + ' built, RPC-smoke tested, and synchronized.');
 } catch (error) {
-  await rollback();
-  for (const [index, file] of ['upstream.lock.json', 'docs/feature-map.md', 'patches/0001-desktop-runtime.patch'].entries()) {
-    const target = path.join(projectRoot, file);
-    const original = beforeBuild[index];
-    if (!Buffer.from(await Bun.file(target).bytes()).equals(Buffer.from(original))) await Bun.write(target, original);
-  }
+  try { await rollback(); cleanStage = true; }
+  catch (recoveryError) { throw new AggregateError([error, recoveryError], `构建失败且恢复未完成，恢复文件保留在 ${stageRoot}`); }
   throw error;
 } finally {
   if (removeBuildRoot) {
     await fs.rm(buildRoot, { recursive: true, force: true });
   }
   await fs.rm(scratchRoot, { recursive: true, force: true });
-  await fs.rm(stageRoot, { recursive: true, force: true });
+  if (cleanStage) await fs.rm(stageRoot, { recursive: true, force: true });
 }
