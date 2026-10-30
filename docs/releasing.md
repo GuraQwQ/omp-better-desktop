@@ -18,6 +18,8 @@
 
 合并后，处理任务要求候选与合并提交的 Git tree 一致，再从原 Windows 运行下载的产物创建 `vX.Y.Z-preview.pr.N` 标签对应的发行，`N` 为 PR 号，标签指向合并提交。先创建草稿并上传全部附件，再公开为 Pre-release；发布阶段不重新编译。相同输入重试会复用草稿；已公开发行只核对标签和全部附件摘要，保留原有产物。中断后可重新运行该发布任务。
 
+同步 OMP 的预构建包保持公开的 Pre-release，不设置为正式版 Latest。所有同步发布串行处理；已有更新合并提交的同步预览时，重跑旧任务会跳过发布。新包公开成功后才清理旧预览发行及遗留预览草稿，只保留最新一份；清理限定 `vX.Y.Z-preview.N` 和 `vX.Y.Z-preview.pr.N`，保留 Git 标签和正式版历史。公开发行的同一次任务重跑也会完成清理。
+
 仓库允许 GitHub Actions 创建 PR，并将 `windows` 设为 `main` 的必需检查。`GITHUB_TOKEN` 创建的 PR 可能要求批准自动触发的工作流，因此使用 `workflow_dispatch` 明确调度检查，再通过 `workflow_run` 执行合并与发布，不依赖机器人合并后的 push 事件；见 [触发规则](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)和 [workflow_run](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_run)。构建任务保持只读，写权限仅用于创建 PR、调度检查和合并/发布的对应任务。
 
 Bun 1.4.4 是当前已验证的发行工具版本；锁定 OMP、原生 addon 与生成 wire 的原因是协议和 ABI 兼容。更新责任人为仓库维护者，升级时同步重新验证这些输入。
