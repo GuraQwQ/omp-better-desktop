@@ -23,7 +23,7 @@ export async function packageRuntime(): Promise<string> {
   }
   await Bun.write(path.join(output, 'runtime-manifest.json'), JSON.stringify({
     version: lock.runtimeVersion, revision: lock.revision, protocolVersion: lock.protocolVersion,
-    patchDigest: patchHash.digest('hex'), executable, files,
+    patchDigest: patchHash.digest('hex'), requestCaptureVersion: 1, executable, files,
   }, null, 2) + '\n');
   return output;
 }

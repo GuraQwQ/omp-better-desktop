@@ -1,0 +1,12 @@
+.context-fold { border-top: 1px solid var(--line-soft); }
+.context-fold > summary { display: flex; align-items: center; gap: 8px; padding: 12px 2px; border-radius: 4px; }
+.context-fold > summary:hover { background: var(--hover); }
+.context-fold > summary > span { overflow-wrap: anywhere; min-width: 0; }
+.context-fold > summary > small { margin-left: auto; padding-left: 10px; color: var(--secondary); font-size: 11px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.context-fold[open] > summary > svg { transform: rotate(90deg); }
+.context-fold-body { min-width: 0; padding: 0 2px 12px 22px; }
+.context-fold-body > p { color: var(--secondary); font-size: 12px; }
+.context-original-actions { display: flex; justify-content: flex-end; padding-bottom: 6px; }
+.context-original pre { max-height: 360px; margin: 0; padding: 12px; overflow: auto; background: var(--code-surface); border-radius: 6px; font-size: 12px; line-height: 1.7; tab-size: 2; scrollbar-color: var(--line) transparent; }
+.context-original [role='alert'] { color: var(--danger); font-size: 12px; }
+@media (max-width: 640px) { .context-fold-body { padding-left: 12px; } }

@@ -48,6 +48,7 @@ jobs:
           OMP_UPSTREAM_VERSION: ${{ steps.upstream.outputs.version }}
           OMP_UPSTREAM_REVISION: ${{ steps.upstream.outputs.revision }}
           OMP_UPSTREAM_ROOT: ${{ steps.upstream.outputs.upstreamRoot }}
+          OMP_BUILD_ROOT: ${{ steps.upstream.outputs.upstreamRoot }}
         run: bun run build:runtime
       - if: steps.upstream.outputs.changed == 'true'
         name: 整理更新补丁

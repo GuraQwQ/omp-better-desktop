@@ -1,0 +1,10 @@
+.advanced-settings { min-width: 0; }
+.advanced-settings .setting-row > div { min-width: 0; }
+.advanced-note { max-width: 76ch; color: var(--secondary); font-size: 12px; line-height: 1.7; }
+.advanced-settings .settings-note p { margin: 10px 0 0; color: var(--secondary); font-size: 11px; font-variant-numeric: tabular-nums; }
+.capture-switch { appearance: none; width: 34px; min-width: 34px; height: 20px; border: 1px solid var(--line); padding: 2px; border-radius: 12px; background: var(--line); cursor: pointer; }
+.capture-switch::before { content: ''; display: block; width: 14px; height: 14px; border-radius: 50%; background: var(--surface-raised); }
+.capture-switch:checked { background: var(--accent); border-color: var(--accent); }
+.capture-switch:checked::before { transform: translateX(14px); background: var(--on-accent); }
+.capture-switch:disabled { opacity: .5; cursor: default; }
+.capture-switch:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }

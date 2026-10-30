@@ -3,8 +3,10 @@ mod browser_login;
 mod history;
 mod platform;
 mod providers;
+mod request_capture;
 mod sessions;
 mod storage;
+mod workspace;
 
 use serde_json::{Value, json};
 use std::{
@@ -121,7 +123,11 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
                     storage::install_runtime(root, Path::new(text(&request, "path")?))
                 }
                 "runtime.rollback" => storage::rollback_runtime(root),
-                "runtime.clean" => storage::clean_cache(root),
+                "runtime.clean" => {
+                    let result = storage::clean_cache(root)?;
+                    history::clear_cache(root);
+                    Ok(result)
+                }
                 "data.import" => storage::import_omp(root, Path::new(text(&request, "path")?)),
                 _ => {
                     storage::takeover(root, request["enabled"].as_bool().ok_or("Missing enabled")?)
@@ -129,6 +135,17 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
             }
         }
         "data.discover" => storage::discover_omp(root),
+        "requests.status" => request_capture::status(root),
+        "requests.configure" => {
+            request_capture::configure(root, request["enabled"].as_bool().ok_or("Missing enabled")?)
+        }
+        "requests.list" => request_capture::list(
+            root,
+            request["sessionId"].as_str(),
+            request["path"].as_str(),
+        ),
+        "requests.read" => request_capture::read(root, text(&request, "id")?),
+        "requests.clear" => request_capture::clear(root),
         "providers.config" => {
             let _access = desktop.data_access.read().unwrap();
             let result = providers::config(root, &request)?;
@@ -205,39 +222,8 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
             request["rows"].as_u64().unwrap_or(30) as u16,
         ),
         "terminal.close" => desktop.sessions.terminal_close(text(&request, "id")?),
-        "workspace.diff" => {
-            let cwd = Path::new(text(&request, "cwd")?);
-            let diff = platform::run("git", &["diff", "--no-ext-diff", "--no-color", "HEAD"], cwd)?;
-            let status = platform::run("git", &["status", "--short"], cwd)?;
-            if !status.status.success() {
-                return Err(String::from_utf8_lossy(&status.stderr).into());
-            }
-            Ok(
-                json!({"diff":String::from_utf8_lossy(&diff.stdout),"status":String::from_utf8_lossy(&status.stdout)}),
-            )
-        }
-        "workspace.files" => {
-            let output = platform::run(
-                "git",
-                &[
-                    "ls-files",
-                    "-z",
-                    "--cached",
-                    "--others",
-                    "--exclude-standard",
-                ],
-                Path::new(text(&request, "cwd")?),
-            )?;
-            if !output.status.success() {
-                return Err(String::from_utf8_lossy(&output.stderr).into());
-            }
-            Ok(json!(
-                String::from_utf8_lossy(&output.stdout)
-                    .split('\0')
-                    .filter(|path| !path.is_empty())
-                    .collect::<Vec<_>>()
-            ))
-        }
+        "workspace.diff" => workspace::diff(Path::new(text(&request, "cwd")?)),
+        "workspace.files" => workspace::files(Path::new(text(&request, "cwd")?)),
         "workspace.read" => {
             let path = inside(Path::new(text(&request, "cwd")?), text(&request, "path")?)?;
             let data = fs::read(&path).map_err(|e| e.to_string())?;

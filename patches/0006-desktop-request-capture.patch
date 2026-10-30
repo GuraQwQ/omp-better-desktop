@@ -1,0 +1,127 @@
+diff --git a/packages/ai/src/utils/request-debug.ts b/packages/ai/src/utils/request-debug.ts
+--- a/packages/ai/src/utils/request-debug.ts
++++ b/packages/ai/src/utils/request-debug.ts
+@@ -1,5 +1,7 @@
+ import { Buffer } from "node:buffer";
+ import * as fs from "node:fs/promises";
++import * as path from "node:path";
++import { logger } from "@oh-my-pi/pi-utils";
+ import { redactHeaders } from "./http-inspector";
+ import { decodeRequestBodyBytes } from "./request-body";
+ 
+@@ -341,3 +343,92 @@
+ function isFileExistsError(error: unknown): boolean {
+ 	return typeof error === "object" && error !== null && (error as { code?: unknown }).code === "EEXIST";
+ }
++
++
++const CAPTURE_MAX_BYTES = 64 * 1024 * 1024;
++const CAPTURE_MAX_RECORDS = 100;
++const CAPTURE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
++const CAPTURE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
++
++/** 桌面端按请求读取开关，复用发送层快照，只持久化请求。 */
++export async function captureDesktopRequest(
++	input: string | URL | Request,
++	init: RequestInit | undefined,
++	model: { provider: string; api: string; id: string },
++): Promise<void> {
++	const root = Bun.env.OMP_DESKTOP_REQUEST_CAPTURE_ROOT;
++	const config = Bun.env.OMP_DESKTOP_REQUEST_CAPTURE_CONFIG;
++	const sessionId = Bun.env.OMP_DESKTOP_REQUEST_CAPTURE_SESSION_ID;
++	if (!root || !config || !sessionId || !CAPTURE_UUID.test(sessionId)) return;
++	try {
++		const isEnabled = async () => fs.readFile(config, "utf8")
++			.then(value => JSON.parse(value).enabled === true)
++			.catch(error => { if (error.code === "ENOENT") return false; throw error; });
++		if (!(await isEnabled())) return;
++		const headers = resolveRequestHeaders(input, init);
++		const body = await snapshotRequestBody(input, init, headers.get("content-type"), headers.get("content-encoding"));
++		const folder = path.join(root, sessionId);
++		const context = await fs.readFile(path.join(folder, "context.json"), "utf8").then(JSON.parse).catch(() => ({}));
++		const url = new URL(resolveRequestUrl(input));
++		url.username = "";
++		url.password = "";
++		for (const key of new Set(url.searchParams.keys())) {
++			if (/key|token|secret|auth|credential|cookie|signature|password/i.test(key)) url.searchParams.set(key, "[redacted]");
++		}
++		const id = crypto.randomUUID();
++		const payload: Record<string, unknown> = {
++			id, createdAt: Date.now(), sessionId, sessionPath: context.sessionPath,
++			processId: process.pid, provider: model.provider, api: model.api, model: model.id,
++			method: resolveRequestMethod(input, init), url: url.toString(),
++			headers: redactHeaders(headersToRecord(headers)), ...body,
++		};
++		let content = `${JSON.stringify(payload, null, 2)}\n`;
++		if (Buffer.byteLength(content, "utf8") > CAPTURE_MAX_BYTES) {
++			const { body: _body, bodyText: _text, bodyBase64: _bytes, ...metadata } = payload;
++			content = `${JSON.stringify({ ...metadata, bodyUnavailable: "Request exceeds the 64 MiB capture limit." }, null, 2)}\n`;
++		}
++		if (!(await isEnabled())) return;
++		await fs.mkdir(folder, { recursive: true });
++		const temporary = path.join(folder, `.${id}.pending`);
++		try {
++			await fs.writeFile(temporary, content, { flag: "wx" });
++			await fs.rename(temporary, path.join(folder, `${id}.json`));
++		} finally {
++			await fs.rm(temporary, { force: true }).catch(() => {});
++		}
++		await pruneDesktopCaptures(root);
++	} catch (error) {
++		// 捕获失败只影响诊断记录，不打断模型请求。
++		logger.warn("保存桌面请求捕获失败", { error: String(error) });
++	}
++}
++
++async function pruneDesktopCaptures(root: string): Promise<void> {
++	const now = Date.now();
++	const records: Array<{ file: string; modified: number; size: number }> = [];
++	for (const folder of await fs.readdir(root, { withFileTypes: true })) {
++		if (!folder.isDirectory() || !CAPTURE_UUID.test(folder.name)) continue;
++		const directory = path.join(root, folder.name);
++		const files = await fs.readdir(directory).catch(() => []);
++		for (const file of files) {
++			const capture = file.endsWith(".json") && CAPTURE_UUID.test(file.slice(0, -5));
++			const pending = file.startsWith(".") && file.endsWith(".pending") && CAPTURE_UUID.test(file.slice(1, -8));
++			if (!capture && !pending) continue;
++			const target = path.join(directory, file);
++			const info = await fs.lstat(target).catch(() => undefined);
++			if (!info?.isFile()) continue;
++			if (pending) {
++				if (now - info.mtimeMs > 30 * 60 * 1000) await fs.rm(target, { force: true });
++			} else records.push({ file: target, modified: info.mtimeMs, size: info.size });
++		}
++	}
++	records.sort((left, right) => right.modified - left.modified || right.file.localeCompare(left.file));
++	let bytes = 0;
++	let count = 0;
++	for (const record of records) {
++		if (count < CAPTURE_MAX_RECORDS && bytes + record.size <= CAPTURE_MAX_BYTES && now - record.modified <= CAPTURE_MAX_AGE_MS) {
++			bytes += record.size;
++			count++;
++		} else await fs.rm(record.file, { force: true });
++	}
++}
+diff --git a/packages/ai/src/utils/transport-fetch.ts b/packages/ai/src/utils/transport-fetch.ts
+--- a/packages/ai/src/utils/transport-fetch.ts
++++ b/packages/ai/src/utils/transport-fetch.ts
+@@ -3,7 +3,7 @@
+ import { withInferenceUserAgent } from "../providers/inference-headers";
+ import type { Api, FetchImpl, Model } from "../types";
+ import { getProxyForProvider, withProxyInit } from "./proxy";
+-import { createFetchRequestDebugSession, isRequestDebugEnabled } from "./request-debug";
++import { captureDesktopRequest, createFetchRequestDebugSession, isRequestDebugEnabled } from "./request-debug";
+ 
+ /** Stamped on a fetch already built by {@link transportFetch}. */
+ const TRANSPORT_FETCH = Symbol("omp.transportFetch");
+@@ -37,6 +37,10 @@
+ 		const extraCa = resolveExtraCa();
+ 		if (extraCa) init = withExtraCaInit(init, extraCa);
+ 		if (proxyUrl) init = withProxyInit(input, init, proxyUrl);
++		if (Bun.env.OMP_DESKTOP_REQUEST_CAPTURE_ROOT) {
++			await captureDesktopRequest(input, init, model);
++			return base(input, init);
++		}
+ 		if (!isRequestDebugEnabled()) return base(input, init);
+ 		const session = await createFetchRequestDebugSession(input, init);
+ 		return session.wrapResponse(await base(input, init));

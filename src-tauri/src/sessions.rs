@@ -1,7 +1,7 @@
 use crate::{
     history,
     platform::{ProcessJob, hidden},
-    storage,
+    request_capture, storage,
 };
 use omp_rpc::{Client, ClientOptions, Event, RpcInbound};
 use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -25,7 +25,17 @@ pub struct Session {
     pub cwd: PathBuf,
     pub path: Arc<Mutex<Option<PathBuf>>>,
     settled: Arc<AtomicBool>,
+    capture_context: PathBuf,
     _job: ProcessJob,
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.capture_context);
+        if let Some(parent) = self.capture_context.parent() {
+            let _ = std::fs::remove_dir(parent);
+        }
+    }
 }
 
 struct Terminal {
@@ -64,6 +74,7 @@ pub fn command(root: &Path) -> Result<Command, String> {
         .env("OMP_USER_ROOT", root.join("omp"))
         .env("TEMP", root.join("cache/tmp"))
         .env("TMP", root.join("cache/tmp"));
+    command.envs(request_capture::environment(root));
     hidden(&mut command);
     Ok(command)
 }
@@ -96,7 +107,7 @@ impl Sessions {
             emit(
                 app,
                 id,
-                json!({"type":"desktop_status","status":"released","path":*session.path.lock().unwrap()}),
+                json!({"type":"desktop_status","status":"released","path":session.path.lock().unwrap().as_ref().filter(|path| path.is_file())}),
             );
         }
         // Client 的进程退出等待不能占用会话锁或事件消费线程。
@@ -127,7 +138,13 @@ impl Sessions {
         path: Option<&Path>,
     ) -> Result<Value, String> {
         let _opening = self.opening.lock().map_err(|e| e.to_string())?;
-        let cwd = std::fs::canonicalize(cwd).map_err(|e| e.to_string())?;
+        let cwd = std::fs::canonicalize(cwd).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                "Project folder does not exist.".to_owned()
+            } else {
+                format!("Open project {}: {e}", cwd.display())
+            }
+        })?;
         if !cwd.is_dir() {
             return Err("Project folder does not exist.".into());
         }
@@ -151,7 +168,9 @@ impl Sessions {
             }
         }
         let id = uuid::Uuid::new_v4().to_string();
+        let capture_context = request_capture::context(root, &id);
         let mut process = command(root)?;
+        process.env("OMP_DESKTOP_REQUEST_CAPTURE_SESSION_ID", &id);
         process.current_dir(&cwd).args(["--mode", "rpc-ui"]);
         if let Some(path) = &path {
             process.arg("--session").arg(path);
@@ -171,6 +190,11 @@ impl Sessions {
         ] {
             client.call_raw(frame).map_err(|e| e.to_string())?;
         }
+        if let Err(error) =
+            request_capture::update_context(&capture_context, actual_path.as_deref())
+        {
+            eprintln!("更新请求捕获会话信息失败：{error}");
+        }
         let settled = Arc::new(AtomicBool::new(
             state["isSettled"].as_bool().unwrap_or(false),
         ));
@@ -183,6 +207,7 @@ impl Sessions {
                 cwd,
                 path: path_cell.clone(),
                 settled: settled.clone(),
+                capture_context: capture_context.clone(),
                 _job: job,
             },
         );
@@ -226,6 +251,12 @@ impl Sessions {
                     "session_info_update" => {
                         if let Some(path) = event["sessionFile"].as_str() {
                             *path_cell.lock().unwrap() = Some(path.into());
+                            if let Err(error) = request_capture::update_context(
+                                &capture_context,
+                                Some(Path::new(path)),
+                            ) {
+                                eprintln!("更新请求捕获会话信息失败：{error}");
+                            }
                         }
                     }
                     _ => {}
@@ -249,7 +280,7 @@ impl Sessions {
                 emit(
                     &app,
                     &id,
-                    json!({"type":"desktop_status","status":"disconnected","path":*session.path.lock().unwrap()}),
+                    json!({"type":"desktop_status","status":"disconnected","path":session.path.lock().unwrap().as_ref().filter(|path| path.is_file())}),
                 );
                 thread::spawn(move || drop(session));
             }
@@ -258,7 +289,7 @@ impl Sessions {
     }
 
     pub fn rpc(&self, app: AppHandle, id: &str, frame: Value) -> Result<Value, String> {
-        let (client, settled, path_cell) = {
+        let (client, settled, path_cell, capture_context) = {
             let sessions = self.sessions.lock().unwrap();
             let session = sessions
                 .get(id)
@@ -267,6 +298,7 @@ impl Sessions {
                 session.client.clone(),
                 session.settled.clone(),
                 session.path.clone(),
+                session.capture_context.clone(),
             )
         };
         let is_prompt = matches!(
@@ -275,6 +307,12 @@ impl Sessions {
         );
         if is_prompt {
             settled.store(false, Ordering::Release);
+            if let Err(error) = request_capture::update_context(
+                &capture_context,
+                path_cell.lock().unwrap().as_deref(),
+            ) {
+                eprintln!("更新请求捕获会话信息失败：{error}");
+            }
         }
         let command_type = frame["type"].as_str().unwrap_or("").to_owned();
         let result = client.call_raw(frame).map_err(|e| e.to_string());
@@ -284,6 +322,11 @@ impl Sessions {
             }
             if let Some(path) = value["sessionFile"].as_str() {
                 *path_cell.lock().unwrap() = Some(path.into());
+                if let Err(error) =
+                    request_capture::update_context(&capture_context, Some(Path::new(path)))
+                {
+                    eprintln!("更新请求捕获会话信息失败：{error}");
+                }
             }
         }
         if is_prompt && result.is_err() || command_type == "get_state" {

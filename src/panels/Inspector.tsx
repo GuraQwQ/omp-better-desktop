@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { File, RefreshCw, X } from 'lucide-react';
 import { request, rpc } from '../lib/bridge';
-import { statusText, type Copy } from '../lib/i18n';
-import type { Json, SessionView } from '../lib/types';
+import { localizeError, statusText, type Copy } from '../lib/i18n';
+import type { Json, Language, SessionView } from '../lib/types';
 import { summarizeSessionUsage } from '../lib/session-usage';
 import { sessionKey } from '../lib/session-identity';
 import { collectTurnChanges } from '../lib/turn-changes';
@@ -12,20 +12,38 @@ import ToolResult from '../components/ToolResult';
 import './turn-changes.css';
 
 export type InspectorTab = 'review' | 'files' | 'context' | 'agents' | 'tasks' | 'tree';
-export default function Inspector({ tab, session, cwd, t, onError, close, send, onSessionChanged }: { tab: InspectorTab; session?: SessionView; cwd: string; t: Copy; onError: (error: unknown) => void; close: () => void; send: (text: string) => void; onSessionChanged: () => Promise<void> }) {
+export default function Inspector({ tab, session, cwd, t, language, onError, close, send, onSessionChanged }: { tab: InspectorTab; session?: SessionView; cwd: string; t: Copy; language: Language; onError: (error: unknown) => void; close: () => void; send: (text: string) => void; onSessionChanged: () => Promise<void> }) {
   const [data, setData] = useState<any>(null);
   const [file, setFile] = useState('');
   const [content, setContent] = useState('');
+  const [fileLoading, setFileLoading] = useState(false);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [selection, setSelection] = useState({ key: '', value: 'workspace' });
   const scopeKey = session ? sessionKey(session) : cwd;
   const turns = useMemo(() => tab === 'review' ? collectTurnChanges(session?.messages ?? []) : [], [tab, session?.messages]);
   const selectedTurn = selection.key === scopeKey ? turns.find(turn => turn.id === selection.value) : undefined;
   const loadRevision = useRef(0);
+  const fileRevision = useRef(0);
+  const fileScope = `${tab}:${cwd}:${scopeKey}`;
+  const currentFileScope = useRef(fileScope);
+  currentFileScope.current = fileScope;
+  const clearFile = () => { fileRevision.current++; setFile(''); setContent(''); setFileLoading(false); };
+  const readFile = async (name: string) => {
+    const revision = ++fileRevision.current;
+    const current = () => fileRevision.current === revision && currentFileScope.current === fileScope;
+    setFile(name); setContent(''); setFileLoading(true);
+    try {
+      const value = await request<string>('workspace.read', { cwd, path: name });
+      if (current()) setContent(value);
+    } catch (error) { if (current()) { setFile(''); onError(error); } }
+    finally { if (current()) setFileLoading(false); }
+  };
   const load = async () => {
     const revision = ++loadRevision.current;
-    setLoading(true); setData(null);
+    clearFile();
+    setLoading(true); setData(null); setLoadError('');
     try {
       let value: Json | string[] | undefined;
       if (tab === 'review' && !selectedTurn) value = await request('workspace.diff', { cwd });
@@ -38,9 +56,9 @@ export default function Inspector({ tab, session, cwd, t, onError, close, send, 
         value = { ...state, stats, contextUsage: stats?.contextUsage };
       } else if (tab !== 'review' && session && !session.historyOnly) value = await rpc(session.id, tab === 'agents' ? 'get_subagents' : tab === 'tree' ? 'get_tree' : 'get_state');
       if (loadRevision.current === revision) setData(value ?? null);
-    } catch (error) { if (loadRevision.current === revision) onError(error); } finally { if (loadRevision.current === revision) setLoading(false); }
+    } catch (error) { if (loadRevision.current === revision) setLoadError(error instanceof Error ? error.message : String(error)); } finally { if (loadRevision.current === revision) setLoading(false); }
   };
-  useEffect(() => { void load(); setFile(''); return () => { loadRevision.current++; }; }, [tab, cwd, session?.id, session?.path, session?.historyOnly, selectedTurn?.id]);
+  useEffect(() => { void load(); return () => { loadRevision.current++; fileRevision.current++; }; }, [tab, cwd, session?.id, session?.path, session?.historyOnly, selectedTurn?.id]);
   const stats = data?.stats?.tokens ?? {};
   const usage = summarizeSessionUsage(data?.stats);
   const treeAction = async (type: 'branch' | 'fork', entryId: string) => {
@@ -54,8 +72,8 @@ export default function Inspector({ tab, session, cwd, t, onError, close, send, 
         const details = message.result?.details ?? message.partialResult?.details ?? message.details;
         const note = message.toolName === 'write' ? t.changeRecord : message.toolName === 'ast_edit' && details?.applied === false ? t.proposedChange : '';
         return <section key={`${message.toolCallId ?? message.id}:${index}`}>{note && <p className="turn-record-note">{note}</p>}<ToolResult message={message} t={t} active={!session?.historyOnly && isSessionRunning(session)} /></section>;
-      }) : <p className="panel-empty">{t.noTurnChanges}</p>}</div> : loading ? <p className="muted">{t.loading}</p> : data?.diff ? <><div className="diff-summary"><code>{data.status}</code><button className="quiet-button" onClick={() => send('/review')}>{t.reviewAction}</button></div><pre className="diff">{data.diff.split('\n').map((line: string, i: number) => <span key={i} className={line.startsWith('+') && !line.startsWith('+++') ? 'added' : line.startsWith('-') && !line.startsWith('---') ? 'removed' : line.startsWith('@@') ? 'hunk' : ''}>{line}</span>)}</pre></> : <p className="panel-empty">{t.noChanges}</p>}
-    </> : loading ? <p className="muted">{t.loading}</p> : tab === 'files' ? <><input placeholder={t.search} value={query} onChange={e => setQuery(e.target.value)} />{file ? <><button className="quiet-button file-back" onClick={() => setFile('')}>← {t.files}</button><code className="file-title">{file}</code><button className="quiet-button" onClick={() => send(`@${file} `)}>{t.include}</button><pre className="file-content">{content}</pre></> : <div className="file-list">{(Array.isArray(data) ? data : []).filter((name: string) => name.toLowerCase().includes(query.toLowerCase())).map((name: string) => <button key={name} onClick={async () => { try { setContent(await request<string>('workspace.read', { cwd, path: name })); setFile(name); } catch (error) { onError(error); } }}><File size={14} /><span>{name}</span></button>)}</div>}</> : tab === 'context' ? <><h3>{t.usage}</h3><dl className="usage-grid">{[['total', t.totalTokens], ['input', t.inputTokens], ['output', t.outputTokens], ['cacheRead', t.cacheRead], ['cacheWrite', t.cacheWrite]].map(([key, title]) => <div key={key}><dt>{title}</dt><dd>{stats[key]?.toLocaleString() ?? t.unknown}</dd></div>)}<div><dt>{t.cacheHitRate}</dt><dd>{usage.cacheHitPercent === null ? t.unknown : `${usage.cacheHitPercent.toFixed(1)}%`}</dd></div></dl>{data?.contextUsage && <div className="context-meter"><label>{t.context}<span>{data.contextUsage.tokens?.toLocaleString()} / {data.contextUsage.contextWindow?.toLocaleString()}</span></label><progress max={100} value={data.contextUsage.percent ?? 0} /></div>}<h3>{t.model}</h3><p>{data?.model?.name ?? data?.model?.id ?? t.unknown}</p><div className="settings-actions"><button className="secondary-button" disabled={!session || session.historyOnly} onClick={() => { if (session) rpc(session.id, 'compact').then(load).catch(onError); }}>{t.compactContext}</button><button className="quiet-button" onClick={() => send('/shake')}>{t.shakeContext}</button></div><h3>{t.systemPrompt}</h3><pre className="context-prompt">{Array.isArray(data?.systemPrompt) ? data.systemPrompt.join('\n\n') : data?.systemPrompt ?? t.unknown}</pre><h3>{t.tools}</h3>{data?.dumpTools?.map((tool: Json) => <details className="tool-description" key={tool.name}><summary>{tool.name}</summary><p>{tool.description}</p></details>)}</> : tab === 'agents' ? (data?.subagents ?? []).length ? data.subagents.map((agent: Json) => <div className="agent-row" key={agent.id ?? agent.agentId}><strong>{agent.name ?? agent.agentName ?? agent.id}</strong><p>{agent.task ?? statusText(agent.status, t)}</p><span className="badge">{statusText(agent.status, t)}</span><button className="quiet-button" onClick={() => { if (session) rpc(session.id, 'cancel_subagent', { subagentId: agent.id ?? agent.agentId }).then(load).catch(onError); }}>{t.taskCancel}</button></div>) : <p className="panel-empty">{t.noAgents}</p> : tab === 'tasks' ? (data?.todoPhases ?? []).length ? data.todoPhases.map((phase: Json, index: number) => <section key={index}><h3>{phase.name}</h3>{phase.tasks.map((task: Json, i: number) => <div className="task-row" key={i}><span className={`task-marker ${task.status}`} /><span>{task.content}</span></div>)}</section>) : <p className="panel-empty">{t.noTasks}</p> : <TreeNodes nodes={data?.tree ?? []} leafId={data?.leafId} t={t} act={treeAction} />}
+      }) : <p className="panel-empty">{t.noTurnChanges}</p>}</div> : loadError ? <p className="panel-empty" role="alert">{localizeError(loadError, language)}</p> : loading ? <p className="muted">{t.loading}</p> : data?.diff || data?.status ? <><div className="diff-summary"><code>{data.status}</code><button className="quiet-button" onClick={() => send('/review')}>{t.reviewAction}</button></div><pre className="diff">{data.diff.split('\n').map((line: string, i: number) => <span key={i} className={line.startsWith('+') && !line.startsWith('+++') ? 'added' : line.startsWith('-') && !line.startsWith('---') ? 'removed' : line.startsWith('@@') ? 'hunk' : ''}>{line}</span>)}</pre></> : <p className="panel-empty">{t.noChanges}</p>}
+    </> : loadError ? <p className="panel-empty" role="alert">{localizeError(loadError, language)}</p> : loading ? <p className="muted">{t.loading}</p> : tab === 'files' ? <><input placeholder={t.search} value={query} onChange={e => setQuery(e.target.value)} />{file ? <><button className="quiet-button file-back" onClick={clearFile}>← {t.files}</button><code className="file-title">{file}</code><button className="quiet-button" disabled={fileLoading} onClick={() => send(`@${file} `)}>{t.include}</button><pre className="file-content" aria-busy={fileLoading}>{fileLoading ? t.loading : content}</pre></> : <div className="file-list">{(Array.isArray(data) ? data : []).filter((name: string) => name.toLowerCase().includes(query.toLowerCase())).map((name: string) => <button key={name} onClick={() => void readFile(name)}><File size={14} /><span>{name}</span></button>)}</div>}</> : tab === 'context' ? <><h3>{t.usage}</h3><dl className="usage-grid">{[['total', t.totalTokens], ['input', t.inputTokens], ['output', t.outputTokens], ['cacheRead', t.cacheRead], ['cacheWrite', t.cacheWrite]].map(([key, title]) => <div key={key}><dt>{title}</dt><dd>{stats[key]?.toLocaleString() ?? t.unknown}</dd></div>)}<div><dt>{t.cacheHitRate}</dt><dd>{usage.cacheHitPercent === null ? t.unknown : `${usage.cacheHitPercent.toFixed(1)}%`}</dd></div></dl>{data?.contextUsage && <div className="context-meter"><label>{t.context}<span>{data.contextUsage.tokens?.toLocaleString()} / {data.contextUsage.contextWindow?.toLocaleString()}</span></label><progress max={100} value={data.contextUsage.percent ?? 0} /></div>}<h3>{t.model}</h3><p>{data?.model?.name ?? data?.model?.id ?? t.unknown}</p><div className="settings-actions"><button className="secondary-button" disabled={!session || session.historyOnly} onClick={() => { if (session) rpc(session.id, 'compact').then(load).catch(onError); }}>{t.compactContext}</button><button className="quiet-button" onClick={() => send('/shake')}>{t.shakeContext}</button></div><h3>{t.systemPrompt}</h3><pre className="context-prompt">{Array.isArray(data?.systemPrompt) ? data.systemPrompt.join('\n\n') : data?.systemPrompt ?? t.unknown}</pre><h3>{t.tools}</h3>{data?.dumpTools?.map((tool: Json) => <details className="tool-description" key={tool.name}><summary>{tool.name}</summary><p>{tool.description}</p></details>)}</> : tab === 'agents' ? (data?.subagents ?? []).length ? data.subagents.map((agent: Json) => <div className="agent-row" key={agent.id ?? agent.agentId}><strong>{agent.name ?? agent.agentName ?? agent.id}</strong><p>{agent.task ?? statusText(agent.status, t)}</p><span className="badge">{statusText(agent.status, t)}</span><button className="quiet-button" onClick={() => { if (session) rpc(session.id, 'cancel_subagent', { subagentId: agent.id ?? agent.agentId }).then(load).catch(onError); }}>{t.taskCancel}</button></div>) : <p className="panel-empty">{t.noAgents}</p> : tab === 'tasks' ? (data?.todoPhases ?? []).length ? data.todoPhases.map((phase: Json, index: number) => <section key={index}><h3>{phase.name}</h3>{phase.tasks.map((task: Json, i: number) => <div className="task-row" key={i}><span className={`task-marker ${task.status}`} /><span>{task.content}</span></div>)}</section>) : <p className="panel-empty">{t.noTasks}</p> : <TreeNodes nodes={data?.tree ?? []} leafId={data?.leafId} t={t} act={treeAction} />}
   </div></aside>;
 }
 

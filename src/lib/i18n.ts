@@ -10,7 +10,7 @@ const en = {
   send: 'Send message', stop: 'Stop', followUp: 'Follow up', steer: 'Steer', model: 'Model', effort: 'Thinking',
   installRuntime: 'Install OMP runtime', installText: 'The matching OMP runtime is included with this app.',
   choosePackage: 'Import runtime package', installed: 'Installed', notInstalled: 'Not installed',
-  appearance: 'Appearance', language: 'Language', theme: 'Theme', system: 'System', light: 'Light', dark: 'Dark',
+  appearance: 'Appearance', advanced: 'Advanced', language: 'Language', theme: 'Theme', system: 'System', light: 'Light', dark: 'Dark',
   data: 'OMP data', discover: 'Find existing OMP data', importData: 'Import data', importFolder: 'Choose data folder',
   takeover: 'Use managed OMP in the terminal', restoreCli: 'Restore previous CLI',
   takeoverText: 'Switch the omp command to this runtime and imported data. The previous command can be restored.',
@@ -30,6 +30,7 @@ const en = {
   nativeOnly: 'Launch the desktop application to connect your local workspace.',
   attached: 'attached', addImage: 'Attach image', remove: 'Remove', resume: 'Resume conversation',
   independently: 'Use independently', importComplete: 'Data imported', dataRoot: 'Managed data folder',
+  importIncomplete: 'Import needs attention', importCopied: 'Copied', importSkipped: 'Skipped', importConflicts: 'Conflicting files', importChanging: 'The source is still changing. Pause its sessions and retry.', importConflictHint: 'These files differ from the managed copies. Your managed files were kept.', importRetry: 'Retry import',
   copied: 'Copied', copy: 'Copy', more: 'More actions', open: 'Open', view: 'View',
   newTitle: 'Untitled conversation', selectedModel: 'No model selected', customAnswer: 'Write your own answer…',
   configure: 'Configure', include: 'Include', manage: 'Manage', collapse: 'Collapse sidebar', expand: 'Expand sidebar',
@@ -69,7 +70,7 @@ const zh: typeof en = {
   send: '发送消息', stop: '停止', followUp: '排队', steer: '调整方向', model: '模型', effort: '思考强度',
   installRuntime: '安装 OMP 运行时', installText: '此应用已内置匹配的 OMP 运行时。',
   choosePackage: '导入运行时包', installed: '已安装', notInstalled: '未安装',
-  appearance: '外观', language: '语言', theme: '主题', system: '跟随系统', light: '浅色', dark: '深色',
+  appearance: '外观', advanced: '进阶', language: '语言', theme: '主题', system: '跟随系统', light: '浅色', dark: '深色',
   data: 'OMP 数据', discover: '查找已有 OMP 数据', importData: '迁入数据', importFolder: '选择数据文件夹',
   takeover: '终端使用托管 OMP', restoreCli: '恢复原 CLI',
   takeoverText: '将 omp 命令切换到此运行时和迁入数据，之后可以恢复原命令入口。',
@@ -89,6 +90,7 @@ const zh: typeof en = {
   nativeOnly: '打开桌面应用，即可连接本地工作区。',
   attached: '个附件', addImage: '添加图片', remove: '移除', resume: '继续对话',
   independently: '独立使用', importComplete: '数据已迁入', dataRoot: '托管数据目录',
+  importIncomplete: '迁入尚未完成', importCopied: '已复制', importSkipped: '已跳过', importConflicts: '冲突文件', importChanging: '源数据仍在变化，请暂停源会话后重试。', importConflictHint: '以下文件与托管副本不同，已保留托管文件。', importRetry: '重试迁入',
   copied: '已复制', copy: '复制', more: '更多操作', open: '打开', view: '查看',
   newTitle: '未命名对话', selectedModel: '尚未选择模型', customAnswer: '输入你的回答…',
   configure: '配置', include: '包含', manage: '管理', collapse: '收起侧栏', expand: '展开侧栏',
@@ -124,6 +126,8 @@ export const copy = (language: Language): Copy => language === 'zh' ? zh : en;
 export const statusText = (status: string, t: Copy): string => t.statusLabels[status as keyof Copy['statusLabels']] ?? status;
 
 const errorTranslations: Record<string, string> = {
+  'Git is required to review project changes.': '查看项目差异需要安装 Git；文件浏览和对话仍可使用。',
+  'This project is not a Git working tree.': '此文件夹尚未初始化 Git 仓库，可在回合工具改动中查看本次文件操作。',
   'Install a matching OMP runtime in Settings first.': '请先在设置中安装匹配的 OMP 运行时。',
   'Project folder does not exist.': '项目文件夹不存在。',
   'Runtime did not start.': '运行时未能启动。',

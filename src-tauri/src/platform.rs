@@ -1,7 +1,4 @@
-use std::{
-    path::Path,
-    process::{Command, Output},
-};
+use std::process::Command;
 
 pub fn hidden(command: &mut Command) -> &mut Command {
     #[cfg(windows)]
@@ -10,12 +7,6 @@ pub fn hidden(command: &mut Command) -> &mut Command {
         command.creation_flags(0x08000000);
     }
     command
-}
-
-pub fn run(program: &str, args: &[&str], cwd: &Path) -> Result<Output, String> {
-    hidden(Command::new(program).args(args).current_dir(cwd))
-        .output()
-        .map_err(|e| e.to_string())
 }
 
 #[cfg(windows)]

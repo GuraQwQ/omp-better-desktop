@@ -1,0 +1,4 @@
+.request-captures { min-width: 0; font-size: 12px; }
+.request-captures > p { color: var(--secondary); }
+.request-captures [role='alert'] { color: var(--danger); }
+.request-capture-toolbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
