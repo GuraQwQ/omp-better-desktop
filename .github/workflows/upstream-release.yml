@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: upstream-release-${{ github.event.workflow_run.head_branch }}
+  group: upstream-release
   cancel-in-progress: false
 
 jobs:
@@ -94,6 +94,28 @@ jobs:
             exit 1
           fi
           gh api --paginate --slurp "repos/$GH_REPO/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
+          # 旧任务重跑不能重新发布已经被更新构建取代的预览。
+          while IFS= read -r published_tag; do
+            RELATION=$(gh api "repos/$GH_REPO/compare/$MERGE_SHA...$published_tag" --jq .status)
+            case "$RELATION" in
+              ahead|identical)
+                echo "::notice::已有更新的同步预览 $published_tag，跳过旧任务"
+                exit 0
+                ;;
+              behind) ;;
+              *) echo "::error::无法确认已有同步预览的先后关系，保留发行"; exit 1 ;;
+            esac
+          done < <(jq -r --arg tag "$TAG" '[.[][] | select(.draft == false and .tag_name != $tag) | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-preview\\.pr\\.[0-9]+$"))] | .[].tag_name' "$RUNNER_TEMP/releases.json")
+
+          prune_previews() {
+            gh api --paginate --slurp "repos/$GH_REPO/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
+            jq -e --arg tag "$TAG" '[.[][] | select(.tag_name == $tag and .draft == false and .prerelease == true)] | length == 1' "$RUNNER_TEMP/releases.json" > /dev/null
+            while IFS=$'\t' read -r release_id old_tag; do
+              gh api --method DELETE "repos/$GH_REPO/releases/$release_id"
+              echo "已移除旧预览发行：$old_tag（保留 Git 标签）"
+            done < <(jq -r --arg tag "$TAG" '[.[][] | select(.tag_name != $tag and (.draft == true or .prerelease == true)) | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-preview\\.(pr\\.)?[0-9]+$"))] | .[] | [.id, .tag_name] | @tsv' "$RUNNER_TEMP/releases.json")
+          }
+
           jq --arg tag "$TAG" '[.[][] | select(.tag_name == $tag)] | first // null' "$RUNNER_TEMP/releases.json" > "$RUNNER_TEMP/existing-release.json"
           if jq -e '. != null' "$RUNNER_TEMP/existing-release.json" > /dev/null; then
             if [[ $(jq -r .draft "$RUNNER_TEMP/existing-release.json") == false ]]; then
@@ -106,6 +128,8 @@ jobs:
                   exit 1
                 fi
               done
+              gh release edit "$TAG" --prerelease --latest=false
+              prune_previews
               echo "发行已存在且附件一致：https://github.com/$GH_REPO/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
@@ -113,5 +137,6 @@ jobs:
             gh release create "$TAG" --verify-tag --draft --prerelease --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.md"
           fi
           gh release upload "$TAG" "${ASSETS[@]}" --clobber
-          gh release edit "$TAG" --draft=false --prerelease --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.md"
+          gh release edit "$TAG" --draft=false --prerelease --latest=false --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.md"
+          prune_previews
           echo "已发布预构建包：https://github.com/$GH_REPO/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"
