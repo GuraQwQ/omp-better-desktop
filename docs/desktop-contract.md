@@ -77,3 +77,5 @@ MCP 与 SSH 使用资源自身的用户/项目作用域；第三方只读来源�
 界面动效使用原生 CSS 与 Web Animations。外观中的动画档位即时生效并持久化：默认“丰富”，菜单入场 180ms、弹窗 260ms、退场 120ms，增加局部渐变、轻微错峰与完成反馈；“正常”保留菜单 140ms、弹窗 220ms、退场 100ms；“减少”采用 80ms 淡入、60ms 退场及静态状态。档位同时应用于 CSS 和原生动画，不受系统偏好覆盖。首帧通过 `omp-motion` 缓存恢复，保存的应用配置为最终来源。排版变化的平移过渡在丰富/正常档分别为 220/180ms，减少档直接重排；三档均在重新换行后短暂校正当前可见文字的阅读位置，用户操作会取消校正。退出立即恢复交互焦点，保留的视觉层不可交互。
 
 Host module ownership: `storage.rs` implements runtime/data functions taking `root: &Path`; `sessions.rs` owns RPC/PTY; `lib.rs` owns routing and application lifecycle. `storage.rs` exports `current_runtime`, `install_runtime`, `rollback_runtime`, `discover_omp`, `import_omp`, `takeover`, and `clean_cache`, returning `Result<serde_json::Value,String>` except `current_runtime` returns `Result<Option<PathBuf>,String>`.
+
+OMP 的 RPC、CLI 和内置终端统一设置 `PI_NATIVES_DIR=<dataRoot>/cache/natives`，原生模块在此按版本解压和复用；临时目录统一为 `<dataRoot>/cache/tmp`。`runtime.clean` 沿用现有受管缓存清理规则，后续启动从内嵌资源重建。应用启动时按已保存的接管状态幂等刷新 CLI 入口，保留接管选择；单文件原子替换支持中断后重试。原有全局 OMP 缓存保持其原有归属。

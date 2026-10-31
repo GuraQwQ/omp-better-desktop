@@ -1,6 +1,6 @@
 use crate::{
     history,
-    platform::{ProcessJob, hidden},
+    platform::{ProcessJob, hidden, runtime_environment},
     request_capture, storage,
 };
 use omp_rpc::{Client, ClientOptions, Event, RpcInbound};
@@ -71,11 +71,8 @@ pub fn command(root: &Path) -> Result<Command, String> {
     let executable = storage::current_runtime(root)?
         .ok_or("Install a matching OMP runtime in Settings first.")?;
     let mut command = Command::new(executable);
-    command
-        .env("OMP_USER_ROOT", root.join("omp"))
-        .env("OMP_DESKTOP_MANAGED_RESOURCES", "1")
-        .env("TEMP", root.join("cache/tmp"))
-        .env("TMP", root.join("cache/tmp"));
+    command.envs(runtime_environment(root));
+    command.env("OMP_DESKTOP_MANAGED_RESOURCES", "1");
     command.envs(request_capture::environment(root));
     hidden(&mut command);
     Ok(command)
@@ -473,7 +470,9 @@ impl Sessions {
         let mut cmd = CommandBuilder::new(executable);
         cmd.cwd(cwd);
         cmd.args(launch_args);
-        cmd.env("OMP_USER_ROOT", root.join("omp"));
+        for (name, value) in runtime_environment(root) {
+            cmd.env(name, value);
+        }
         cmd.env("OMP_DESKTOP_MANAGED_RESOURCES", "1");
         if let Some(path) = path {
             cmd.arg("--session");

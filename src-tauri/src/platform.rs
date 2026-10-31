@@ -1,4 +1,17 @@
-use std::process::Command;
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
+
+pub fn runtime_environment(root: &Path) -> [(&'static str, PathBuf); 4] {
+    [
+        ("OMP_USER_ROOT", root.join("omp")),
+        // 原生加载器早于 OMP 配置初始化，必须显式传入缓存目录。
+        ("PI_NATIVES_DIR", root.join("cache/natives")),
+        ("TEMP", root.join("cache/tmp")),
+        ("TMP", root.join("cache/tmp")),
+    ]
+}
 
 pub fn hidden(command: &mut Command) -> &mut Command {
     #[cfg(windows)]

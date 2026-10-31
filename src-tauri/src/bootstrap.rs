@@ -210,6 +210,10 @@ pub fn install_bundled_runtime(root: &Path, package: &Path) -> Result<(), String
         ));
     }
     crate::storage::install_bundled_runtime(root, package)?;
+    #[cfg(windows)]
+    if let Err(error) = crate::storage::refresh_cli_launchers(root) {
+        eprintln!("更新已接管的 OMP 命令入口失败，下次启动重试：{error}");
+    }
     match fs::remove_file(executable_directory()?.join("runtime-install.json")) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),

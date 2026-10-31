@@ -834,6 +834,47 @@ pub fn takeover_status(_root: &Path) -> Result<Value> {
 }
 
 #[cfg(windows)]
+fn install_cli_launchers(root: &Path) -> Result<()> {
+    let bin = root.join("bin");
+    fs::create_dir_all(&bin).map_err(|e| context("Create", &bin, e))?;
+    let root_literal = root.to_string_lossy().replace('\'', "''");
+    let environment = crate::platform::runtime_environment(root)
+        .into_iter()
+        .map(|(name, value)| {
+            format!(
+                "$env:{name} = '{}'\n",
+                value.to_string_lossy().replace('\'', "''")
+            )
+        })
+        .collect::<String>();
+    // Windows PowerShell 5.1 依赖 UTF-8 BOM 正确读取中文路径。
+    let powershell = format!(
+        "\u{feff}$ErrorActionPreference = 'Stop'\n$managedRoot = '{root_literal}'\n$selection = Get-Content -LiteralPath (Join-Path $managedRoot 'runtime.json') -Raw -Encoding UTF8 | ConvertFrom-Json\n$runtimeDirectory = Join-Path (Join-Path $managedRoot 'runtimes') $selection.current\n$manifest = Get-Content -LiteralPath (Join-Path $runtimeDirectory 'runtime-manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json\n{environment}[IO.Directory]::CreateDirectory($env:TEMP) | Out-Null\n& (Join-Path $runtimeDirectory $manifest.executable) @args\nexit $LASTEXITCODE\n"
+    );
+    let cmd = b"@echo off\r\npowershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File \"%~dp0omp.ps1\" %*\r\nexit /b %errorlevel%\r\n";
+    for (name, bytes) in [
+        ("omp.ps1", powershell.as_bytes()),
+        ("omp.cmd", cmd.as_slice()),
+    ] {
+        let path = bin.join(name);
+        if !fs::read(&path).is_ok_and(|existing| existing == bytes) {
+            atomic_write(&path, bytes)?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+pub fn refresh_cli_launchers(root: &Path) -> Result<()> {
+    let _lock = storage_lock(root)?;
+    let state: Value = json_or_default(&root.join("takeover.json"))?;
+    if state["enabled"] == true {
+        install_cli_launchers(root)?;
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
 pub fn takeover(root: &Path, enabled: bool) -> Result<Value> {
     use std::os::windows::process::CommandExt;
     use std::process::Command;
@@ -894,12 +935,7 @@ pub fn takeover(root: &Path, enabled: bool) -> Result<Value> {
                 &json!({"enabled":false,"previousCommands":old_commands,"managedBin":bin,"createdAt":timestamp()}),
             )?;
         }
-        let root_literal = root.to_string_lossy().replace('\'', "''");
-        let powershell = format!(
-            "$ErrorActionPreference = 'Stop'\n$managedRoot = '{root_literal}'\n$selection = Get-Content -LiteralPath (Join-Path $managedRoot 'runtime.json') -Raw -Encoding UTF8 | ConvertFrom-Json\n$runtimeDirectory = Join-Path (Join-Path $managedRoot 'runtimes') $selection.current\n$manifest = Get-Content -LiteralPath (Join-Path $runtimeDirectory 'runtime-manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json\n$env:OMP_USER_ROOT = Join-Path $managedRoot 'omp'\n$env:TEMP = Join-Path $managedRoot 'cache'\n$env:TMP = $env:TEMP\n[IO.Directory]::CreateDirectory($env:TEMP) | Out-Null\n& (Join-Path $runtimeDirectory $manifest.executable) @args\nexit $LASTEXITCODE\n"
-        );
-        atomic_write(&bin.join("omp.ps1"), powershell.as_bytes())?;
-        atomic_write(&bin.join("omp.cmd"), b"@echo off\r\npowershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File \"%~dp0omp.ps1\" %*\r\nexit /b %errorlevel%\r\n")?;
+        install_cli_launchers(root)?;
         entries.insert(0, bin_text.clone());
     } else if !state_path.is_file() {
         return Ok(json!({"enabled":false,"active":false,"restartTerminal":false}));
@@ -1063,6 +1099,86 @@ mod tests {
         assert!(relative_path("../escape").is_err());
         remove_managed_child(&env::temp_dir(), &root).unwrap();
         remove_managed_child(&env::temp_dir(), &package).unwrap();
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn launcher_refresh_recovers_partial_updates_without_enabling_takeover() {
+        let root = fixture("launcher-'中文");
+        refresh_cli_launchers(&root).unwrap();
+        assert!(!root.join("bin").exists());
+        write_json(&root.join("takeover.json"), &json!({"enabled":false})).unwrap();
+        refresh_cli_launchers(&root).unwrap();
+        assert!(!root.join("bin").exists());
+
+        write_json(&root.join("takeover.json"), &json!({"enabled":true})).unwrap();
+        fs::create_dir_all(root.join("bin")).unwrap();
+        fs::write(root.join("bin/omp.ps1"), "旧入口").unwrap();
+        fs::write(root.join("bin/other.txt"), "用户文件").unwrap();
+        refresh_cli_launchers(&root).unwrap();
+        let script = root.join("bin/omp.ps1");
+        let modified = fs::metadata(&script).unwrap().modified().unwrap();
+        refresh_cli_launchers(&root).unwrap();
+        assert_eq!(fs::metadata(&script).unwrap().modified().unwrap(), modified);
+        fs::write(&script, "中断前的旧入口").unwrap();
+        fs::write(root.join("bin/omp.cmd"), "中断后的入口").unwrap();
+        fs::write(root.join("bin/.omp.ps1.pending"), "未提交的入口").unwrap();
+        refresh_cli_launchers(&root).unwrap();
+        assert!(!root.join("bin/.omp.ps1.pending").exists());
+        assert!(
+            fs::read_to_string(root.join("bin/omp.cmd"))
+                .unwrap()
+                .contains("powershell.exe")
+        );
+
+        let runtime = root.join("runtimes/fixture");
+        fs::create_dir_all(&runtime).unwrap();
+        write_json(&root.join("runtime.json"), &json!({"current":"fixture"})).unwrap();
+        write_json(
+            &runtime.join("runtime-manifest.json"),
+            &json!({"executable":"probe.ps1"}),
+        )
+        .unwrap();
+        fs::write(runtime.join("probe.ps1"), "[IO.File]::WriteAllText($env:OMP_TEST_OUTPUT, (@{natives=$env:PI_NATIVES_DIR; userRoot=$env:OMP_USER_ROOT; temporary=$env:TEMP; arguments=@($args)} | ConvertTo-Json -Compress), [Text.Encoding]::UTF8)\n").unwrap();
+        let output = root.join("observed.json");
+        let result = crate::platform::hidden(
+            std::process::Command::new("powershell.exe")
+                .args([
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                ])
+                .arg(&script)
+                .arg("参数 with spaces")
+                .env("OMP_TEST_OUTPUT", &output)
+                .env("PI_NATIVES_DIR", root.join("unmanaged"))
+                .env("OMP_USER_ROOT", root.join("unmanaged"))
+                .env("TEMP", root.join("unmanaged")),
+        )
+        .output()
+        .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let text = fs::read_to_string(output).unwrap();
+        let observed: Value = serde_json::from_str(text.trim_start_matches('\u{feff}')).unwrap();
+        assert_eq!(observed["natives"], json!(root.join("cache/natives")));
+        assert_eq!(observed["userRoot"], json!(root.join("omp")));
+        assert_eq!(observed["temporary"], json!(root.join("cache/tmp")));
+        assert_eq!(observed["arguments"], json!(["参数 with spaces"]));
+        assert_eq!(
+            fs::read_to_string(root.join("bin/other.txt")).unwrap(),
+            "用户文件"
+        );
+        assert_eq!(
+            read_json::<Value>(&root.join("takeover.json")).unwrap(),
+            json!({"enabled":true})
+        );
+        remove_managed_child(&env::temp_dir(), &root).unwrap();
     }
 
     #[test]

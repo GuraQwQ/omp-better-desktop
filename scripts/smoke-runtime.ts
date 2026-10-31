@@ -10,12 +10,15 @@ if (process.platform === 'win32' && /^[cC]:[\/]/.test(tempRoot)) throw new Error
 await fs.mkdir(tempRoot, { recursive: true });
 const root = await fs.mkdtemp(path.join(tempRoot, 'omp-desktop-smoke-'));
 await fs.mkdir(path.join(root, 'agent'), { recursive: true });
+const natives = path.join(root, 'cache/natives');
+const temporary = path.join(root, 'cache/tmp');
+await fs.mkdir(temporary, { recursive: true });
 await fs.writeFile(path.join(root, 'agent/models.yml'), JSON.stringify({ providers: {
   'desktop-smoke': { api: 'openai-completions', apiKey: 'local-fixture-unused', baseUrl: 'http://127.0.0.1:9/v1', models: [{ id: 'fixture-model' }] },
 } }));
 const child = spawn(executable, ['--mode', 'rpc-ui', '--no-session', '--no-extensions', '--no-skills'], {
   cwd: root,
-  env: { ...process.env, OMP_USER_ROOT: root, OMP_DESKTOP_MANAGED_RESOURCES: '1', PI_NO_PTY: '1', PI_NOTIFICATIONS: 'off' },
+  env: { ...process.env, OMP_USER_ROOT: root, PI_NATIVES_DIR: natives, TEMP: temporary, TMP: temporary, OMP_DESKTOP_MANAGED_RESOURCES: '1', PI_NO_PTY: '1', PI_NOTIFICATIONS: 'off' },
   stdio: ['pipe', 'pipe', 'pipe'],
 });
 const timeout = setTimeout(() => child.kill(), 60_000);
@@ -48,6 +51,7 @@ try {
   while ((await nextFrame()).type !== 'ready') {}
   await request('smoke-negotiate', 'negotiate_protocol', { protocolVersion: 2 });
   await request('smoke-state', 'get_state');
+  assert((await fs.readdir(natives, { recursive: true })).some(file => file.endsWith('.node')), '内置原生模块必须解压到隔离缓存目录');
   const rate = await request('smoke-token-rate', 'get_token_rate');
   assert.deepEqual(rate, { tokensPerSecond: null }, '空会话的原生生成速率应为空，且不附带完整状态');
   const providers = await request('smoke-login-providers', 'get_login_providers');
