@@ -122,7 +122,11 @@ pub fn clear_cache(root: &Path) {
 pub fn session_path(root: &Path, path: &Path) -> Result<PathBuf, String> {
     let real = fs::canonicalize(path).map_err(|e| e.to_string())?;
     let managed = fs::canonicalize(root.join("omp")).map_err(|e| e.to_string())?;
-    if !real.starts_with(managed) || real.extension().and_then(|s| s.to_str()) != Some("jsonl") {
+    let allowed = real.starts_with(managed)
+        || crate::launch::session_roots(root)?.iter().any(|directory| {
+            fs::canonicalize(directory).is_ok_and(|directory| real.starts_with(directory))
+        });
+    if !allowed || real.extension().and_then(|s| s.to_str()) != Some("jsonl") {
         return Err("Choose a session from the imported OMP data.".into());
     }
     Ok(real)
@@ -259,6 +263,9 @@ pub fn list(root: &Path, cwd: Option<&str>) -> Result<Value, String> {
     let canonical_cwd = cwd.and_then(|cwd| fs::canonicalize(cwd).ok());
     let mut files = Vec::new();
     find_sessions(&root.join("omp/agent/sessions"), &mut files)?;
+    for directory in crate::launch::session_roots(&root)? {
+        find_sessions(&directory, &mut files)?;
+    }
     let profiles = root.join("omp/profiles");
     if profiles.is_dir() {
         for profile in fs::read_dir(profiles).map_err(|e| e.to_string())? {
@@ -271,6 +278,8 @@ pub fn list(root: &Path, cwd: Option<&str>) -> Result<Value, String> {
             )?;
         }
     }
+    files.sort();
+    files.dedup();
     {
         let mut cache = cache().lock().unwrap();
         cache.expire();

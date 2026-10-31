@@ -1,4 +1,5 @@
 import type { Json, Message, SessionView } from './types';
+import { todoPhasesFromMessage } from './session-todos';
 
 export function isSessionRunning(session?: SessionView): boolean {
   return !!session && !session.historyOnly && (!!session.state.isStreaming || ['running', 'background'].includes(session.status) || session.state.isSettled === false);
@@ -56,6 +57,8 @@ function reduceEvent(session: SessionView, event: Json): SessionView {
   if (event.type === 'auto_retry_start') return { ...session, state: { ...session.state, activity: { kind: 'retry', since: Date.now(), attempt: event.attempt, maxAttempts: event.maxAttempts } } };
   if (event.type === 'auto_compaction_end' || event.type === 'auto_retry_end') return { ...session, state: { ...session.state, activity: undefined } };
   if (event.type === 'queue_update') return { ...session, state: { ...session.state, queuedMessages: { steering: event.steering ?? [], followUp: event.followUp ?? [], ...(event.liveSteered !== undefined ? { liveSteered: event.liveSteered } : {}) } } };
+  if (event.type === 'available_commands_update') return { ...session, state: { ...session.state, availableCommands: event.commands ?? [] } };
+  if (event.type === 'todo_auto_clear') return { ...session, state: { ...session.state, todoPhases: [] } };
   if (event.type === 'session_info_update') return { ...session, title: event.title ?? event.sessionName ?? event.name ?? session.title, path: event.sessionFile ?? session.path };
   if (event.type === 'btw_record') return { ...session, state: { ...session.state, btwRecords: [event.record, ...(session.state.btwRecords ?? []).filter((record: Json) => record.id !== event.record.id)] } };
   if (event.type === 'btw_delta') return { ...session, state: { ...session.state, btwRecords: (session.state.btwRecords ?? []).map((record: Json) => {
@@ -105,7 +108,8 @@ function reduceEvent(session: SessionView, event: Json): SessionView {
     const messages = session.messages.slice();
     if (index >= 0) messages[index] = message;
     else messages.push(message);
-    return { ...session, messages: message.toolCallId && !message.id.startsWith('tool-') ? messages.filter(item => item.id !== `tool-${message.toolCallId}`) : messages };
+    const phases = todoPhasesFromMessage(message);
+    return { ...session, ...(phases ? { state: { ...session.state, todoPhases: phases } } : {}), messages: message.toolCallId && !message.id.startsWith('tool-') ? messages.filter(item => item.id !== `tool-${message.toolCallId}`) : messages };
   }
   if (event.type === 'command_output') return { ...session, messages: [...session.messages, { id: `command-${event.id ?? session.messages.length}`, role: 'assistant', content: event.text ?? event.output ?? '' }] };
   if (event.type === 'tool_execution_start' || event.type === 'tool_execution_update' || event.type === 'tool_execution_end') {
@@ -117,7 +121,8 @@ function reduceEvent(session: SessionView, event: Json): SessionView {
     const messages = session.messages.slice();
     if (index >= 0) messages[index] = { ...messages[index], ...message };
     else messages.push(message);
-    return { ...session, messages };
+    const phases = todoPhasesFromMessage(message);
+    return { ...session, ...(phases ? { state: { ...session.state, todoPhases: phases } } : {}), messages };
   }
   return session;
 }

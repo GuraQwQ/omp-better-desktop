@@ -10,6 +10,17 @@
 		"inbound": "RpcInbound",
 		"commands": [
 			{
+				"name": "desktop_manage",
+				"doc": "使用原生管理器配置桌面运行时资源。",
+				"params": "DesktopManageParams",
+				"result": "DesktopManageResult",
+				"nullable": false,
+				"unwrap": null,
+				"timeoutMs": 360000,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
 				"name": "desktop_settings",
 				"doc": "Read or update settings through the runtime registry and persistence layer.",
 				"params": "DesktopSettingsParams",
@@ -6112,6 +6123,95 @@
 				}
 			],
 			"description": "Any frame the server writes to stdout (after reassembling `rpc_chunk` sequences), discriminated by `type`."
+		},
+		"DesktopManageParams": {
+			"type": "object",
+			"properties": {
+				"resource": {
+					"type": "string"
+				},
+				"action": {
+					"type": "string"
+				},
+				"args": {
+					"type": "object",
+					"properties": {},
+					"additionalProperties": {}
+				}
+			},
+			"required": [
+				"resource",
+				"action"
+			]
+		},
+		"DesktopManageResult": {
+			"type": "object",
+			"properties": {
+				"items": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"properties": {},
+						"additionalProperties": {}
+					}
+				},
+				"item": {
+					"type": "object",
+					"properties": {},
+					"additionalProperties": {}
+				},
+				"models": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"properties": {},
+						"additionalProperties": {}
+					}
+				},
+				"presets": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"properties": {},
+						"additionalProperties": {}
+					}
+				},
+				"message": {
+					"type": "string"
+				},
+				"storage": {
+					"type": "string"
+				},
+				"activePreset": {
+					"type": "string"
+				},
+				"restartRequired": {
+					"type": "boolean"
+				},
+				"ok": {
+					"type": "boolean"
+				},
+				"status": {
+					"type": "string"
+				},
+				"role": {
+					"type": "string"
+				},
+				"modelId": {
+					"type": "string"
+				},
+				"source": {
+					"type": "string"
+				},
+				"warnings": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"info": {},
+				"result": {}
+			}
 		},
 		"DesktopSettingsParams": {
 			"type": "object",

@@ -10,33 +10,38 @@
 
 对话主轴将项目与会话放在左侧，答复居中；模型、思考程度、原生速率与用量靠近输入区。
 
-![浅色对话界面，展示模拟任务结果、原生速率和会话用量](docs/images/conversation-1600x900.png)
+![浅色对话界面，展示模拟任务结果、原生速率和会话用量](.github/images/conversation-1600x900.png)
 
 连续动作收为一行步骤摘要，点击读取、修改或命令可展开详情；差异和原始输出按需显示。
 
-![深色工具步骤界面，展开修改动作查看逐行差异](docs/images/tools-1600x900.png)
+![深色工具步骤界面，展开修改动作查看逐行差异](.github/images/tools-1600x900.png)
 
 需要审阅时打开右侧改动面板，同时保留对话与输入区。
 
-![浅色双栏审阅界面，右侧显示工作区文件差异](docs/images/review-1600x900.png)
+![浅色双栏审阅界面，右侧显示工作区文件差异](.github/images/review-1600x900.png)
 
 ## 安装
 
 在本仓库 [Releases](https://github.com/GuraQwQ/omp-better-desktop/releases) 下载 Windows x64 发行包及 `SHA256SUMS`，用 PowerShell 核对：
 
 ```powershell
-Get-FileHash -LiteralPath './Better-OMP-Desktop_0.3.0_windows-x64.exe' -Algorithm SHA256
+Get-FileHash -LiteralPath './Better-OMP-Desktop_0.4.0_windows-x64.exe' -Algorithm SHA256
 ```
 
-文件名以实际附件为准。安装器未签名，Windows 可能提示发布者未知。安装包内置匹配的 OMP；需要系统已有 WebView2，或自行提供解压到其他盘的 Fixed Version WebView2。首次启动选择数据目录，应用数据与安装目录分开管理。详见 [安装、迁移与恢复](docs/install.md) 和 [0.3.0 更新说明](docs/releases/0.3.0.md)。
+文件名以实际附件为准。安装器未签名，Windows 可能提示发布者未知。安装包内置匹配的 OMP；需要系统已有 WebView2，或自行提供解压到其他盘的 Fixed Version WebView2。首次启动选择数据目录，应用数据与安装目录分开管理。安装与更新说明见 [发行页](https://github.com/GuraQwQ/omp-better-desktop/releases)。
 
 ## 当前范围
 
 - 项目与会话导航、流式消息、模型选择、设置、提供商登录、文件与差异查看。
+- OMP 配置按类别编辑并展示生效来源；图形化管理模型角色与预设、MCP、技能、插件市场、代理定义、SSH，以及指令和记忆来源。
+- 项目启动配置支持提示词、附加目录、工具与配置覆盖，保存后可重新连接；模型高级参数默认继承供应商与 OMP 标准，按需展开覆盖。
+- “发现与导入”在点击后读取其他 Agent 的技能与 MCP 配置，通过目录链接引用源数据，导入后可逐项启用。
 - 自定义 OpenAI / Anthropic 兼容提供商，自动获取常见模型目录并一键填入当前分组；配置保存到 OMP 原生文件，新连接的会话生效。
 - 按标题、项目、路径和 ID 搜索对话；从用户消息创建编辑分支，失败回合使用 OMP 原生重试。
 - 保存的对话按本地日期分组；切换会话恢复阅读位置，后台任务完成提供未读标记和可关闭的系统通知。
 - 队列消息可取回草稿及附件；输入 `@` 搜索项目文件，使用方向键与 Enter/Tab 插入路径，也支持未初始化 Git 的项目。
+- 输入 `/` 搜索原生命令、技能与扩展，描述随界面语言切换；任务清单显示在对话左侧独立小板中，可展开或收起，完成后自动隐藏，历史可在上下文进阶中追溯。
+- 外观支持丰富、正常、减少三档动画，默认丰富；渐变、过渡和交互反馈随档位即时调整并保存。
 - 审阅面板可按用户回合查看已记录的文件工具操作，工作区 Git 差异单独查看。
 - 工具步骤以轻量摘要呈现；读取、修改与命令整行可展开路径、行号、差异和退出状态，保留原始输出，重内容按需挂载。
 - 显示上下文剩余、累计用量、缓存命中和 OMP 原生平滑生成速率；活跃工具行共享实时速率，统计详情可展开查看。
@@ -45,7 +50,7 @@ Get-FileHash -LiteralPath './Better-OMP-Desktop_0.3.0_windows-x64.exe' -Algorith
 - 原生命令与 RPC 按实际语义接入；依赖 OMP TUI 的交互通过内嵌终端接管当前会话。
 - 导入既有 OMP 数据时复制源数据并记录进度；会话、凭据、配置和应用文件分别保留。
 
-完整能力清单见 [上游集成与限制](docs/upstream.md) 和自动生成的 [功能目录](docs/feature-map.md)。第三方自定义 TUI、外部服务和语音设备的行为取决于 OMP 及相应服务，不能把目录中的条目数视作端到端验证结果。当前构建与发行流程覆盖 Windows x64。
+能力与接口见自动生成的 [功能目录](docs/feature-map.md) 和 [桌面接口约定](docs/desktop-contract.md)。第三方自定义 TUI、外部服务和语音设备的行为取决于 OMP 及相应服务，不能把目录中的条目数视作端到端验证结果。当前构建与发行流程覆盖 Windows x64。
 
 ## 从源码构建
 
@@ -77,7 +82,7 @@ bun run clean                                 # 清理本仓库 .cache、build�
 
 请先阅读 [贡献说明](CONTRIBUTING.md)。报告问题时附上应用版本、OMP revision、Windows/WebView2 版本、复现步骤和脱敏日志；不要上传凭据或完整私人会话。
 
-公开 CI 执行类型检查、Rust 格式与编译检查，以及无模型调用的运行时协议烟测。定时上游 Release 更新提出 PR 后，在云端构建匹配的 Windows 安装包；检查通过且无冲突时自动合并，并将预构建包发布为预览 Release。维护者也可按正式或预览标签创建发行草稿。详见 [发行流程](docs/releasing.md)。
+公开 CI 执行类型检查、Rust 格式与编译检查，以及无模型调用的运行时协议烟测。定时上游 Release 更新提出 PR 后，在云端构建匹配的 Windows 安装包；检查通过且无冲突时自动合并，并将预构建包发布为预览 Release。维护者也可按正式或预览标签创建发行草稿。详见 [发行工作流](.github/workflows/upstream-release.yml)。
 
 ## 许可与来源
 

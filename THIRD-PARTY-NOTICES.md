@@ -59,3 +59,7 @@ SOFTWARE.
 ## 桌面依赖
 
 Tauri、React、xterm、Lucide、TanStack Virtual、react-markdown、Rust crates 及其他依赖按各自包内许可证使用。精确安装输入保存在 `bun.lock` 和 `src-tauri/Cargo.lock`；分发时保留依赖自带的许可文件。上述项目的名称与商标仍属于各自权利人。
+
+## 配置来源图标
+
+发布包中的 Gemini、Antigravity、Claude、Codex、Trae、ZCode 和 CC Switch 图标用于标识配置来源，名称与图标归各自权利人所有。图标由构建步骤从官方站点或官方仓库获取，不纳入本仓库版本控制；具体来源、摘要与归属随包保存于 `agent-icons/manifest.json`。Codex 使用 OpenAI 官方标识。

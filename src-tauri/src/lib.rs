@@ -1,6 +1,7 @@
 mod bootstrap;
 mod browser_login;
 mod history;
+mod launch;
 mod platform;
 mod providers;
 mod request_capture;
@@ -72,10 +73,68 @@ fn save(path: &Path, value: &Value) -> Result<(), String> {
 }
 
 fn config(root: &Path) -> Result<Value, String> {
-    load(
+    let mut cfg = load(
         &root.join("desktop.json"),
         json!({"preferences":{"language":"en","theme":"system"},"projects":[]}),
-    )
+    )?;
+    if cfg["preferences"]["motion"].is_null() {
+        cfg["preferences"]["motion"] = json!("rich");
+    }
+    Ok(cfg)
+}
+
+fn set_preferences(root: &Path, patch: &Value) -> Result<Value, String> {
+    let mut cfg = config(root)?;
+    let patch = patch.as_object().ok_or("Invalid preferences")?;
+    for (key, value) in patch {
+        match key.as_str() {
+            "language" if matches!(value.as_str(), Some("en" | "zh")) => {}
+            "theme" if matches!(value.as_str(), Some("system" | "light" | "dark")) => {}
+            "motion" if matches!(value.as_str(), Some("rich" | "normal" | "reduced")) => {}
+            "showTurnNumber" | "notifyOnDone" if value.is_boolean() => {}
+            _ => return Err(format!("Invalid preference {key}")),
+        };
+        cfg["preferences"][key] = value.clone();
+    }
+    save(&root.join("desktop.json"), &cfg)?;
+    Ok(cfg["preferences"].clone())
+}
+
+#[cfg(test)]
+mod preference_tests {
+    use super::*;
+
+    #[test]
+    fn motion_preferences_round_trip_without_changing_existing_data() {
+        let root = std::env::temp_dir().join(format!("omp-motion-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        assert_eq!(config(&root).unwrap()["preferences"]["motion"], "rich");
+        let original = json!({"preferences":{"language":"zh","theme":"dark"},"projects":[{"path":"D:/项目"}],"launch":{"保留":"原文"}});
+        save(&root.join("desktop.json"), &original).unwrap();
+        assert_eq!(config(&root).unwrap()["preferences"]["motion"], "rich");
+        assert_eq!(
+            load(&root.join("desktop.json"), json!({})).unwrap(),
+            original
+        );
+        for level in ["rich", "normal", "reduced"] {
+            set_preferences(&root, &json!({"motion":level})).unwrap();
+            let saved = config(&root).unwrap();
+            assert_eq!(saved["preferences"]["motion"], level);
+            assert_eq!(saved["preferences"]["theme"], "dark");
+            assert_eq!(saved["projects"], original["projects"]);
+            assert_eq!(saved["launch"], original["launch"]);
+        }
+        let before = fs::read(root.join("desktop.json")).unwrap();
+        assert!(set_preferences(&root, &json!({"motion":"invalid"})).is_err());
+        assert_eq!(fs::read(root.join("desktop.json")).unwrap(), before);
+        assert!(
+            root.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("omp-motion-")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
 }
 
 fn inside(cwd: &Path, path: &str) -> Result<PathBuf, String> {
@@ -99,19 +158,7 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
         }
         "preferences.set" => {
             let _lock = desktop.configuration.lock().unwrap();
-            let mut cfg = config(root)?;
-            let patch = request["patch"].as_object().ok_or("Invalid preferences")?;
-            for (key, value) in patch {
-                match key.as_str() {
-                    "language" if matches!(value.as_str(), Some("en" | "zh")) => {}
-                    "theme" if matches!(value.as_str(), Some("system" | "light" | "dark")) => {}
-                    "showTurnNumber" | "notifyOnDone" if value.is_boolean() => {}
-                    _ => return Err(format!("Invalid preference {key}")),
-                };
-                cfg["preferences"][key] = value.clone();
-            }
-            save(&root.join("desktop.json"), &cfg)?;
-            Ok(cfg["preferences"].clone())
+            set_preferences(root, &request["patch"])
         }
         "runtime.install" | "runtime.rollback" | "runtime.clean" | "data.import"
         | "data.takeover" => {
@@ -136,6 +183,18 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
             }
         }
         "data.discover" => storage::discover_omp(root),
+        "launch.get" => {
+            serde_json::to_value(launch::read(root, Path::new(text(&request, "cwd")?))?)
+                .map_err(|e| e.to_string())
+        }
+        "launch.set" => {
+            let _lock = desktop.configuration.lock().unwrap();
+            launch::write(
+                root,
+                Path::new(text(&request, "cwd")?),
+                request["profile"].clone(),
+            )
+        }
         "requests.status" => request_capture::status(root),
         "requests.configure" => {
             request_capture::configure(root, request["enabled"].as_bool().ok_or("Missing enabled")?)
@@ -150,7 +209,7 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
         "providers.config" => {
             let _access = desktop.data_access.read().unwrap();
             let result = providers::config(root, &request)?;
-            if request["operation"] == "save" {
+            if matches!(request["operation"].as_str(), Some("save" | "delete")) {
                 desktop.sessions.activate(app.clone(), None)?;
             }
             Ok(result)

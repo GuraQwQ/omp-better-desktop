@@ -1,0 +1,1367 @@
+diff --git a/packages/coding-agent/src/modes/rpc/rpc-mode.ts b/packages/coding-agent/src/modes/rpc/rpc-mode.ts
+--- a/packages/coding-agent/src/modes/rpc/rpc-mode.ts
++++ b/packages/coding-agent/src/modes/rpc/rpc-mode.ts
+@@ -85,6 +85,7 @@
+ import { RpcLiveBridge, type RpcLiveSessionFactory } from "./rpc-live";
+ import { RpcOutputWriter } from "./rpc-output";
+ import { desktopCommands, desktopSettings } from "./desktop";
++import { desktopManage } from "./desktop-management";
+ import {
+ 	RpcExtensionUserMessageTracker,
+ 	RpcPromptResults,
+@@ -433,6 +434,8 @@
+  * A Set, not a Record: `type` is untrusted input and must not hit prototype keys.
+  */
+ const BACKGROUND_COMMANDS: ReadonlySet<string> = new Set<RpcCommand["type"]>([
++	// 配置连接和授权在后台等待，取消请求可以继续处理。
++	"desktop_manage",
+ 	"login",
+ 	// 速率采样不能排在长命令后等待。
+ 	"get_token_rate",
+@@ -2056,6 +2059,28 @@
+ 		const id = command.id;
+ 
+ 		switch (command.type) {
++			case "desktop_manage": {
++				const controller = new AbortController();
++				builtinCommandAborts.add(controller);
++				try {
++					const result = await desktopManage(session, command, {
++						mcpManager: options.mcpManager,
++						signal: controller.signal,
++						reloadPlugins: reloadPluginState,
++						onAuth: info =>
++							output({
++								type: "extension_ui_request",
++								id: Snowflake.next() as string,
++								method: "open_url",
++								url: info.url,
++								instructions: info.instructions,
++							}),
++					});
++					return success(id, "desktop_manage", result);
++				} finally {
++					builtinCommandAborts.delete(controller);
++				}
++			}
+ 			case "desktop_settings":
+ 				return success(id, "desktop_settings", await desktopSettings(session.settings, command));
+ 			case "desktop_commands":
+@@ -2827,7 +2852,12 @@
+ 								output,
+ 								{ timeout: 600_000, signal: signal ?? loginController.signal },
+ 								undefined,
+-								{ method: "browser_session", url: request.url, cookieNames: [...request.cookieNames], timeout: 600_000 },
++								{
++									method: "browser_session",
++									url: request.url,
++									cookieNames: [...request.cookieNames],
++									timeout: 600_000,
++								},
+ 								response => parseValueDialogResponse(response, undefined),
+ 							);
+ 							if (value === undefined) throw new Error("Login cancelled");
+diff --git a/packages/coding-agent/src/modes/rpc/rpc-types.ts b/packages/coding-agent/src/modes/rpc/rpc-types.ts
+--- a/packages/coding-agent/src/modes/rpc/rpc-types.ts
++++ b/packages/coding-agent/src/modes/rpc/rpc-types.ts
+@@ -35,6 +35,25 @@
+ import type { RpcGoalOp, RpcGoalResult } from "./rpc-goal";
+ import type { BtwHistoryRecord } from "../../session/btw-history";
+ 
++export interface DesktopManageResult {
++	items?: Record<string, unknown>[];
++	item?: Record<string, unknown>;
++	models?: Record<string, unknown>[];
++	presets?: Record<string, unknown>[];
++	message?: string;
++	storage?: string;
++	activePreset?: string;
++	restartRequired?: boolean;
++	ok?: boolean;
++	status?: string;
++	role?: string;
++	modelId?: string;
++	source?: string;
++	warnings?: string[];
++	info?: unknown;
++	result?: unknown;
++}
++
+ // ============================================================================
+ // RPC Commands (stdin)
+ // ============================================================================
+@@ -46,6 +65,7 @@
+ export type RpcMessageUpdates = "full" | "delta";
+ 
+ export type RpcCommand =
++	| { id?: string; type: "desktop_manage"; resource: string; action: string; args?: Record<string, unknown> }
+ 	| { id?: string; type: "desktop_settings"; operation: "list" | "set" | "unset"; key?: string; value?: unknown }
+ 	| { id?: string; type: "desktop_commands" }
+ 	// Protocol
+@@ -429,6 +449,7 @@
+ 
+ // Success responses with data
+ export type RpcResponse =
++	| { id?: string; type: "response"; command: "desktop_manage"; success: true; data: DesktopManageResult }
+ 	| {
+ 			id?: string;
+ 			type: "response";
+@@ -478,7 +499,13 @@
+ 
+ 	// State
+ 	| { id?: string; type: "response"; command: "get_state"; success: true; data: RpcSessionState }
+-	| { id?: string; type: "response"; command: "get_token_rate"; success: true; data: { tokensPerSecond: number | null } }
++	| {
++			id?: string;
++			type: "response";
++			command: "get_token_rate";
++			success: true;
++			data: { tokensPerSecond: number | null };
++	  }
+ 	| {
+ 			id?: string;
+ 			type: "response";
+diff --git a/packages/coding-agent/src/modes/rpc/wire/commands.ts b/packages/coding-agent/src/modes/rpc/wire/commands.ts
+--- a/packages/coding-agent/src/modes/rpc/wire/commands.ts
++++ b/packages/coding-agent/src/modes/rpc/wire/commands.ts
+@@ -33,6 +33,30 @@
+ 
+ export const rpcCommands: readonly RpcCommandSpec[] = [
+ 	{
++		name: "desktop_manage",
++		doc: "使用原生管理器配置桌面运行时资源。",
++		params: { resource: "string", action: "string", "args?": "Record<string, unknown>" },
++		result: {
++			"items?": "Record<string, unknown>[]",
++			"item?": "Record<string, unknown>",
++			"models?": "Record<string, unknown>[]",
++			"presets?": "Record<string, unknown>[]",
++			"message?": "string",
++			"storage?": "string",
++			"activePreset?": "string",
++			"restartRequired?": "boolean",
++			"ok?": "boolean",
++			"status?": "string",
++			"role?": "string",
++			"modelId?": "string",
++			"source?": "string",
++			"warnings?": "string[]",
++			"info?": "unknown",
++			"result?": "unknown",
++		},
++		timeoutMs: 360_000,
++	},
++	{
+ 		name: "desktop_settings",
+ 		doc: "Read or update settings through the runtime registry and persistence layer.",
+ 		params: { operation: "'list' | 'set' | 'unset'", "key?": "string", "value?": "unknown" },
+diff --git a/packages/coding-agent/src/modes/rpc/desktop-management.ts b/packages/coding-agent/src/modes/rpc/desktop-management.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/coding-agent/src/modes/rpc/desktop-management.ts
+@@ -0,0 +1,955 @@
++import * as fs from "node:fs/promises";
++import * as path from "node:path";
++import { isDeepStrictEqual } from "node:util";
++import { type } from "@oh-my-pi/omptype";
++import type { Model } from "@oh-my-pi/pi-ai";
++import { getSupportedEfforts } from "@oh-my-pi/pi-catalog/model-thinking";
++import { modelKind } from "@oh-my-pi/pi-catalog/types";
++import { parseConfiguredThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
++import {
++	getAgentDir,
++	getMCPConfigPath,
++	getSSHConfigPath,
++	getPluginsLockfile,
++	isEnoent,
++	isRecord,
++} from "@oh-my-pi/pi-utils";
++import { withFileLock } from "@oh-my-pi/pi-utils/file-lock";
++import { MANAGED_SKILLS_PROVIDER_ID } from "../../autolearn/managed-skills";
++import { loadCapability, reset as resetCapabilities } from "../../capability";
++import type { Hook } from "../../capability/hook";
++import { mcpCapability, type MCPServer } from "../../capability/mcp";
++import type { SSHHost } from "../../capability/ssh";
++import { cfgModelRoleStorage } from "../../config/model-settings";
++import {
++	acquireModelRoleMutation,
++	applyModelPreset,
++	deleteModelPreset,
++	findActiveModelPreset,
++	getModelPreset,
++	getModelPresetNames,
++	saveModelPreset,
++} from "../../config/model-presets";
++import { resolveModelRoleValue } from "../../config/model-resolver";
++import { getKnownRoleIds, getRoleInfo, roleCandidatePool } from "../../config/model-roles";
++import { lookup } from "../../config/registry";
++import { clearPluginRootsAndCaches, resolveOrDefaultProjectRegistryPath } from "../../discovery/helpers";
++import { PluginManager, validateSetting } from "../../extensibility/plugins/manager";
++import { parseGitUrl } from "../../extensibility/plugins/git-url";
++import {
++	getInstalledPluginsRegistryPath,
++	getMarketplacesCacheDir,
++	getMarketplacesRegistryPath,
++	getPluginsCacheDir,
++	MarketplaceManager,
++	parsePluginId,
++} from "../../extensibility/plugins/marketplace";
++import { normalizePluginRuntimeConfig, writePluginRuntimeConfig } from "../../extensibility/plugins/runtime-config";
++import type { InstalledPlugin } from "../../extensibility/plugins/types";
++import { cfgDisabledExtensions, cfgSkills } from "../../extensibility/settings";
++import { loadSkillPromptBody, loadSkills, type Skill } from "../../extensibility/skills";
++import { validateServerConfig } from "../../mcp/config";
++import { addMCPServer, readMCPConfigFile, removeMCPServer, setMcpServerEnabled } from "../../mcp/config-writer";
++import type { MCPManager } from "../../mcp/manager";
++import {
++	findMcpServerForAuth,
++	type FoundMcpServer,
++	probeMcpConnection,
++	reauthorizeMcpServer,
++	reconnectMcpManagerServer,
++} from "../../mcp/oauth-reauth";
++import { cfgMcpEnableProjectConfig } from "../../mcp/settings";
++import type { MCPServerConfig } from "../../mcp/types";
++import { getMemoryRoot } from "../../memories";
++import { resolveMemoryBackend } from "../../memory-backend/resolve";
++import type { AgentSession } from "../../session/agent-session";
++import { buildAvailableSlashCommands } from "../../slash-commands/available-commands";
++import { readSSHConfigFile, validateHostName, writeSSHConfigFile } from "../../ssh/config-writer";
++import { ensureConnection, getHostInfoForHost, invalidateHostMetadata } from "../../ssh/connection-manager";
++import { discoverAgents } from "../../task/discovery";
++import { ManageSkillTool } from "../../tools/manage-skill";
++import { expandTilde } from "../../tools/path-utils";
++
++export interface DesktopManageRequest {
++	resource: string;
++	action: string;
++	args?: Record<string, unknown>;
++}
++
++export interface DesktopManageOptions {
++	mcpManager?: MCPManager;
++	signal?: AbortSignal;
++	onAuth?: (info: { url: string; instructions?: string }) => void;
++	reloadPlugins?: () => Promise<void>;
++}
++
++const stdioInput = type({ command: "string", "args?": "string[]", "env?": "Record<string, string>", "cwd?": "string" });
++const remoteInput = type({ url: "string", "headers?": "Record<string, string>" });
++const sshInput = type({
++	host: "string",
++	"username?": "string",
++	"port?": "number.integer",
++	"keyPath?": "string",
++	"description?": "string",
++	"compat?": "boolean",
++});
++const authFlows = new WeakMap<AgentSession, Map<string, AbortController>>();
++const pluginMutations = new WeakMap<AgentSession, Promise<object>>();
++
++function text(args: Record<string, unknown>, key: string, allowEmpty = false): string {
++	const value = args[key];
++	if (typeof value !== "string" || (!allowEmpty && !value.trim())) throw new Error(`请填写 ${key}`);
++	return allowEmpty ? value : value.trim();
++}
++
++function scopeOf(args: Record<string, unknown>): "user" | "project" {
++	if (args.scope === undefined || args.scope === "user") return "user";
++	if (args.scope === "project") return "project";
++	throw new Error("scope 必须为 user 或 project");
++}
++
++function modelView(model: Model): object {
++	return {
++		id: model.id,
++		value: `${model.provider}/${model.id}`,
++		provider: model.provider,
++		name: model.name,
++		kind: modelKind(model),
++		thinkingLevels: getSupportedEfforts(model),
++	};
++}
++
++async function setSetting(session: AgentSession, key: string, value: unknown): Promise<void> {
++	const setting = lookup(key);
++	if (!setting) throw new Error(`未知配置：${key}`);
++	setting.assertWritable(value);
++	setting.set(session.settings, value);
++	await session.settings.flush();
++}
++
++function configured(session: AgentSession, key: string): unknown {
++	return lookup(key)?.get(session.settings);
++}
++
++async function manageModels(session: AgentSession, action: string, args: Record<string, unknown>): Promise<object> {
++	const settings = session.settings;
++	if (action === "list") {
++		return {
++			storage: cfgModelRoleStorage.get(settings),
++			items: getKnownRoleIds(settings).map(id => {
++				const info = getRoleInfo(id, settings);
++				const selector = settings.getModelRole(id);
++				const resolved = resolveModelRoleValue(selector, session.modelRegistry.getAvailable("all"), { settings });
++				return {
++					id,
++					name: info.name,
++					section: info.section,
++					hidden: info.hidden,
++					selector,
++					modelId: resolved.model ? `${resolved.model.provider}/${resolved.model.id}` : selector,
++					thinkingLevel: resolved.thinkingLevel,
++					source: settings.getModelRoleSource(id),
++					candidates: roleCandidatePool(id, settings, session.modelRegistry).map(modelView),
++				};
++			}),
++			models: session.modelRegistry.getAvailable("all").map(modelView),
++			presets: getModelPresetNames(settings).map(id => ({
++				id,
++				name: id,
++				source: settings.getOwnedModelPreset(id)?.source,
++				...getModelPreset(settings, id),
++			})),
++			activePreset: findActiveModelPreset(settings),
++		};
++	}
++	if (action === "preset_save" || action === "preset_delete") {
++		const name = text(args, "name");
++		const result = action === "preset_save" ? saveModelPreset(settings, name) : deleteModelPreset(settings, name);
++		await settings.flush();
++		return {
++			message: result === "project" ? "全局预设已清除；另一个配置层仍定义了同名预设" : "模型预设已保存",
++			result,
++		};
++	}
++	if (action === "preset_apply") {
++		const result = await applyModelPreset(settings, session, text(args, "name"));
++		await settings.flush();
++		if (result.kind !== "switched") throw new Error("reason" in result ? result.reason : "找不到模型预设");
++		return {
++			message:
++				result.shadowed.length || result.shadowedThinking
++					? "预设已应用；部分配置受更高优先级来源覆盖"
++					: "模型预设已应用",
++			result,
++		};
++	}
++	if (action !== "set") throw new Error(`未知模型操作：${action}`);
++	const role = text(args, "role");
++	if (!getKnownRoleIds(settings).includes(role)) throw new Error(`未知模型角色：${role}`);
++	const selected = args.modelId === null ? undefined : text(args, "modelId");
++	let selector = selected;
++	if (selected) {
++		const model = roleCandidatePool(role, settings, session.modelRegistry).find(
++			item => `${item.provider}/${item.id}` === selected,
++		);
++		if (!model) throw new Error("该模型不可用于当前角色，请刷新模型列表");
++		if (args.thinkingLevel !== undefined && args.thinkingLevel !== null && args.thinkingLevel !== "inherit") {
++			const raw = text(args, "thinkingLevel");
++			if (parseConfiguredThinkingLevel(raw) === undefined) throw new Error("无效的思考等级");
++			selector = `${selected}:${raw}`;
++		}
++	}
++	const release = await acquireModelRoleMutation();
++	try {
++		if (cfgModelRoleStorage.get(settings) === "project") {
++			if (selector) settings.setProjectModelRole(role, selector);
++			else settings.clearProjectModelRole(role);
++		} else settings.setModelRole(role, selector);
++		await settings.flush();
++	} finally {
++		release();
++	}
++	return {
++		message: "模型角色已保存",
++		role,
++		modelId: settings.getModelRole(role),
++		source: settings.getModelRoleSource(role),
++		restartRequired: role === "default",
++	};
++}
++
++function mcpConfig(value: unknown): MCPServerConfig {
++	if (!isRecord(value)) throw new Error("请填写 MCP 配置");
++	const transport = value.type ?? (value.command ? "stdio" : "http");
++	if (transport === "stdio") {
++		const parsed = stdioInput.assert(value);
++		const result = {
++			type: "stdio" as const,
++			command: parsed.command,
++			args: parsed.args,
++			env: parsed.env,
++			cwd: parsed.cwd,
++		};
++		const errors = validateServerConfig("desktop", result);
++		if (errors.length) throw new Error(errors.join("；"));
++		return result;
++	}
++	if (transport !== "http" && transport !== "sse") throw new Error("MCP 类型必须为 stdio、http 或 sse");
++	const parsed = remoteInput.assert(value);
++	const url = new URL(parsed.url);
++	if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("MCP 地址必须为 HTTP 或 HTTPS");
++	return { type: transport, url: parsed.url, headers: parsed.headers };
++}
++
++async function manageMcp(
++	session: AgentSession,
++	action: string,
++	args: Record<string, unknown>,
++	options: DesktopManageOptions,
++): Promise<object> {
++	const cwd = session.sessionManager.getCwd();
++	const manager = options.mcpManager;
++	const userPath = getMCPConfigPath("user", cwd);
++	const projectPath = getMCPConfigPath("project", cwd);
++	const writableSource = (item: MCPServer): string | undefined => {
++		const source = item._source;
++		if (source.path === userPath || source.path === projectPath) return source.path;
++		if (source.provider === "mcp-json" && ["mcp.json", ".mcp.json"].includes(path.basename(source.path)))
++			return source.path;
++		if (
++			source.provider === "native" &&
++			path.basename(source.path) === "mcp.json" &&
++			path.basename(path.dirname(source.path)) === ".omp"
++		)
++			return source.path;
++		return undefined;
++	};
++	if (action === "list") {
++		const [loaded, user] = await Promise.all([
++			loadCapability<MCPServer>(mcpCapability.id, {
++				cwd,
++				includeDisabled: true,
++				disabledExtensions: [],
++				extensionRoots: session.effectiveExtensionRoots,
++			}),
++			readMCPConfigFile(userPath),
++		]);
++		const disabled = new Set(user.disabledServers ?? []);
++		const forced = new Set(user.enabledServers ?? []);
++		return {
++			items: loaded.items.map(item => ({
++				id: item.name,
++				name: item.name,
++				type: item.transport ?? (item.command ? "stdio" : "http"),
++				source: item._source.path,
++				scope: item._source.level,
++				readOnly: writableSource(item) === undefined,
++				enabled:
++					!cfgDisabledExtensions.get(session.settings).includes(`mcp:${item.name}`) &&
++					!disabled.has(item.name) &&
++					(forced.has(item.name) || item.enabled !== false),
++				status: manager?.getConnectionStatus(item.name) ?? "disconnected",
++				toolCount: manager?.getConnection(item.name)?.tools?.length ?? 0,
++				projectConfigEnabled: cfgMcpEnableProjectConfig.get(session.settings),
++			})),
++			warnings: loaded.warnings,
++		};
++	}
++	if (action === "cancel_auth") {
++		authFlows.get(session)?.get(text(args, "id"))?.abort("用户取消授权");
++		return { message: "已取消授权" };
++	}
++	if (action === "add") {
++		await addMCPServer(getMCPConfigPath(scopeOf(args), cwd), text(args, "name"), mcpConfig(args.config));
++		resetCapabilities();
++		return { message: "MCP 服务已保存", restartRequired: true };
++	}
++	const name = args.id === undefined && action === "test" ? "desktop-probe" : text(args, "id");
++	const selected = (
++		await loadCapability<MCPServer>(mcpCapability.id, {
++			cwd,
++			includeDisabled: true,
++			disabledExtensions: [],
++			extensionRoots: session.effectiveExtensionRoots,
++		})
++	).items.find(item => item.name === name);
++	const sourcePath = selected ? writableSource(selected) : undefined;
++	let found: FoundMcpServer | null = await findMcpServerForAuth(name, cwd, manager, {
++		enableProjectConfig: cfgMcpEnableProjectConfig.get(session.settings),
++	});
++	if (selected) {
++		const persisted = sourcePath ? (await readMCPConfigFile(sourcePath)).mcpServers?.[name] : undefined;
++		const config =
++			persisted ??
++			manager?.getServerConfig(name) ??
++			({ ...selected, type: selected.transport ?? (selected.command ? "stdio" : "http") } as MCPServerConfig);
++		found = {
++			config,
++			filePath: sourcePath ?? userPath,
++			scope: selected._source.level === "project" ? "project" : "user",
++			discovered: !sourcePath,
++		};
++	}
++	if (action === "test") {
++		const config = args.config === undefined ? found?.config : mcpConfig(args.config);
++		if (!config) throw new Error("找不到 MCP 服务");
++		await probeMcpConnection(config, { authStorage: session.modelRegistry.authStorage, mcpManager: manager, cwd });
++		return { message: "MCP 连接测试成功", ok: true };
++	}
++	if (action === "enable" || action === "disable") {
++		if (!found) throw new Error("找不到 MCP 服务");
++		await setMcpServerEnabled({ userPath, projectPath, sourcePath, name, enabled: action === "enable" });
++		if (action === "enable") {
++			const disabled = cfgDisabledExtensions.get(session.settings);
++			if (disabled.includes(`mcp:${name}`))
++				await setSetting(
++					session,
++					"disabledExtensions",
++					disabled.filter(id => id !== `mcp:${name}`),
++				);
++		}
++		resetCapabilities();
++		if (action === "disable") {
++			await manager?.disconnectServer(name);
++			if (manager) await session.refreshMCPTools(manager.getTools());
++		}
++		return { message: "MCP 配置已保存", restartRequired: action === "enable" };
++	}
++	if (action === "remove") {
++		if (!sourcePath) throw new Error("该服务来自外部配置，可停用或在其来源文件中删除");
++		await removeMCPServer(sourcePath, name);
++		await manager?.disconnectServer(name);
++		if (manager) await session.refreshMCPTools(manager.getTools());
++		resetCapabilities();
++		return { message: "MCP 服务已移除", restartRequired: true };
++	}
++	if (!found) throw new Error("找不到 MCP 服务");
++	if (action === "reconnect") {
++		const status = await reconnectMcpManagerServer(manager, name, found.config);
++		if (manager) await session.refreshMCPTools(manager.getTools());
++		return {
++			message: status === "connected" ? "MCP 已连接" : "MCP 配置将在重启会话后加载",
++			status,
++			restartRequired: status === undefined,
++		};
++	}
++	if (action === "reauth") {
++		let flows = authFlows.get(session);
++		if (!flows) {
++			flows = new Map();
++			authFlows.set(session, flows);
++		}
++		flows.get(name)?.abort("重新开始授权");
++		const controller = new AbortController();
++		flows.set(name, controller);
++		try {
++			const result = await reauthorizeMcpServer(name, found, {
++				authStorage: session.modelRegistry.authStorage,
++				mcpManager: manager,
++				cwd,
++				signal: options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal,
++				onAuth: options.onAuth,
++				flowOwner: session,
++			});
++			await reconnectMcpManagerServer(manager, name, result.config);
++			if (manager) await session.refreshMCPTools(manager.getTools());
++			return { message: "MCP 授权已更新" };
++		} finally {
++			if (flows.get(name) === controller) flows.delete(name);
++		}
++	}
++	throw new Error(`未知 MCP 操作：${action}`);
++}
++
++async function allSkills(session: AgentSession): Promise<Skill[]> {
++	return (
++		await loadSkills({
++			...cfgSkills.get(session.settings),
++			cwd: session.sessionManager.getCwd(),
++			enabled: true,
++			disabledExtensions: [],
++			extensionRoots: session.effectiveExtensionRoots,
++		})
++	).skills;
++}
++
++function skillView(session: AgentSession, skill: Skill): object {
++	return {
++		id: skill.name,
++		name: skill.name,
++		description: skill.description,
++		source: skill.filePath,
++		scope: skill._source?.level,
++		provider: skill._source?.provider,
++		managed: skill._source?.provider === MANAGED_SKILLS_PROVIDER_ID,
++		enabled: !cfgDisabledExtensions.get(session.settings).includes(`skill:${skill.name}`),
++	};
++}
++
++async function manageSkills(session: AgentSession, action: string, args: Record<string, unknown>): Promise<object> {
++	if (action === "list") return { items: (await allSkills(session)).map(skill => skillView(session, skill)) };
++	if (action === "create" || action === "update" || action === "delete") {
++		const name = action === "delete" ? text(args, "id") : text(args, "name");
++		if (
++			action !== "create" &&
++			!(await allSkills(session)).some(
++				skill => skill.name === name && skill._source?.provider === MANAGED_SKILLS_PROVIDER_ID,
++			)
++		)
++			throw new Error("只可修改 OMP 托管技能");
++		const result = await new ManageSkillTool(() => session.refreshSkills()).execute(
++			"desktop",
++			action === "delete"
++				? { action, name }
++				: { action, name, description: text(args, "description"), body: text(args, "body", true) },
++		);
++		if (result.isError)
++			throw new Error(
++				result.content
++					.filter(item => item.type === "text")
++					.map(item => ("text" in item ? item.text : ""))
++					.join("\n"),
++			);
++		return { message: action === "delete" ? "托管技能已删除" : "托管技能已保存" };
++	}
++	const id = text(args, "id");
++	const skill = (await allSkills(session)).find(item => item.name === id);
++	if (!skill) throw new Error("找不到技能");
++	if (action === "detail") return { item: { ...skillView(session, skill), body: await loadSkillPromptBody(skill) } };
++	if (action === "enable" || action === "disable") {
++		const key = `skill:${id}`;
++		const disabled = new Set(cfgDisabledExtensions.get(session.settings));
++		if (action === "enable") disabled.delete(key);
++		else disabled.add(key);
++		await setSetting(session, "disabledExtensions", [...disabled]);
++		await session.refreshSkillsAndCommands();
++		return { message: "技能状态已保存" };
++	}
++	throw new Error(`未知技能操作：${action}`);
++}
++
++async function marketplaceManager(session: AgentSession): Promise<MarketplaceManager> {
++	return new MarketplaceManager({
++		marketplacesRegistryPath: getMarketplacesRegistryPath(),
++		installedRegistryPath: getInstalledPluginsRegistryPath(),
++		projectInstalledRegistryPath: await resolveOrDefaultProjectRegistryPath(session.sessionManager.getCwd()),
++		marketplacesCacheDir: getMarketplacesCacheDir(),
++		pluginsCacheDir: getPluginsCacheDir(),
++		clearPluginRootsCache: clearPluginRootsAndCaches,
++	});
++}
++
++async function managePlugins(
++	session: AgentSession,
++	action: string,
++	args: Record<string, unknown>,
++	options: DesktopManageOptions,
++): Promise<object> {
++	const npm = new PluginManager(session.sessionManager.getCwd());
++	const marketplace = await marketplaceManager(session);
++	const [packages, installed] = await Promise.all([npm.list(), marketplace.listInstalledPlugins()]);
++	const marketplacePaths = new Set(
++		installed.flatMap(item => item.entries.map(entry => path.resolve(entry.installPath))),
++	);
++	if (action === "list")
++		return {
++			items: [
++				...installed.map(item => ({
++					id: item.id,
++					name: item.id,
++					scope: item.scope,
++					source: item.entries[0]?.installPath,
++					version: item.entries[0]?.version,
++					enabled: item.entries[0]?.enabled !== false,
++					shadowedBy: item.shadowedBy,
++				})),
++				...packages
++					.filter(item => !marketplacePaths.has(path.resolve(item.path)))
++					.map(item => ({
++						id: item.name,
++						name: item.manifest.name ?? item.name,
++						description: item.manifest.description,
++						source: item.path,
++						scope: "user",
++						enabled: item.enabled,
++						version: item.version,
++					})),
++			],
++		};
++	if (action === "install") {
++		const source = text(args, "source");
++		const parsed = parsePluginId(source);
++		const registered =
++			parsed && (await marketplace.listMarketplaces()).some(item => item.name === parsed.marketplace);
++		if (parsed && registered) {
++			if (!installed.some(item => item.id === source && item.scope === scopeOf(args)))
++				await marketplace.installPlugin(parsed.name, parsed.marketplace, { scope: scopeOf(args) });
++		} else {
++			if (scopeOf(args) === "project") throw new Error("npm 和本地插件安装到用户作用域；项目作用域可安装市场插件");
++			const localPath = path.resolve(
++				session.sessionManager.getCwd(),
++				expandTilde(source.startsWith("file:") ? source.slice(5) : source),
++			);
++			const localDirectory =
++				!parseGitUrl(source) &&
++				!source.startsWith("npm:") &&
++				(await fs.stat(localPath).then(
++					info => info.isDirectory(),
++					error => {
++						if (isEnoent(error) || error.code === "ENOTDIR") return false;
++						throw error;
++					},
++				));
++			if (localDirectory) {
++				const target = await fs.realpath(localPath);
++				const existingPaths = await Promise.all(packages.map(item => fs.realpath(item.path)));
++				if (!existingPaths.includes(target)) await npm.link(localPath);
++			} else await npm.install(source);
++		}
++		clearPluginRootsAndCaches();
++		await options.reloadPlugins?.();
++		return { message: "插件已安装", restartRequired: true };
++	}
++	const id = text(args, "id");
++	const marketEntry = installed.find(
++		item => item.id === id && (args.scope === undefined || item.scope === scopeOf(args)),
++	);
++	let plugin: InstalledPlugin | undefined = packages.find(item => item.name === id);
++	if (marketEntry) {
++		const directory = marketEntry.entries[0]?.installPath;
++		if (directory) {
++			let packageName = parsePluginId(id)?.name ?? id;
++			try {
++				const manifest = await Bun.file(path.join(directory, "package.json")).json();
++				if (typeof manifest.name === "string") packageName = manifest.name;
++			} catch (error) {
++				if (!isEnoent(error)) throw error;
++			}
++			plugin = await npm.getPlugin(packageName, { path: directory });
++		}
++	}
++	if (action === "enable" || action === "disable") {
++		if (marketEntry)
++			await marketplace.setPluginEnabled(id, action === "enable", scopeOf({ scope: marketEntry.scope }));
++		else if (plugin) await npm.setEnabled(plugin.name, action === "enable");
++		else throw new Error("找不到插件");
++	} else if (action === "update" || action === "remove") {
++		if (marketEntry) {
++			if (action === "update") await marketplace.upgradePlugin(id, marketEntry.scope);
++			else await marketplace.uninstallPlugin(id, marketEntry.scope);
++		} else if (plugin) {
++			if (action === "update") await npm.upgrade(plugin.name);
++			else await npm.uninstall(plugin.name);
++		} else throw new Error("找不到插件");
++	} else {
++		if (!plugin) throw new Error("该插件未提供可编辑的 OMP 配置清单");
++		const schemas = plugin.manifest.settings ?? {};
++		const projectRegistry =
++			marketEntry?.scope === "project"
++				? await resolveOrDefaultProjectRegistryPath(session.sessionManager.getCwd())
++				: undefined;
++		if (marketEntry?.scope === "project" && !projectRegistry) throw new Error("找不到项目插件存储位置");
++		const runtimeFile = projectRegistry
++			? path.join(path.dirname(projectRegistry), "omp-plugins.lock.json")
++			: getPluginsLockfile();
++		const loadRuntime = async () => {
++			try {
++				return normalizePluginRuntimeConfig(await Bun.file(runtimeFile).json());
++			} catch (error) {
++				if (!isEnoent(error)) throw error;
++				return normalizePluginRuntimeConfig({});
++			}
++		};
++		if (action === "detail") {
++			const runtime = await loadRuntime();
++			const values = projectRegistry
++				? (runtime.settings[plugin.name] ?? {})
++				: await npm.getPluginSettings(plugin.name);
++			const features = plugin.manifest.features ?? {};
++			return {
++				item: {
++					id,
++					name: plugin.manifest.name ?? plugin.name,
++					source: plugin.path,
++					description: plugin.manifest.description,
++					scope: marketEntry?.scope ?? "user",
++					features: Object.keys(features),
++					enabledFeatures:
++						runtime.plugins[plugin.name]?.enabledFeatures ??
++						Object.keys(features).filter(key => features[key].default),
++					schema: {
++						type: "object",
++						properties: Object.fromEntries(
++							Object.entries(schemas).map(([key, schema]) => [
++								key,
++								{
++									...schema,
++									type: schema.type === "enum" ? "string" : schema.type,
++									enum: schema.type === "enum" ? schema.values : undefined,
++									minimum: schema.type === "number" ? schema.min : undefined,
++									maximum: schema.type === "number" ? schema.max : undefined,
++								},
++							]),
++						),
++					},
++					settings: Object.fromEntries(Object.entries(values).filter(([key]) => !schemas[key]?.secret)),
++					configured: Object.fromEntries(
++						Object.entries(schemas)
++							.filter(([, schema]) => schema.secret)
++							.map(([key]) => [key, values[key] !== undefined]),
++					),
++				},
++			};
++		}
++		if (action === "features") {
++			const features = type("string[]").assert(args.features);
++			if (features.some(key => !Object.hasOwn(plugin.manifest.features ?? {}, key))) throw new Error("未知插件功能");
++			if (!projectRegistry) await npm.setEnabledFeatures(plugin.name, features);
++			else
++				await withFileLock(runtimeFile, async () => {
++					const runtime = await loadRuntime();
++					if (!runtime.plugins[plugin.name]) throw new Error("项目插件安装尚未完成，请重新安装");
++					runtime.plugins[plugin.name].enabledFeatures = features;
++					await writePluginRuntimeConfig(runtimeFile, runtime);
++				});
++		} else if (action === "setting" || action === "reset") {
++			const key = text(args, "key");
++			const schema = schemas[key];
++			if (!schema) throw new Error("未知插件配置字段");
++			if (action === "setting") {
++				if (!Object.hasOwn(args, "value")) throw new Error("请填写配置值");
++				const validation = validateSetting(args.value, schema);
++				if (!validation.valid) throw new Error(validation.error);
++			}
++			if (!projectRegistry) {
++				if (action === "reset") await npm.deletePluginSetting(plugin.name, key);
++				else await npm.setPluginSetting(plugin.name, key, args.value);
++			} else
++				await withFileLock(runtimeFile, async () => {
++					const runtime = await loadRuntime();
++					const values = runtime.settings[plugin.name] ?? {};
++					if (action === "reset") delete values[key];
++					else values[key] = args.value;
++					runtime.settings[plugin.name] = values;
++					await writePluginRuntimeConfig(runtimeFile, runtime);
++				});
++		} else throw new Error(`未知插件操作：${action}`);
++	}
++	clearPluginRootsAndCaches();
++	await options.reloadPlugins?.();
++	return { message: "插件配置已保存", restartRequired: true };
++}
++
++async function manageMarketplaces(
++	session: AgentSession,
++	action: string,
++	args: Record<string, unknown>,
++): Promise<object> {
++	const manager = await marketplaceManager(session);
++	if (action === "list")
++		return {
++			items: (await manager.listMarketplaces()).map(item => ({ ...item, id: item.name, source: item.sourceUri })),
++		};
++	if (action === "list_available") {
++		const id = text(args, "id");
++		return {
++			items: (await manager.listAvailablePlugins(id)).map(item => ({
++				...item,
++				id: `${item.name}@${id}`,
++				source: `${item.name}@${id}`,
++			})),
++		};
++	}
++	if (action === "add") {
++		const source = text(args, "source");
++		if (!(await manager.listMarketplaces()).some(item => item.sourceUri === source))
++			await manager.addMarketplace(source);
++	} else if (action === "remove") await manager.removeMarketplace(text(args, "id"));
++	else if (action === "refresh") await manager.updateMarketplace(text(args, "id"));
++	else throw new Error(`未知市场操作：${action}`);
++	return { message: "插件市场已更新" };
++}
++
++async function manageAgents(session: AgentSession, action: string, args: Record<string, unknown>): Promise<object> {
++	const result = await discoverAgents(session.sessionManager.getCwd(), undefined, session.effectiveExtensionRoots);
++	const disabled = type("string[]").assert(configured(session, "task.disabledAgents"));
++	const models = configured(session, "task.agentModelOverrides");
++	const prewalk = configured(session, "task.agentPrewalk");
++	if (action === "list")
++		return {
++			items: result.agents.map(item => ({
++				...item,
++				id: item.name,
++				model: item.model?.join(", "),
++				source: item.filePath ?? item.source,
++				scope: item.source,
++				enabled: !disabled.includes(item.name),
++				modelOverride: isRecord(models) ? models[item.name] : undefined,
++				prewalkOverride: isRecord(prewalk) ? prewalk[item.name] : "default",
++			})),
++		};
++	const id = text(args, "id");
++	if (!result.agents.some(item => item.name === id)) throw new Error("找不到 Agent 定义");
++	if (action === "enable" || action === "disable") {
++		await setSetting(
++			session,
++			"task.disabledAgents",
++			action === "enable" ? disabled.filter(item => item !== id) : [...new Set([...disabled, id])],
++		);
++	} else if (action === "model") {
++		const overrides = isRecord(models) ? { ...models } : {};
++		const model = text(args, "model", true).trim();
++		if (model) overrides[id] = model;
++		else delete overrides[id];
++		await setSetting(session, "task.agentModelOverrides", overrides);
++	} else if (action === "prewalk") {
++		const value = text(args, "value");
++		if (value !== "default" && value !== "on" && value !== "off") throw new Error("无效的 Prewalk 选项");
++		const overrides = isRecord(prewalk) ? { ...prewalk } : {};
++		if (value === "default") delete overrides[id];
++		else overrides[id] = value;
++		await setSetting(session, "task.agentPrewalk", overrides);
++	} else throw new Error(`未知 Agent 操作：${action}`);
++	return { message: "Agent 配置已保存；后续任务将使用新配置" };
++}
++
++async function manageSsh(session: AgentSession, action: string, args: Record<string, unknown>): Promise<object> {
++	const cwd = session.sessionManager.getCwd();
++	if (action === "list") {
++		const items: object[] = [];
++		const names = new Set<string>();
++		for (const scope of ["project", "user"] as const) {
++			const file = getSSHConfigPath(scope, cwd);
++			const config = await readSSHConfigFile(file);
++			for (const [name, host] of Object.entries(config.hosts ?? {})) {
++				items.push({ ...host, id: name, name, scope, source: file });
++				names.add(name);
++			}
++		}
++		const discovered = await loadCapability<SSHHost>("ssh", { cwd, extensionRoots: session.effectiveExtensionRoots });
++		items.push(
++			...discovered.items
++				.filter(item => !names.has(item.name))
++				.map(item => ({ ...item, id: item.name, scope: "native", source: item._source.path, readOnly: true })),
++		);
++		return { items, warnings: discovered.warnings };
++	}
++	if (action === "test") {
++		const id = args.id === undefined ? "desktop-test" : text(args, "id");
++		const found =
++			args.host === undefined
++				? args.scope === "user" || args.scope === "project"
++					? (await readSSHConfigFile(getSSHConfigPath(scopeOf(args), cwd))).hosts?.[id]
++					: (await loadCapability<SSHHost>("ssh", { cwd })).items.find(item => item.name === id)
++				: undefined;
++		const host = sshInput.assert(args.host ?? found);
++		if (!host.host.trim() || (host.port !== undefined && (host.port < 1 || host.port > 65535)))
++			throw new Error("请检查 SSH 地址和端口");
++		await ensureConnection({ ...host, name: id });
++		return { message: "SSH 连接测试成功", ok: true, info: await getHostInfoForHost({ ...host, name: id }) };
++	}
++	const scope = scopeOf(args);
++	const file = getSSHConfigPath(scope, cwd);
++	const name = action === "delete" ? text(args, "id") : text(args, "name");
++	const error = validateHostName(name);
++	if (error) throw new Error(error);
++	await fs.mkdir(path.dirname(file), { recursive: true });
++	if (action === "delete") {
++		await withFileLock(file, async () => {
++			const config = await readSSHConfigFile(file);
++			if (config.hosts?.[name]) {
++				delete config.hosts[name];
++				await writeSSHConfigFile(file, config);
++			}
++		});
++	} else if (action === "create" || action === "update") {
++		const host = sshInput.assert(args.host);
++		if (!host.host.trim() || (host.port !== undefined && (host.port < 1 || host.port > 65535)))
++			throw new Error("请检查 SSH 地址和端口");
++		const previousName = typeof args.previousName === "string" ? args.previousName : name;
++		const previousScope = args.previousScope === undefined ? scope : scopeOf({ scope: args.previousScope });
++		const previousFile = getSSHConfigPath(previousScope, cwd);
++		await withFileLock(file, async () => {
++			const config = await readSSHConfigFile(file);
++			const existing = config.hosts?.[name];
++			if (
++				existing &&
++				(action === "create" || name !== previousName || file !== previousFile) &&
++				!isDeepStrictEqual(existing, host)
++			)
++				throw new Error("同名 SSH 主机已存在");
++			config.hosts = { ...config.hosts, [name]: host };
++			if (file === previousFile && name !== previousName) delete config.hosts[previousName];
++			await writeSSHConfigFile(file, config);
++		});
++		// 跨作用域先提交新文件；中断后可重试，再清理旧条目。
++		if (action === "update" && previousFile !== file) {
++			await fs.mkdir(path.dirname(previousFile), { recursive: true });
++			await withFileLock(previousFile, async () => {
++				const config = await readSSHConfigFile(previousFile);
++				if (config.hosts?.[previousName]) {
++					delete config.hosts[previousName];
++					await writeSSHConfigFile(previousFile, config);
++				}
++			});
++		}
++	} else throw new Error(`未知 SSH 操作：${action}`);
++	resetCapabilities();
++	await invalidateHostMetadata([name, ...(typeof args.previousName === "string" ? [args.previousName] : [])]);
++	return { message: "SSH 主机配置已保存" };
++}
++
++async function manageResources(session: AgentSession, action: string, args: Record<string, unknown>): Promise<object> {
++	const kind = text(args, "kind");
++	const cwd = session.sessionManager.getCwd();
++	let items: Array<Record<string, unknown>>;
++	if (kind === "hooks") {
++		const result = await loadCapability<Hook>("hooks", {
++			cwd,
++			includeDisabled: true,
++			extensionRoots: session.effectiveExtensionRoots,
++		});
++		const disabled = cfgDisabledExtensions.get(session.settings);
++		items = result.items.map(item => ({
++			id: `hook:${item.type}:${item.tool}:${item.name}`,
++			name: item.name,
++			source: item.path,
++			scope: item.level,
++			description: `${item.type} · ${item.tool}`,
++			enabled: !disabled.includes(`hook:${item.type}:${item.tool}:${item.name}`),
++		}));
++		if (action === "enable" || action === "disable") {
++			const id = text(args, "id");
++			if (!items.some(item => item.id === id)) throw new Error("找不到 Hook");
++			const next = new Set(disabled);
++			if (action === "enable") next.delete(id);
++			else next.add(id);
++			await setSetting(session, "disabledExtensions", [...next]);
++			return { message: "Hook 状态已保存", restartRequired: true };
++		}
++	} else if (kind === "commands") {
++		items = (await buildAvailableSlashCommands(session)).map(item => ({
++			...item,
++			id: item.name,
++			content: JSON.stringify(item, null, 2),
++		}));
++	} else if (kind === "templates") {
++		items = session.promptTemplates.map(item => ({ ...item, id: item.name }));
++	} else if (kind === "memory") {
++		const backend = await resolveMemoryBackend(session.settings);
++		const context = { agentDir: getAgentDir(), cwd, session };
++		const status = await backend.status?.(context);
++		items = [
++			{
++				id: backend.id,
++				name: backend.id,
++				description: status?.message,
++				source: status?.database ?? cwd,
++				content: JSON.stringify(status ?? { backend: backend.id }, null, 2),
++				...status,
++			},
++		];
++		if (backend.id === "local") {
++			const root = getMemoryRoot(context.agentDir, cwd);
++			for (const filename of ["MEMORY.md", "memory_summary.md", "learned.md"]) {
++				const file = path.join(root, filename);
++				try {
++					items.push({ id: filename, name: filename, source: file, content: await Bun.file(file).text() });
++				} catch (error) {
++					if (!isEnoent(error)) throw error;
++				}
++			}
++		}
++	} else throw new Error(`未知资源类型：${kind}`);
++	if (action === "list") return { items };
++	if (action === "detail") {
++		const item = items.find(item => item.id === text(args, "id"));
++		if (!item) throw new Error("找不到资源");
++		if (kind === "hooks" && typeof item.source === "string")
++			return { item: { ...item, content: await Bun.file(item.source).text() } };
++		return { item };
++	}
++	throw new Error(`未知资源操作：${action}`);
++}
++
++/** 桌面配置只调用原生配置管理器，不进入模型对话。 */
++export async function desktopManage(
++	session: AgentSession,
++	request: DesktopManageRequest,
++	options: DesktopManageOptions = {},
++): Promise<object> {
++	const args = request.args ?? {};
++	if (!isRecord(args)) throw new Error("args 必须为对象");
++	options.signal?.throwIfAborted();
++	switch (request.resource) {
++		case "models":
++			return manageModels(session, request.action, args);
++		case "mcp":
++			return manageMcp(session, request.action, args, options);
++		case "skills":
++			return manageSkills(session, request.action, args);
++		case "plugins":
++		case "marketplaces": {
++			const runAction = () =>
++				request.resource === "plugins"
++					? managePlugins(session, request.action, args, options)
++					: manageMarketplaces(session, request.action, args);
++			if (["list", "detail", "list_available"].includes(request.action)) return runAction();
++			const run = (pluginMutations.get(session) ?? Promise.resolve({})).catch(() => ({})).then(runAction);
++			pluginMutations.set(session, run);
++			try {
++				return await run;
++			} finally {
++				if (pluginMutations.get(session) === run) pluginMutations.delete(session);
++			}
++		}
++		case "agents":
++			return manageAgents(session, request.action, args);
++		case "ssh":
++			return manageSsh(session, request.action, args);
++		case "resources":
++			return manageResources(session, request.action, args);
++		default:
++			throw new Error(`未知配置资源：${request.resource}`);
++	}
++}
+diff --git a/packages/coding-agent/test/desktop-management.test.ts b/packages/coding-agent/test/desktop-management.test.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/coding-agent/test/desktop-management.test.ts
+@@ -0,0 +1,245 @@
++import { afterEach, beforeEach, describe, expect, it } from "bun:test";
++import * as fs from "node:fs/promises";
++import * as os from "node:os";
++import * as path from "node:path";
++import type { Model } from "@oh-my-pi/pi-ai";
++import { __resetDirsFromEnvForTests, getMCPConfigPath, getPluginsLockfile, getSSHConfigPath } from "@oh-my-pi/pi-utils";
++import { initializeWithSettings, reset as resetCapabilities } from "../src/capability";
++import "../src/discovery";
++import "../src/config/all-settings";
++import { cfgModelRoleStorage } from "../src/config/model-settings";
++import { Settings } from "../src/config/settings";
++import { resolveOrDefaultProjectRegistryPath } from "../src/discovery/helpers";
++import { writePluginRuntimeConfig } from "../src/extensibility/plugins/runtime-config";
++import { cfgDisabledExtensions } from "../src/extensibility/settings";
++import { addMCPServer, readMCPConfigFile } from "../src/mcp/config-writer";
++import { desktopManage } from "../src/modes/rpc/desktop-management";
++import type { AgentSession } from "../src/session/agent-session";
++import { readSSHConfigFile, writeSSHConfigFile } from "../src/ssh/config-writer";
++
++const original = {
++	OMP_USER_ROOT: process.env.OMP_USER_ROOT,
++	OMP_PROFILE: process.env.OMP_PROFILE,
++	PI_CODING_AGENT_DIR: process.env.PI_CODING_AGENT_DIR,
++};
++let root: string;
++let cwd: string;
++let session: AgentSession;
++let releaseSettings: () => void;
++const model = {
++	id: "fixture-model",
++	provider: "fixture",
++	name: "测试模型",
++	kind: "chat",
++	reasoning: false,
++} as unknown as Model;
++
++beforeEach(async () => {
++	root = await fs.mkdtemp(path.join(os.tmpdir(), "omp-desktop-management-"));
++	cwd = path.join(root, "workspace");
++	await fs.mkdir(cwd);
++	process.env.OMP_USER_ROOT = path.join(root, "user");
++	delete process.env.OMP_PROFILE;
++	delete process.env.PI_CODING_AGENT_DIR;
++	__resetDirsFromEnvForTests();
++	resetCapabilities();
++	session = {
++		settings: Settings.isolated(),
++		sessionManager: { getCwd: () => cwd },
++		modelRegistry: { getAvailable: () => [model], authStorage: {} },
++		effectiveExtensionRoots: { explicit: [], configured: [], configuredLevel: "user", mode: "merge" },
++		refreshSkills: async () => {},
++		refreshSkillsAndCommands: async () => {},
++	} as unknown as AgentSession;
++	releaseSettings = initializeWithSettings(session.settings);
++});
++
++afterEach(async () => {
++	releaseSettings?.();
++	for (const [key, value] of Object.entries(original)) {
++		if (value === undefined) delete process.env[key];
++		else process.env[key] = value;
++	}
++	__resetDirsFromEnvForTests();
++	resetCapabilities();
++	if (root) {
++		const resolved = await fs.realpath(root);
++		if (
++			path.dirname(resolved) !== (await fs.realpath(os.tmpdir())) ||
++			!path.basename(resolved).startsWith("omp-desktop-management-")
++		)
++			throw new Error("测试清理路径不匹配");
++		await fs.rm(resolved, { recursive: true, force: true });
++	}
++});
++
++describe("桌面运行时管理", () => {
++	it("本地插件安装可重复执行，并保留已选功能及停用状态", async () => {
++		const directory = path.join(cwd, "local-plugin");
++		await Bun.write(
++			path.join(directory, "package.json"),
++			JSON.stringify({
++				name: "desktop-local-fixture",
++				version: "1.0.0",
++				omp: {
++					features: { optional: { default: true } },
++				},
++			}),
++		);
++		const install = { resource: "plugins", action: "install", args: { source: directory, scope: "user" } };
++		await desktopManage(session, install);
++		await desktopManage(session, {
++			resource: "plugins",
++			action: "features",
++			args: { id: "desktop-local-fixture", features: [] },
++		});
++		await desktopManage(session, { resource: "plugins", action: "disable", args: { id: "desktop-local-fixture" } });
++		await desktopManage(session, install);
++		const detail = (await desktopManage(session, {
++			resource: "plugins",
++			action: "detail",
++			args: { id: "desktop-local-fixture" },
++		})) as { item: { enabledFeatures: string[] } };
++		expect(detail.item.enabledFeatures).toEqual([]);
++		const runtime = await Bun.file(getPluginsLockfile()).json();
++		expect(runtime.plugins["desktop-local-fixture"].enabled).toBe(false);
++	});
++
++	it("MCP 旧禁用项只显示实际生效来源，启用时清除旧禁用并保留同名低优先级来源", async () => {
++		const name = "desktop-precedence-fixture";
++		const userPath = getMCPConfigPath("user", cwd);
++		const projectPath = getMCPConfigPath("project", cwd);
++		await addMCPServer(userPath, name, { type: "stdio", command: "user-fixture" });
++		await addMCPServer(projectPath, name, { type: "stdio", command: "project-fixture" });
++		cfgDisabledExtensions.set(session.settings, [`mcp:${name}`]);
++		const before = (await desktopManage(session, { resource: "mcp", action: "list" })) as {
++			items: Array<{ id: string; source: string; enabled: boolean }>;
++		};
++		const matches = before.items.filter(item => item.id === name);
++		expect(matches).toHaveLength(1);
++		expect(matches[0].source).toBe(projectPath);
++		expect(matches[0].enabled).toBe(false);
++		await desktopManage(session, { resource: "mcp", action: "enable", args: { id: name, scope: "project" } });
++		expect(cfgDisabledExtensions.get(session.settings)).not.toContain(`mcp:${name}`);
++		await desktopManage(session, { resource: "mcp", action: "disable", args: { id: name, scope: "project" } });
++		expect((await readMCPConfigFile(projectPath)).mcpServers?.[name].enabled).toBe(false);
++		expect((await readMCPConfigFile(userPath)).mcpServers?.[name]).toMatchObject({ command: "user-fixture" });
++		await desktopManage(session, { resource: "mcp", action: "remove", args: { id: name, scope: "project" } });
++		expect((await readMCPConfigFile(projectPath)).mcpServers?.[name]).toBeUndefined();
++		expect((await readMCPConfigFile(userPath)).mcpServers?.[name]).toMatchObject({ command: "user-fixture" });
++	});
++
++	it("角色编辑遵守项目存储，清除后恢复全局值", async () => {
++		session.settings.setModelRole("smol", "global/model");
++		cfgModelRoleStorage.set(session.settings, "project");
++		await desktopManage(session, {
++			resource: "models",
++			action: "set",
++			args: { role: "smol", modelId: "fixture/fixture-model" },
++		});
++		expect(session.settings.getGlobalModelRole("smol")).toBe("global/model");
++		expect(session.settings.getProjectModelRole("smol")).toBe("fixture/fixture-model");
++		await expect(
++			desktopManage(session, {
++				resource: "models",
++				action: "set",
++				args: { role: "smol", modelId: "missing/model" },
++			}),
++		).rejects.toThrow();
++		expect(session.settings.getProjectModelRole("smol")).toBe("fixture/fixture-model");
++		await desktopManage(session, { resource: "models", action: "set", args: { role: "smol", modelId: null } });
++		expect(session.settings.getModelRole("smol")).toBe("global/model");
++	});
++
++	it("SSH 跨作用域迁移可从新条目已写入的中间状态重试，保留其它主机", async () => {
++		const userFile = getSSHConfigPath("user", cwd);
++		const projectFile = getSSHConfigPath("project", cwd);
++		const host = { host: "example.invalid", port: 22 };
++		await writeSSHConfigFile(userFile, { hosts: { original: host, sibling: { host: "sibling.invalid" } } });
++		await writeSSHConfigFile(projectFile, { hosts: { renamed: host } });
++		const request = {
++			resource: "ssh",
++			action: "update",
++			args: { name: "renamed", scope: "project", previousName: "original", previousScope: "user", host },
++		};
++		await desktopManage(session, request);
++		await desktopManage(session, request);
++		expect((await readSSHConfigFile(userFile)).hosts).toEqual({ sibling: { host: "sibling.invalid" } });
++		expect((await readSSHConfigFile(projectFile)).hosts).toEqual({ renamed: host });
++		await expect(
++			desktopManage(session, {
++				...request,
++				action: "create",
++				args: { name: "renamed", scope: "project", host: { host: "other.invalid" } },
++			}),
++		).rejects.toThrow();
++		expect((await readSSHConfigFile(projectFile)).hosts?.renamed).toEqual(host);
++	});
++
++	it("项目插件字段、功能和重置仅修改项目存储，凭据不回读", async () => {
++		const registryFile = await resolveOrDefaultProjectRegistryPath(cwd);
++		if (!registryFile) throw new Error("缺少测试项目注册表");
++		const runtimeFile = path.join(path.dirname(registryFile), "omp-plugins.lock.json");
++		const pluginPath = path.join(root, "plugin");
++		await Bun.write(
++			path.join(pluginPath, "package.json"),
++			JSON.stringify({
++				name: "fixture-plugin",
++				version: "1.0.0",
++				omp: {
++					features: { optional: { default: true } },
++					settings: { limit: { type: "number", min: 1, max: 9 }, token: { type: "string", secret: true } },
++				},
++			}),
++		);
++		await Bun.write(
++			registryFile,
++			JSON.stringify({
++				version: 2,
++				plugins: {
++					"fixture@local": [{ scope: "project", installPath: pluginPath, version: "1.0.0", enabled: true }],
++				},
++			}),
++		);
++		await writePluginRuntimeConfig(getPluginsLockfile(), {
++			plugins: {},
++			settings: { "fixture-plugin": { limit: 3 } },
++		});
++		await writePluginRuntimeConfig(runtimeFile, {
++			plugins: { "fixture-plugin": { version: "1.0.0", enabled: true, enabledFeatures: null } },
++			settings: { "fixture-plugin": { token: "fixture-secret" } },
++		});
++		const args = { id: "fixture@local", scope: "project" };
++		await desktopManage(session, {
++			resource: "plugins",
++			action: "setting",
++			args: { ...args, key: "limit", value: 7 },
++		});
++		await expect(
++			desktopManage(session, { resource: "plugins", action: "setting", args: { ...args, key: "limit", value: 99 } }),
++		).rejects.toThrow();
++		await desktopManage(session, { resource: "plugins", action: "features", args: { ...args, features: [] } });
++		const detail = (await desktopManage(session, { resource: "plugins", action: "detail", args })) as {
++			item: { settings: Record<string, unknown>; configured: Record<string, boolean>; enabledFeatures: string[] };
++		};
++		expect(detail.item.settings).toEqual({ limit: 7 });
++		expect(detail.item.configured.token).toBe(true);
++		expect(detail.item.enabledFeatures).toEqual([]);
++		await desktopManage(session, { resource: "plugins", action: "reset", args: { ...args, key: "limit" } });
++		expect((await Bun.file(runtimeFile).json()).settings["fixture-plugin"]).toEqual({ token: "fixture-secret" });
++		expect((await Bun.file(getPluginsLockfile()).json()).settings["fixture-plugin"]).toEqual({ limit: 3 });
++	});
++
++	it("MCP 测试完成真实本地 stdio 握手且不保存服务", async () => {
++		const before = await desktopManage(session, { resource: "mcp", action: "list" });
++		const fixture =
++			'let rest=""; for await (const bytes of Bun.stdin.stream()) { rest += new TextDecoder().decode(bytes); let at; while ((at=rest.indexOf("\\n"))>=0) { const line=rest.slice(0,at); rest=rest.slice(at+1); if(!line) continue; const request=JSON.parse(line); if(request.id!==undefined) { const result=request.method==="initialize" ? {protocolVersion:"2025-11-25",capabilities:{tools:{}},serverInfo:{name:"fixture",version:"1"}} : {tools:[]}; process.stdout.write(JSON.stringify({jsonrpc:"2.0",id:request.id,result})+"\\n"); } } }';
++		const result = (await desktopManage(session, {
++			resource: "mcp",
++			action: "test",
++			args: { config: { type: "stdio", command: process.execPath, args: ["-e", fixture] } },
++		})) as { ok: boolean };
++		expect(result.ok).toBe(true);
++		expect(await desktopManage(session, { resource: "mcp", action: "list" })).toEqual(before);
++	}, 20_000);
++});

@@ -26,6 +26,7 @@ pub struct Session {
     pub path: Arc<Mutex<Option<PathBuf>>>,
     settled: Arc<AtomicBool>,
     capture_context: PathBuf,
+    launch_args: Vec<String>,
     _job: ProcessJob,
 }
 
@@ -72,6 +73,7 @@ pub fn command(root: &Path) -> Result<Command, String> {
     let mut command = Command::new(executable);
     command
         .env("OMP_USER_ROOT", root.join("omp"))
+        .env("OMP_DESKTOP_MANAGED_RESOURCES", "1")
         .env("TEMP", root.join("cache/tmp"))
         .env("TMP", root.join("cache/tmp"));
     command.envs(request_capture::environment(root));
@@ -170,8 +172,12 @@ impl Sessions {
         let id = uuid::Uuid::new_v4().to_string();
         let capture_context = request_capture::context(root, &id);
         let mut process = command(root)?;
+        let launch_args = crate::launch::read(root, &cwd)?.arguments();
         process.env("OMP_DESKTOP_REQUEST_CAPTURE_SESSION_ID", &id);
-        process.current_dir(&cwd).args(["--mode", "rpc-ui"]);
+        process
+            .current_dir(&cwd)
+            .args(["--mode", "rpc-ui"])
+            .args(&launch_args);
         if let Some(path) = &path {
             process.arg("--session").arg(path);
         }
@@ -208,6 +214,7 @@ impl Sessions {
                 path: path_cell.clone(),
                 settled: settled.clone(),
                 capture_context: capture_context.clone(),
+                launch_args,
                 _job: job,
             },
         );
@@ -372,8 +379,17 @@ impl Sessions {
             sessions.remove(id)
         };
         self.browser_logins.cancel(id, None);
+        let path = session.as_ref().and_then(|session| {
+            session
+                .path
+                .lock()
+                .unwrap()
+                .as_ref()
+                .filter(|path| path.is_file())
+                .cloned()
+        });
         drop(session);
-        Ok(Value::Null)
+        Ok(json!({"path": path}))
     }
 
     pub fn shutdown(&self) {
@@ -426,7 +442,7 @@ impl Sessions {
         cols: u16,
         rows: u16,
     ) -> Result<Value, String> {
-        let (cwd, path) = {
+        let (cwd, path, launch_args) = {
             let sessions = self.sessions.lock().unwrap();
             let session = sessions.get(id).ok_or("Open a session first.")?;
             if !session.settled.load(Ordering::Acquire) {
@@ -441,7 +457,7 @@ impl Sessions {
                 .lock()
                 .unwrap()
                 .clone());
-            (session.cwd.clone(), path)
+            (session.cwd.clone(), path, session.launch_args.clone())
         };
         let executable = storage::current_runtime(root)?.ok_or("Install OMP first.")?;
         let pair = native_pty_system()
@@ -456,7 +472,9 @@ impl Sessions {
         let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
         let mut cmd = CommandBuilder::new(executable);
         cmd.cwd(cwd);
+        cmd.args(launch_args);
         cmd.env("OMP_USER_ROOT", root.join("omp"));
+        cmd.env("OMP_DESKTOP_MANAGED_RESOURCES", "1");
         if let Some(path) = path {
             cmd.arg("--session");
             cmd.arg(path);

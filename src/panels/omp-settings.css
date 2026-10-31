@@ -1,0 +1,27 @@
+.settings-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.settings-section-heading h2 { margin: 0; }
+.settings-hint { color: var(--secondary); font-size: 12px; line-height: 1.7; margin-bottom: 14px; overflow-wrap: anywhere; }
+.settings-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 10px 0 20px; }
+.settings-tabs button { padding: 6px 10px; border-radius: 6px; color: var(--secondary); }
+.settings-tabs button:hover, .settings-tabs button[aria-pressed='true'] { background: var(--hover); color: var(--text); }
+.settings-field-group { margin-bottom: 24px; }
+.settings-field-group > h3 { color: var(--secondary); margin-top: 24px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.setting-field-heading { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; justify-content: space-between; }
+.setting-source { color: var(--muted); font-size: 11px; }
+.setting-description { margin: 5px 0 10px; }
+.setting-field-control { margin: 10px 0 0; min-width: 0; }
+.setting-field-control > input, .setting-field-control > textarea, .setting-field-control > .select-control { width: 100%; }
+.setting-field-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.setting-switch, .setting-members label { display: flex; align-items: center; gap: 10px; }
+.setting-members { display: flex; flex-wrap: wrap; gap: 12px 20px; }
+.setting-json { font-family: var(--font-code); font-size: 12px; }
+.setting-record { display: grid; grid-template-columns: minmax(80px, 1fr) minmax(80px, 1fr) auto; gap: 7px; }
+.setting-record-add, .setting-record > p { grid-column: 1 / -1; justify-self: start; }
+.setting-key { color: var(--muted); font-size: 11px; margin-top: 6px; }
+.setting-key code { display: block; padding-top: 5px; overflow-wrap: anywhere; }
+.settings-error { color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
+.settings-import-entry { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+.settings-nav { overflow-y: auto; }
+.settings-nav small { display: block; padding: 20px 12px 7px; }
+.settings-nav small:first-child { padding-top: 0; }
+@media (max-width: 620px) { .settings-nav small { display: none; } .setting-record { grid-template-columns: minmax(60px, 1fr) minmax(60px, 1fr) auto; } }

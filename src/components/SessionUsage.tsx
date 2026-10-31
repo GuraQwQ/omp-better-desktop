@@ -6,6 +6,7 @@ import type { Language, SessionView } from '../lib/types';
 import { formatUsageAmount, summarizeSessionUsage } from '../lib/session-usage';
 import { sessionKey } from '../lib/session-identity';
 import './session-usage.css';
+import MotionPresence from './MotionPresence';
 
 export type UsageCache = Map<string, SessionStats>;
 const ContextInspector = lazy(() => import('./ContextInspector'));
@@ -140,5 +141,5 @@ export default function SessionUsage({ session, language, cache }: { session?: S
       {result?.key === key && result.stale && <p>{text.stale}</p>}
       <footer><button type="button" className="quiet-button" disabled={!session} aria-haspopup="dialog" onClick={() => { setExpanded(false); setAdvanced(true); }}><SlidersHorizontal size={13} />{text.advanced}</button></footer>
     </section>}
-  </details>{advanced && session && <Suspense fallback={null}><ContextInspector key={`${key}:${id}:${historyOnly}`} session={session} language={language} close={() => { setAdvanced(false); disclosure.current?.querySelector<HTMLElement>('summary')?.focus(); }} /></Suspense>}</>;
+  </details>{session && <Suspense fallback={null}><MotionPresence open={advanced}><ContextInspector key={`${key}:${id}:${historyOnly}`} session={session} language={language} close={() => { setAdvanced(false); disclosure.current?.querySelector<HTMLElement>('summary')?.focus(); }} /></MotionPresence></Suspense>}</>;
 }

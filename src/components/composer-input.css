@@ -8,3 +8,11 @@
 .file-mention-menu button svg { flex-shrink: 0; color: var(--secondary); }
 .file-mention-menu button span { overflow-wrap: anywhere; }
 .file-mention-menu p { margin: 7px; font-size: 12px; color: var(--secondary); }
+.slash-completion-menu .file-mention-heading { display: flex; justify-content: space-between; gap: 12px; }
+.slash-completion-menu .file-mention-heading > span { color: var(--muted); font-size: 10px; }
+.slash-completion-menu button { align-items: flex-start; padding: 8px 7px; }
+.slash-completion-menu button > svg { margin-top: 3px; }
+.slash-completion-copy { flex: 1; min-width: 0; }
+.slash-completion-copy strong { display: block; color: var(--text); font-size: 12px; font-weight: 550; }
+.slash-completion-copy small { display: -webkit-box; margin-top: 2px; color: var(--secondary); font-size: 11px; line-height: 1.5; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.slash-completion-menu .slash-completion-kind { flex: 0 0 auto; color: var(--muted); font-size: 10px; padding-top: 2px; }

@@ -16,3 +16,7 @@ PRODUCT.md
 test/
 src-tauri/gen/
 .local-data/
+/docs/*
+!/docs/feature-map.md
+!/docs/desktop-contract.md
+/public/agent-icons/

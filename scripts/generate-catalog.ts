@@ -3,12 +3,12 @@ import * as path from 'node:path';
 import ts from 'typescript';
 import { lock, projectRoot, upstreamRoot } from './prepare-upstream';
 
-interface Entry { name: string; kind: string; description: string; surface: string; source: string; rpc?: boolean; args?: string[] }
+interface Entry { name: string; kind: string; description: string; surface: string; source: string; rpc?: boolean; args?: string[]; aliases?: string[] }
 const entries: Entry[] = [];
 const outputRoot = path.resolve(process.env.OMP_DESKTOP_STAGING_ROOT ?? process.env.OMP_DESKTOP_OUTPUT_ROOT ?? projectRoot);
 const sourceRoot = path.join(upstreamRoot, 'packages/coding-agent/src');
 const panels: Record<string, string> = {
-  settings: 'settings', setup: 'settings', model: 'models', switch: 'models', login: 'providers', logout: 'providers',
+  settings: 'settings', setup: 'settings', model: 'models', login: 'providers', logout: 'providers',
   context: 'context', agents: 'agents', hub: 'agents', stats: 'usage', usage: 'usage', git: 'diff',
   jobs: 'jobs', todo: 'jobs', tree: 'tree', branch: 'tree', fork: 'tree', resume: 'sessions', session: 'sessions',
   hotkeys: 'shortcuts', extensions: 'extensions', tools: 'tools', mcp: 'mcp',
@@ -44,7 +44,7 @@ for (const name of await fs.readdir(path.join(sourceRoot, 'commands'))) {
   entries.push({ name: name.slice(0, -3), kind: 'cli', description, surface: 'cli', source: path.relative(upstreamRoot, file).replaceAll('\\', '/') });
 }
 for (const name of await fs.readdir(path.join(sourceRoot, 'slash-commands'))) {
-  if (!/^builtin-(collaboration|control|lifecycle|marketplace|modes|session|skills)\.ts$/.test(name)) continue;
+  if (!/^builtin-(collaboration|control|lifecycle|marketplace|modes|session|skills)\.ts$/.test(name) && name !== 'seance.ts') continue;
   const file = path.join(sourceRoot, 'slash-commands', name);
   visit(await parse(file), node => {
     if (!ts.isObjectLiteralExpression(node)) return;
@@ -52,7 +52,8 @@ for (const name of await fs.readdir(path.join(sourceRoot, 'slash-commands'))) {
     const rpc = Boolean(prop(node, 'handle') || node.properties.some(member => ts.isMethodDeclaration(member) && member.name.getText() === 'handle'));
     const tui = Boolean(prop(node, 'handleTui') || node.properties.some(member => ts.isMethodDeclaration(member) && member.name.getText() === 'handleTui'));
     if (!command || (!rpc && !tui)) return;
-    entries.push({ name: command, kind: 'slash', description: text(prop(node, 'description')), surface: panels[command] ?? (rpc ? 'prompt' : 'terminal'), rpc, source: path.relative(upstreamRoot, file).replaceAll('\\', '/') });
+    const aliases = prop(node, 'aliases');
+    entries.push({ name: command, kind: 'slash', description: text(prop(node, 'description')), surface: panels[command] ?? (rpc ? 'prompt' : 'terminal'), rpc, ...(aliases && ts.isArrayLiteralExpression(aliases) ? { aliases: aliases.elements.map(item => text(item)).filter(Boolean) } : {}), source: path.relative(upstreamRoot, file).replaceAll('\\', '/') });
   });
 }
 const tools = await parse(path.join(sourceRoot, 'tools/builtin-names.ts'));

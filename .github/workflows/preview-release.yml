@@ -67,8 +67,16 @@ jobs:
         with:
           python-version: "3.12"
       - run: bun install --frozen-lockfile
+      - name: 检查配置、导入界面与动效逻辑
+        shell: pwsh
+        run: |
+          foreach ($script in Get-ChildItem -LiteralPath scripts -Filter 'check-*.ts' | Sort-Object Name) {
+            bun $script.FullName
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - run: bun run build:desktop
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --lib
       - name: 核对生成文件与发行提交一致
         run: git diff --exit-code
       - name: 整理发行附件
@@ -113,8 +121,8 @@ jobs:
           DESKTOP_VERSION: ${{ needs.build.outputs.version }}
           IS_PRERELEASE: ${{ needs.build.outputs.prerelease }}
         run: |
-          if test -f "docs/releases/$DESKTOP_VERSION.md"; then
-            cp "docs/releases/$DESKTOP_VERSION.md" notes.md
+          if test -f ".github/releases/$DESKTOP_VERSION.md"; then
+            cp ".github/releases/$DESKTOP_VERSION.md" notes.md
           else
             if test "$IS_PRERELEASE" = true; then
               printf '%s\n\n' 'Windows x64 早期预览版，内置匹配的 OMP 运行时。' > notes.md

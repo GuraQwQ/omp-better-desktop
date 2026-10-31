@@ -3,3 +3,8 @@ try {
   var cached = localStorage.getItem('omp-theme');
   document.documentElement.dataset.theme = cached === 'light' || cached === 'dark' ? cached : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 } catch (error) {}
+document.documentElement.dataset.motion = 'rich';
+try {
+  var motion = localStorage.getItem('omp-motion');
+  if (motion === 'normal' || motion === 'reduced') document.documentElement.dataset.motion = motion;
+} catch (error) {}
