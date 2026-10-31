@@ -1,9 +1,12 @@
 :root { --window-chrome-height: 36px; }
 .window-frame { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; background: var(--surface); }
 .window-frame > .app-shell { flex: 1; height: auto; min-height: 0; }
-.window-chrome { height: var(--window-chrome-height); flex: 0 0 var(--window-chrome-height); display: flex; align-items: stretch; background: var(--surface); color: var(--secondary); border-bottom: 1px solid var(--line-soft); user-select: none; }
-.window-drag-region { flex: 1; min-width: 0; display: flex; align-items: center; gap: 18px; padding-left: 16px; font-size: 11px; }
+.window-chrome { position: relative; z-index: 30; height: var(--window-chrome-height); flex: 0 0 var(--window-chrome-height); display: flex; align-items: stretch; background: var(--surface); color: var(--secondary); border-bottom: 1px solid var(--line-soft); user-select: none; }
+.window-drag-region { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 18px; padding: 0 12px 0 16px; font-size: 11px; }
 .window-drag-region > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.window-slot { flex: 1; min-width: 0; display: flex; align-items: stretch; }
+.window-chrome .quiet-button { padding: 5px 9px; }
+.window-chrome .icon-button { padding: 5px; }
 .window-action-error { color: var(--danger); }
 .window-controls { display: flex; flex-shrink: 0; }
 .window-controls > button { width: 46px; display: inline-flex; align-items: center; justify-content: center; padding: 0; color: var(--text); border-radius: 0; }

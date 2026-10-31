@@ -4,7 +4,7 @@
 
 ## 构建链
 
-`bun run build:runtime` 创建隔离的上游 checkout，顺序应用 `patches/`，用 Bun 1.4 或更新版本安装上游锁定依赖并生成协议。Windows 原生 addon 与 OMP 使用相同版本，保证 ABI sentinel 一致；随后调用上游官方 release builder。
+`bun run build:runtime` 创建隔离的上游 checkout，顺序应用 `patches/`，用 Bun 1.4 或更新版本安装上游锁定依赖并生成协议。补丁只修改手写源码与协议定义，生成的 TS、JSON schema 和各语言 wire 由上游 `gen:rpc` 统一生成，避免在补丁中维护重复产物。Windows 原生 addon 与 OMP 使用相同版本，保证 ABI sentinel 一致；随后调用上游官方 release builder。
 
 运行时包保存到 `artifacts/runtime-windows-x64`，包含 `omp.exe`、`LICENSE.omp`、上游 `THIRD-PARTY-NOTICES.txt` 和逐文件 SHA-256 manifest。生成协议与 Rust RPC 客户端来自同一已打补丁的源码。协议烟测、类型和 Rust 编译检查通过后才保留该候选；错误恢复会还原替换前文件。
 
@@ -14,9 +14,9 @@
 
 ## 补丁
 
-- `0001-desktop-runtime.patch`：绝对 `OMP_USER_ROOT`、统一 profile 根、通过上游注册表访问 `desktop_settings`、内置命令目录，以及 GUI OAuth 密码输入与取消处理。MCP 授权复用上游 OAuth 引擎。
+- `0001-desktop-runtime.patch`：绝对 `OMP_USER_ROOT`、统一 profile 根、通过上游注册表访问 `desktop_settings`、内置命令目录，以及 GUI OAuth 取消处理。密码输入字段和 MCP 授权使用上游实现。
 - `0003-rpc-raw-call.patch`：在上游相关请求分发上暴露桌面所需 `call_raw`，保留单一传输实现。
-- `0004-browser-session.patch`：`onBrowserSession` 映射为 `browser_session` UI 请求并支持取消，配套生成各语言 wire。
+- `0004-browser-session.patch`：`onBrowserSession` 映射为 `browser_session` UI 请求并支持取消，修改源协议定义后统一生成各语言 wire。
 - `0005-native-token-rate.patch`：通过 RPC 读取和推送上游原生生成速率。
 - `0006-desktop-request-capture.patch`：复用上游 HTTP 发送层，在桌面受管目录按需记录实际请求，保留模型输入并关闭回复流持久化。
 

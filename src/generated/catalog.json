@@ -261,7 +261,7 @@
   {
     "name": "session",
     "kind": "cli",
-    "description": "Hand a session to another machine: pack it, unpack it, or mark the local copy moved",
+    "description": "Hand a session to another machine (pack, unpack, moved) or check which sessions a running omp owns (lease)",
     "surface": "cli",
     "source": "packages/coding-agent/src/commands/session.ts"
   },
@@ -965,7 +965,7 @@
   {
     "name": "context",
     "kind": "slash",
-    "description": "Show estimated context usage breakdown",
+    "description": "Browse context usage and detailed content",
     "surface": "context",
     "rpc": true,
     "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
@@ -995,9 +995,17 @@
     "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
   },
   {
+    "name": "local",
+    "kind": "slash",
+    "description": "Open a session local:// file in $EDITOR (picker when no name given)",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
+  },
+  {
     "name": "hub",
     "kind": "slash",
-    "description": "Open the live Agent Hub",
+    "description": "Open the live Agent Hub (subagents, including finished ones)",
     "surface": "agents",
     "rpc": false,
     "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
@@ -1514,6 +1522,13 @@
     "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
   },
   {
+    "name": "live_connect",
+    "kind": "rpc",
+    "description": "Start a live voice session whose audio runs on a caller-owned WebRTC peer: send its SDP offer, apply the returned answer.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
     "name": "live_stop",
     "kind": "rpc",
     "description": "Stop the live voice session, if any.",
@@ -1524,6 +1539,20 @@
     "name": "live_mute",
     "kind": "rpc",
     "description": "Set microphone mute, or toggle it when `muted` is omitted; returns the new state.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "dictation_start",
+    "kind": "rpc",
+    "description": "Start draft-only speech-to-text; resolves once the microphone is recording.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "dictation_stop",
+    "kind": "rpc",
+    "description": "Stop and flush draft-only dictation, returning the accumulated text.",
     "surface": "rpc",
     "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
   },
@@ -1647,6 +1676,13 @@
     "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
   },
   {
+    "name": "get_session_lease",
+    "kind": "rpc",
+    "description": "Which of these sessions a running process (this one included) owns, probed without taking ownership. Ids in neither list are free; `unknown` could not be probed.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
     "name": "export_html",
     "kind": "rpc",
     "description": "Export the session as HTML; returns the written path.",
@@ -1671,6 +1707,27 @@
     "name": "fork",
     "kind": "rpc",
     "description": "Fork into a new session file: history through `entryId`, or the whole session.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "navigate_tree",
+    "kind": "rpc",
+    "description": "Move the session's leaf to an entry in the same file, optionally summarizing the branch it leaves; refused while busy.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "abort_branch_summary",
+    "kind": "rpc",
+    "description": "Stop a running `navigate_tree` branch summary; the navigation is cancelled.",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
+  },
+  {
+    "name": "set_label",
+    "kind": "rpc",
+    "description": "Set or clear (omit `label`) an entry's label.",
     "surface": "rpc",
     "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
   },

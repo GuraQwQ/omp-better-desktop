@@ -5,8 +5,8 @@ import { fileMentionAt, insertFileMention, matchingFiles } from '../lib/file-men
 import type { Copy } from '../lib/i18n';
 import './composer-input.css';
 
-export default function ComposerInput({ value, onChange, onSend, disabled, cwd, t, textareaRef }: {
-  value: string; onChange: (text: string) => void; onSend: () => void; disabled: boolean; cwd: string; t: Copy; textareaRef: RefObject<HTMLTextAreaElement | null>;
+export default function ComposerInput({ value, onChange, onSend, onRecall, disabled, cwd, t, textareaRef }: {
+  value: string; onChange: (text: string) => void; onSend: () => void; onRecall?: () => void; disabled: boolean; cwd: string; t: Copy; textareaRef: RefObject<HTMLTextAreaElement | null>;
 }) {
   const [caret, setCaret] = useState(0);
   const [dismissed, setDismissed] = useState(false);
@@ -49,6 +49,7 @@ export default function ComposerInput({ value, onChange, onSend, disabled, cwd, 
           else if (files.length) setActive(previous => (previous + (event.key === 'ArrowDown' ? 1 : -1) + files.length) % files.length);
         } else if (open && files.length && (event.key === 'Tab' || event.key === 'Enter' && !event.shiftKey)) { event.preventDefault(); choose(files[active] ?? files[0]); }
         else if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onSend(); }
+        else if (event.key === 'ArrowUp' && !value && onRecall) { event.preventDefault(); onRecall(); }
       }} />
   </div>;
 }

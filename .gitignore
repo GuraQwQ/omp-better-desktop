@@ -6,7 +6,8 @@ NUL
 .codegraph/
 .cache/
 .references/
-.impeccable/review/
+.impeccable/
+.claude/
 artifacts/
 *.log
 .env*

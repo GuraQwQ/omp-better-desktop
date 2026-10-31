@@ -105,6 +105,7 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
                 match key.as_str() {
                     "language" if matches!(value.as_str(), Some("en" | "zh")) => {}
                     "theme" if matches!(value.as_str(), Some("system" | "light" | "dark")) => {}
+                    "showTurnNumber" | "notifyOnDone" if value.is_boolean() => {}
                     _ => return Err(format!("Invalid preference {key}")),
                 };
                 cfg["preferences"][key] = value.clone();
@@ -308,6 +309,7 @@ pub fn run() {
     context.config_mut().app.windows[0].create = false;
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(Desktop {
             root,
             sessions: sessions::Sessions::default(),

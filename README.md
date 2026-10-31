@@ -25,16 +25,17 @@
 在本仓库 [Releases](https://github.com/GuraQwQ/omp-better-desktop/releases) 下载 Windows x64 发行包及 `SHA256SUMS`，用 PowerShell 核对：
 
 ```powershell
-Get-FileHash -LiteralPath './Better-OMP-Desktop_0.2.5_windows-x64.exe' -Algorithm SHA256
+Get-FileHash -LiteralPath './Better-OMP-Desktop_0.3.0_windows-x64.exe' -Algorithm SHA256
 ```
 
-文件名以实际附件为准。安装器未签名，Windows 可能提示发布者未知。安装包内置匹配的 OMP；需要系统已有 WebView2，或自行提供解压到其他盘的 Fixed Version WebView2。首次启动选择数据目录，应用数据与安装目录分开管理。详见 [安装、迁移与恢复](docs/install.md) 和 [0.2.5 更新说明](docs/releases/0.2.5.md)。
+文件名以实际附件为准。安装器未签名，Windows 可能提示发布者未知。安装包内置匹配的 OMP；需要系统已有 WebView2，或自行提供解压到其他盘的 Fixed Version WebView2。首次启动选择数据目录，应用数据与安装目录分开管理。详见 [安装、迁移与恢复](docs/install.md) 和 [0.3.0 更新说明](docs/releases/0.3.0.md)。
 
 ## 当前范围
 
 - 项目与会话导航、流式消息、模型选择、设置、提供商登录、文件与差异查看。
 - 自定义 OpenAI / Anthropic 兼容提供商，自动获取常见模型目录并一键填入当前分组；配置保存到 OMP 原生文件，新连接的会话生效。
 - 按标题、项目、路径和 ID 搜索对话；从用户消息创建编辑分支，失败回合使用 OMP 原生重试。
+- 保存的对话按本地日期分组；切换会话恢复阅读位置，后台任务完成提供未读标记和可关闭的系统通知。
 - 队列消息可取回草稿及附件；输入 `@` 搜索项目文件，使用方向键与 Enter/Tab 插入路径，也支持未初始化 Git 的项目。
 - 审阅面板可按用户回合查看已记录的文件工具操作，工作区 Git 差异单独查看。
 - 工具步骤以轻量摘要呈现；读取、修改与命令整行可展开路径、行号、差异和退出状态，保留原始输出，重内容按需挂载。

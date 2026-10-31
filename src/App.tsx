@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowUp, ArrowUpRight, Bell, ChevronDown, ChevronRight, CircleHelp, Command, FileDiff, FilePlus2, Folder, FolderOpen, FolderPlus, GitBranch, ImagePlus, Layers, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings2, Square, TerminalSquare, X } from 'lucide-react';
 import { copy, localizeError } from './lib/i18n';
 import { native, onDesktopEvent, pickPath, request, rpc } from './lib/bridge';
-import { applyEvent, applyEvents, isSessionRunning, normalizeHistoryMessages, returnFromTerminal } from './lib/session-state';
+import { applyEvent, applyEvents, isSessionRunning, messageText, normalizeHistoryMessages, returnFromTerminal } from './lib/session-state';
 import { acknowledgeDraft, captureDraft, createDraft, updateDraft, type ComposerDraft } from './lib/composer-draft';
 import { prependHistoryPage } from './lib/session-history';
 import { editableEntry, messageImages, retryMessageIndex } from './lib/message-actions';
@@ -20,8 +20,11 @@ import QueuedMessages from './components/QueuedMessages';
 import ComposerInput from './components/ComposerInput';
 import Select from './components/Select';
 import SessionUsage, { type UsageCache } from './components/SessionUsage';
-import WindowChrome from './components/WindowChrome';
+import WindowChrome, { WindowSlot } from './components/WindowChrome';
 import GenerationRate, { GenerationRateProvider, type RateCache } from './components/GenerationRate';
+import SavedSessions from './components/SavedSessions';
+import { notify, NOTIFY_AFTER_MS } from './lib/notify';
+import { getCurrentWindow, UserAttentionType } from '@tauri-apps/api/window';
 import { version } from '../package.json';
 
 const Settings = lazy(() => import('./panels/Settings'));
@@ -29,7 +32,10 @@ const Inspector = lazy(() => import('./panels/Inspector'));
 const TerminalPanel = lazy(() => import('./panels/Terminal'));
 const CommandPalette = lazy(() => import('./components/CommandPalette'));
 
-const initial: Bootstrap = { dataRoot: '', runtime: null, projects: [], preferences: { language: navigator.language.startsWith('zh') ? 'zh' : 'en', theme: 'system' } };
+// theme-boot.js 在首帧前读取这个缓存，避免深色用户启动时先闪浅色。
+const cachedTheme: Bootstrap['preferences']['theme'] = (() => { try { const value = localStorage.getItem('omp-theme'); return value === 'light' || value === 'dark' ? value : 'system'; } catch { return 'system'; } })();
+const initial: Bootstrap = { dataRoot: '', runtime: null, projects: [], preferences: { language: navigator.language.startsWith('zh') ? 'zh' : 'en', theme: cachedTheme } };
+const PageSkeleton = ({ label }: { label: string }) => <div className="page-loading" role="status" aria-label={label}><span className="skeleton" style={{ width: '42%' }} /><span className="skeleton" style={{ width: '88%' }} /><span className="skeleton" style={{ width: '64%' }} /></div>;
 type SessionTarget = { source?: SessionView; cwd: string; draftKey: string; revision: number };
 
 export default function App() {
@@ -62,6 +68,8 @@ export default function App() {
   const [delivery, setDelivery] = useState('steer');
   const [images, setImages] = useState<{ type: 'image'; data: string; mimeType: string; name: string }[]>([]);
   const [booting, setBooting] = useState(true);
+  const [pinNonce, setPinNonce] = useState(0);
+  const [unread, setUnread] = useState<Record<string, boolean>>({});
   const textarea = useRef<HTMLTextAreaElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const actionPending = useRef<'edit' | 'retry' | 'queue' | 'send' | false>(false);
@@ -86,7 +94,11 @@ export default function App() {
   const rateCache = useRef<RateCache>(new Map());
   const eventQueue = useRef<{ sessionId: string; event: Json }[]>([]);
   const frame = useRef(0);
+  const abortRef = useRef<(() => void) | undefined>(undefined);
   const t = copy(bootstrap.preferences.language);
+  const alerts = useRef({ notify: true, t });
+  alerts.current = { notify: bootstrap.preferences.notifyOnDone !== false, t };
+  const ranAt = useRef(new Map<string, number>());
   const allSessions = uniqueSessions(Object.values(sessions));
   const searchResults = searchSessions(bootstrap.projects, history, allSessions, sessionQuery);
   const selected = sessions[activeId];
@@ -101,6 +113,7 @@ export default function App() {
   const busy = isSessionRunning(session);
   const pending = Object.values(sessions).flatMap(s => s.pending.map(question => ({ sessionId: s.id, title: s.title, question })));
   const showError = useCallback((value: unknown) => { if (value instanceof DOMException && value.name === 'AbortError') return; setError(value instanceof Error ? value.message : String(value)); }, []);
+  abortRef.current = busy && session && !settingsOpen && !commandsOpen ? () => { void rpc(session.id, 'abort').catch(showError); } : undefined;
   const replaceActiveId = (id: string) => { activeIdRef.current = id; commitActiveId(id); };
   const setActiveId = (id: string) => { selectionRevision.current++; replaceActiveId(id); };
   const putSession = (value: SessionView, replaceId?: string) => {
@@ -134,6 +147,12 @@ export default function App() {
     if (session && session.id !== activeId) { drafts.current[session.id] = composerDraft; replaceActiveId(session.id); }
   }, [sessions, activeId]);
   useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
+  // 回到窗口并停在该对话上，就算已读。
+  useEffect(() => {
+    const clear = () => { if (document.hasFocus()) setUnread(old => old[activeId] ? Object.fromEntries(Object.entries(old).filter(([id]) => id !== activeId)) : old); };
+    clear(); window.addEventListener('focus', clear);
+    return () => window.removeEventListener('focus', clear);
+  }, [activeId]);
   useEffect(() => { activeIdRef.current = activeId; showDraft(composerDraft); }, [activeId, draftKey]);
   useEffect(activateRuntime, [session?.id, session?.historyOnly]);
   useEffect(() => {
@@ -147,6 +166,20 @@ export default function App() {
         if (current) sessionsRef.current = { ...sessionsRef.current, [payload.sessionId]: applyEvent(current, payload.event) };
       }
       if (payload.event.type === 'extension_ui_request' && payload.event.method === 'set_editor_text') changeDraft(getDraft(payload.sessionId), payload.event.text ?? '');
+      if (payload.event.type === 'agent_start') ranAt.current.set(payload.sessionId, Date.now());
+      const settled = payload.event.type === 'session_settled';
+      const asks = payload.event.type === 'extension_ui_request' && ['select', 'confirm', 'input', 'editor', 'ask'].includes(payload.event.method);
+      const away = !document.hasFocus();
+      const ran = settled ? ranAt.current.get(payload.sessionId) : undefined;
+      if (settled) ranAt.current.delete(payload.sessionId);
+      if (ran && (away || payload.sessionId !== activeIdRef.current)) setUnread(old => old[payload.sessionId] ? old : { ...old, [payload.sessionId]: true });
+      if (native && away && (settled || asks)) {
+        const { notify: enabled, t: text } = alerts.current;
+        const flash = () => void getCurrentWindow().requestUserAttention(UserAttentionType.Informational).catch(() => {});
+        // 需要你处理，或长任务完成才弹系统通知；短回复只闪任务栏。没有通知权限时同样回退到闪烁。
+        if (enabled && (asks || (ran && Date.now() - ran > NOTIFY_AFTER_MS))) void notify(sessionsRef.current[payload.sessionId]?.title || text.newTitle, asks ? text.pending : text.done).then(ok => { if (!ok) flash(); });
+        else flash();
+      }
       if (payload.event.type === 'extension_error' || payload.event.type === 'notice' && payload.event.level === 'error') showError(payload.event.error ?? payload.event.message);
       if (payload.event.type === 'session_settled' && payload.sessionId === activeIdRef.current && !releasedIds.current.has(payload.sessionId)) void refreshSession(payload.sessionId, true).catch(error => { if (!releasedIds.current.has(payload.sessionId)) showError(error); });
       if (['prompt_result', 'config_update', 'session_info_update'].includes(payload.event.type)) {
@@ -171,6 +204,7 @@ export default function App() {
     const theme = bootstrap.preferences.theme;
     const media = matchMedia('(prefers-color-scheme: dark)');
     const apply = () => { document.documentElement.dataset.theme = theme === 'system' ? media.matches ? 'dark' : 'light' : theme; document.documentElement.lang = bootstrap.preferences.language === 'zh' ? 'zh-CN' : 'en'; };
+    try { localStorage.setItem('omp-theme', theme); } catch { /* 缓存只用于下次启动首帧 */ }
     apply(); media.addEventListener('change', apply); return () => media.removeEventListener('change', apply);
   }, [bootstrap.preferences]);
   useEffect(() => { if (project) void refreshHistory(project.path); }, [project?.path, activeId]);
@@ -190,6 +224,8 @@ export default function App() {
       if ((event.ctrlKey || event.metaKey) && event.key === ',') { event.preventDefault(); setSettingsTab('general'); setSettingsOpen(value => !value); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b') { event.preventDefault(); setSidebar(value => !value); }
       if (event.key === 'Escape') {
+        if (event.isComposing) return;
+        if (!attachmentMenu && !modelPicker && !moreMenu.current?.open && !event.defaultPrevented && !document.querySelector('dialog[open]')) abortRef.current?.();
         if (attachmentMenu) addButton.current?.focus();
         else if (modelPicker) modelButton.current?.focus();
         else if (moreMenu.current?.open) moreMenu.current.querySelector('summary')?.focus();
@@ -210,7 +246,8 @@ export default function App() {
     return () => document.removeEventListener('pointerdown', outside);
   }, []);
   useEffect(() => { if (attachmentMenu) attachmentControl.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus(); }, [attachmentMenu]);
-  useEffect(() => { if (textarea.current) { textarea.current.style.height = 'auto'; textarea.current.style.height = `${Math.min(textarea.current.scrollHeight, 180)}px`; } }, [draft]);
+  // 现代 WebView2 由 CSS field-sizing 撑高；仅旧内核回退为手算高度。
+  useEffect(() => { if (!CSS.supports('field-sizing', 'content') && textarea.current) { textarea.current.style.height = 'auto'; textarea.current.style.height = `${Math.min(textarea.current.scrollHeight, 180)}px`; } }, [draft]);
 
   const refreshHistory = async (path: string) => {
     const revision = (historyRequests.current[path] ?? 0) + 1;
@@ -333,7 +370,7 @@ export default function App() {
     const submission = captureDraft(composerDraft);
     const target: SessionTarget = { source: session, cwd, draftKey, revision: selectionRevision.current };
     const pending = openingSessions.current.get(session?.path ? sessionKey(session) : `new:${session?.id ?? sessionPathKey(cwd)}`)?.promise;
-    setSending(true); setError('');
+    setSending(true); setError(''); setPinNonce(value => value + 1);
     try {
       const slash = /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
       if (slash && !submission.images.length) {
@@ -365,6 +402,7 @@ export default function App() {
     if (question?.method !== 'open_url') await request('session.ui', { id, response });
     setSessions(old => ({ ...old, [id]: { ...old[id], pending: old[id].pending.filter(p => p.id !== response.id) } }));
   };
+  const recallLast = () => { const list = session?.messages ?? []; for (let i = list.length - 1; i >= 0; i--) if (list[i].role === 'user') { changeDraft(composerDraft, messageText(list[i])); return; } };
   const prepareCommand = (text: string) => { changeDraft(composerDraft, text); setSettingsOpen(false); textarea.current?.focus(); };
   const refreshSession = async (id: string, replaceMessages = false) => {
     const source = sessionsRef.current[id];
@@ -482,8 +520,8 @@ export default function App() {
         return <div key={item.path}>
           <div className="project-row"><button className="icon-button project-toggle" aria-expanded={expanded} aria-controls={listId} title={`${expanded ? t.collapseProject : t.expandProject} ${item.name}`} onClick={() => toggleProject(item)}><ChevronRight size={13} className={expanded ? 'rotate' : ''} /></button><button className={`project-item ${project?.path === item.path ? 'selected' : ''}`} title={item.path} onClick={() => selectProject(item)}><Folder size={15} /><span>{item.name}</span></button></div>
           {expanded && <div className="session-list" id={listId}>
-            {opened.map(value => <button className={`session-item ${session && sessionKey(session) === sessionKey(value) ? 'active' : ''}`} key={sessionKey(value)} onClick={() => { setProject(item); setActiveId(value.id); setSettingsOpen(false); setModelPicker(false); setAttachmentMenu(false); }}>{value.historyOnly ? <MessageSquare size={12} /> : <span className={`session-status ${value.status}`} />}<span>{value.title}</span>{value.pending.length > 0 && <i />}</button>)}
-            {saved.map(value => <button className={`session-item ${session && sessionKey(session) === sessionKey(value) ? 'active' : ''}`} key={sessionKey(value)} onClick={() => { setProject(item); void loadHistory(value); }}><MessageSquare size={12} /><span>{value.title || t.newTitle}</span></button>)}
+            {opened.map(value => <button className={`session-item ${session && sessionKey(session) === sessionKey(value) ? 'active' : ''}`} key={sessionKey(value)} onClick={() => { setProject(item); setActiveId(value.id); setSettingsOpen(false); setModelPicker(false); setAttachmentMenu(false); }}>{value.historyOnly ? <MessageSquare size={12} /> : <span className={`session-status ${value.status}`} />}<span>{value.title}</span>{value.pending.length > 0 ? <i /> : unread[value.id] && <i className="done" />}</button>)}
+            <SavedSessions sessions={saved} activeKey={session ? sessionKey(session) : ''} t={t} open={value => { setProject(item); void loadHistory(value); }} />
             {!opened.length && !saved.length && <p>{t.noSessions}</p>}
           </div>}
         </div>;
@@ -491,18 +529,18 @@ export default function App() {
       <div className="sidebar-bottom"><button className={`nav-item ${settingsOpen ? 'selected' : ''}`} onClick={() => settingsOpen ? setSettingsOpen(false) : openSettings('general')}><Settings2 size={16} /><span>{t.settings}</span></button><div className="runtime-pill"><span className={`status-dot ${bootstrap.runtime ? 'connected' : ''}`} /><span>{bootstrap.runtime ? `OMP ${bootstrap.runtime.version}` : t.notInstalled}</span><span className="version">v{version}</span></div></div>
     </aside>}
     <main className="main-area">
-      {settingsOpen ? <Suspense fallback={<div className="page-loading">{t.loading}</div>}><Settings key={`${settingsTab}:${settingsQuery}`} initialQuery={settingsQuery} initialTab={settingsTab} bootstrap={bootstrap} t={t} sessionId={session && !session.historyOnly ? session.id : undefined} ensureSession={cwd && bootstrap.runtime ? () => openSession().then(current => current.id) : undefined} update={setBootstrap} onError={showError} close={() => setSettingsOpen(false)} /></Suspense> : <>
-        <header className="workspace-header" inert={!!terminalId}><div className="header-location">{!sidebar && <button className="icon-button" title={t.expand} onClick={() => setSidebar(true)}><PanelLeftOpen size={18} /></button>}<Folder size={15} /><button onClick={addProject}>{project?.name ?? t.openProject}</button>{session && <><span className="breadcrumb-divider">/</span><span className="header-title">{session.title}</span></>}</div><div className="workspace-actions"><button className={`quiet-button ${inspector === 'review' ? 'active' : ''}`} disabled={!cwd} onClick={() => setInspector(value => value === 'review' ? null : 'review')}><FileDiff size={15} /><span>{t.review}</span></button><button className="icon-button" title={t.context} disabled={!cwd} onClick={() => setInspector(value => value === 'context' ? null : 'context')}><Layers size={17} /></button><details ref={moreMenu} className="more-menu" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false; }} onClick={event => { if ((event.target as Element).closest("button")) { event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); } }}><summary className="icon-button" title={t.more}><ChevronDown size={16} /></summary><div className="ui-menu">{(['files', 'agents', 'tasks', 'tree'] as InspectorTab[]).map(tab => <button disabled={!cwd} key={tab} onClick={() => setInspector(tab)}>{t[tab]}</button>)}<div className="menu-separator" /><button disabled={!session || session.historyOnly || !session.state.isSettled} onClick={() => { setTerminalInput(''); setTerminalId(session!.id); }}>{t.terminal}</button><button disabled={!session || session.historyOnly} onClick={() => { if (session) rpc(session.id, 'export_html').then(result => prepareCommand(String(result.path ?? result))).catch(showError); }}>{t.export}</button><button disabled={!session || busy} onClick={() => prepareCommand('/fork')}>{t.fork}</button><button disabled={!session || busy} onClick={closeSession}>{t.close} {t.session}</button></div></details></div></header>
+      {settingsOpen ? <Suspense fallback={<PageSkeleton label={t.loading} />}><Settings key={`${settingsTab}:${settingsQuery}`} initialQuery={settingsQuery} initialTab={settingsTab} bootstrap={bootstrap} t={t} sessionId={session && !session.historyOnly ? session.id : undefined} ensureSession={cwd && bootstrap.runtime ? () => openSession().then(current => current.id) : undefined} update={setBootstrap} onError={showError} close={() => setSettingsOpen(false)} /></Suspense> : <>
+        <WindowSlot inert={!!terminalId}><div className="header-location">{!sidebar && <button className="icon-button" title={t.expand} onClick={() => setSidebar(true)}><PanelLeftOpen size={18} /></button>}<Folder size={15} /><button onClick={addProject}>{project?.name ?? t.openProject}</button>{session && <><span className="breadcrumb-divider">/</span><span className="header-title">{session.title}</span></>}</div><div className="workspace-actions"><button className={`quiet-button ${inspector === 'review' ? 'active' : ''}`} disabled={!cwd} onClick={() => setInspector(value => value === 'review' ? null : 'review')}><FileDiff size={15} /><span>{t.review}</span></button><button className="icon-button" title={t.context} disabled={!cwd} onClick={() => setInspector(value => value === 'context' ? null : 'context')}><Layers size={17} /></button><details ref={moreMenu} className="more-menu" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false; }} onClick={event => { if ((event.target as Element).closest("button")) { event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); } }}><summary className="icon-button" title={t.more}><ChevronDown size={16} /></summary><div className="ui-menu">{(['files', 'agents', 'tasks', 'tree'] as InspectorTab[]).map(tab => <button disabled={!cwd} key={tab} onClick={() => setInspector(tab)}>{t[tab]}</button>)}<div className="menu-separator" /><button disabled={!session || session.historyOnly || !session.state.isSettled} onClick={() => { setTerminalInput(''); setTerminalId(session!.id); }}>{t.terminal}</button><button disabled={!session || session.historyOnly} onClick={() => { if (session) rpc(session.id, 'export_html').then(result => prepareCommand(String(result.path ?? result))).catch(showError); }}>{t.export}</button><button disabled={!session || busy} onClick={() => prepareCommand('/fork')}>{t.fork}</button><button disabled={!session || busy} onClick={closeSession}>{t.close} {t.session}</button></div></details></div></WindowSlot>
         {error && <div className="error-banner" role="alert"><CircleHelp size={16} /><span>{localizeError(error, bootstrap.preferences.language)}</span><button className="icon-button" title={t.dismiss} onClick={() => setError('')}><X size={15} /></button></div>}
-        {terminalId ? <Suspense fallback={<div className="page-loading">{t.loading}</div>}><TerminalPanel id={terminalId} initialCommand={terminalInput} t={t} onError={showError} close={closeTerminal} /></Suspense> : <div className="workspace-body"><GenerationRateProvider session={session} language={bootstrap.preferences.language} cache={rateCache.current}><div className="conversation-column">
-          {session?.messages.length ? <Transcript key={sessionKey(session)} messages={session.messages} t={t} busy={busy} actionsDisabled={sending || messageAction} onEdit={editMessage} onRetry={retryTurn} loadEarlier={session.nextCursor ? earlier : undefined} loadingEarlier={historyPageLoading?.id === session.id && historyPageLoading.revision === selectionRevision.current} /> : <div className="welcome"><div className="welcome-symbol"><span /><span /><span /></div><h1>{t.welcome}</h1><p>{t.welcomeText}</p>{!native && <p className="browser-note">{t.nativeOnly}</p>}<div className="starter-actions">{[[t.exploreAction, t.explorePrompt], [t.reviewAction, t.reviewPrompt], [t.buildAction, t.buildPrompt]].map(([label, prompt]) => <button key={label} onClick={() => { changeDraft(composerDraft, prompt); textarea.current?.focus(); }}>{label}<ArrowUpRight size={14} /></button>)}</div></div>}
+        {terminalId ? <Suspense fallback={<PageSkeleton label={t.loading} />}><TerminalPanel id={terminalId} initialCommand={terminalInput} t={t} onError={showError} close={closeTerminal} /></Suspense> : <div className="workspace-body"><GenerationRateProvider session={session} language={bootstrap.preferences.language} cache={rateCache.current}><div className="conversation-column">
+          {session?.messages.length ? <Transcript key={sessionKey(session)} restoreKey={sessionKey(session)} pinNonce={pinNonce} showTurns={bootstrap.preferences.showTurnNumber !== false} messages={session.messages} t={t} busy={busy} activity={session.state.activity} actionsDisabled={sending || messageAction} onEdit={editMessage} onRetry={retryTurn} loadEarlier={session.nextCursor ? earlier : undefined} loadingEarlier={historyPageLoading?.id === session.id && historyPageLoading.revision === selectionRevision.current} /> : <div className="welcome"><div className="welcome-symbol"><span /><span /><span /></div><h1>{t.welcome}</h1><p>{t.welcomeText}</p>{!native && <p className="browser-note">{t.nativeOnly}</p>}<div className="starter-actions">{[[t.exploreAction, t.explorePrompt], [t.reviewAction, t.reviewPrompt], [t.buildAction, t.buildPrompt]].map(([label, prompt]) => <button key={label} onClick={() => { changeDraft(composerDraft, prompt); textarea.current?.focus(); }}>{label}<ArrowUpRight size={14} /></button>)}</div></div>}
           <div className="composer-area">{activeQuestion && session && <Question key={activeQuestion.id} question={activeQuestion} t={t} answer={response => answer(session.id, response).catch(showError)} />}
             {session && !session.historyOnly && <SessionActivity session={session} t={t} refresh={() => refreshSession(session.id)} onError={showError} />}
             {!bootstrap.runtime && !booting && <button className="setup-callout" onClick={() => openSettings('runtime')}><span className="setup-icon"><TerminalSquare size={18} /></span><span><strong>{t.installRuntime}</strong><small>{t.installText}</small></span><ArrowUpRight size={16} /></button>}
             {session && !session.historyOnly && <QueuedMessages key={sessionKey(session)} begin={beginQueueAction} end={endQueueAction} session={session} t={t} disabled={sending || messageAction} refresh={() => refreshSession(session.id)} restore={(text, images) => restoreQueuedDraft(session.id, text, images)} onError={showError} />}
             <div className={`composer ${busy ? 'is-busy' : ''}`}>
               {images.length > 0 && <div className="attachments">{images.map((image, i) => <div key={i}><img src={`data:${image.mimeType};base64,${image.data}`} alt={image.name} /><span>{image.name}</span><button className="icon-button" title={t.remove} disabled={messageAction && actionPending.current === 'edit'} onClick={() => changeDraft(composerDraft, composerDraft.text, composerDraft.images.filter((_, index) => index !== i))}><X size={12} /></button></div>)}</div>}
-              <ComposerInput key={draftKey} textareaRef={textarea} value={draft} onChange={text => changeDraft(composerDraft, text)} onSend={() => void send()} disabled={messageAction && actionPending.current === 'edit'} cwd={cwd} t={t} />
+              <ComposerInput key={draftKey} textareaRef={textarea} value={draft} onChange={text => changeDraft(composerDraft, text)} onSend={() => void send()} onRecall={recallLast} disabled={messageAction && actionPending.current === 'edit'} cwd={cwd} t={t} />
               <div className="composer-toolbar"><input className="visually-hidden" type="file" tabIndex={-1} accept="image/*" multiple ref={fileInput} onChange={async event => { const input = event.currentTarget; const target = composerDraft; const files = Array.from(input.files ?? []); try { for (const file of files) { const data = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }); changeDraft(target, target.text, [...target.images, { type: 'image', data, mimeType: file.type, name: file.name }]); } } catch (error) { showError(error); } finally { input.value = ''; } }} />
                 <div className="attachment-control" ref={attachmentControl} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setAttachmentMenu(false); }}>
                   <button ref={addButton} disabled={messageAction && actionPending.current === 'edit'} className="icon-button" title={t.addContent} aria-haspopup="menu" aria-expanded={attachmentMenu} aria-controls={attachmentMenu ? 'attachment-menu' : undefined} onClick={() => { setAttachmentMenu(value => !value); setModelPicker(false); }}><Plus size={18} /></button>
@@ -523,7 +561,7 @@ export default function App() {
             </div><div className="composer-footnote"><span><span className={`status-dot ${busy ? 'working' : 'connected'}`} />{busy ? t.running : session?.pending.length ? t.waiting : t.ready}</span><span>{cwd ? <><FolderOpen size={12} />{cwd}</> : <button onClick={addProject}>{t.openProject}</button>}</span></div>
             <SessionUsage session={session} language={bootstrap.preferences.language} cache={usageCache.current} />
           </div>
-        </div>{inspector && <Suspense fallback={<aside className="inspector"><p>{t.loading}</p></aside>}><Inspector language={bootstrap.preferences.language} onSessionChanged={() => session ? refreshSession(session.id, true) : Promise.resolve()} tab={inspector} session={session} cwd={cwd} t={t} onError={showError} close={() => setInspector(null)} send={prepareCommand} /></Suspense>}</GenerationRateProvider></div>}
+        </div>{inspector && <Suspense fallback={<aside className="inspector"><PageSkeleton label={t.loading} /></aside>}><Inspector language={bootstrap.preferences.language} onSessionChanged={() => session ? refreshSession(session.id, true) : Promise.resolve()} tab={inspector} session={session} cwd={cwd} t={t} onError={showError} close={() => setInspector(null)} send={prepareCommand} /></Suspense>}</GenerationRateProvider></div>}
       </>}
       {settingsOpen && pending.length > 0 && <div className="settings-question"><Question key={pending[0].question.id} question={pending[0].question} t={t} answer={response => answer(pending[0].sessionId, response).catch(showError)} /></div>}{settingsOpen && error && <div className="error-toast" role="alert"><span>{localizeError(error, bootstrap.preferences.language)}</span><button className="icon-button" title={t.dismiss} onClick={() => setError('')}><X size={15} /></button></div>}
     </main>

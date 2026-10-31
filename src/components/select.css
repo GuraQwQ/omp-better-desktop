@@ -1,11 +1,11 @@
 .select-control { display: inline-flex; min-width: 136px; max-width: 100%; }
-.select-button { display: inline-flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-raised); font-size: 12px; text-align: left; }
+.select-button { display: inline-flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); font-size: 12px; text-align: left; }
 .select-button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-button > svg { color: var(--secondary); }
 .select-button:hover:not(:disabled), .select-button[aria-expanded='true'] { border-color: var(--input-focus); background: var(--hover); }
-.ui-menu { background: var(--surface-raised); border: 1px solid var(--line); border-radius: 9px; padding: 5px; color: var(--text); }
+.ui-menu { background: var(--surface-raised); border: 1px solid var(--line); border-radius: 8px; padding: 5px; color: var(--text); }
 .select-menu { position: fixed; z-index: 50; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
-.select-option { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 34px; padding: 7px 9px; border-radius: 5px; font-size: 12px; cursor: pointer; }
+.select-option { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 34px; padding: 7px 9px; border-radius: 6px; font-size: 12px; cursor: pointer; }
 .select-option > span { overflow-wrap: anywhere; }
 .select-option.is-active { background: var(--hover); }
 .select-option[aria-selected='true'] { color: var(--accent); }
@@ -16,13 +16,13 @@
 .composer-toolbar .select-button:hover:not(:disabled), .composer-toolbar .select-button[aria-expanded='true'] { background: var(--hover); }
 .attachment-control { position: relative; display: flex; }
 .attachment-menu { position: absolute; bottom: 38px; left: 0; width: 242px; max-width: calc(100vw - 40px); z-index: 16; }
-.attachment-menu > button { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 9px; text-align: left; border-radius: 5px; font-size: 12px; }
+.attachment-menu > button { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 9px; text-align: left; border-radius: 6px; font-size: 12px; }
 .attachment-menu > button:hover:not(:disabled), .attachment-menu > button:focus-visible { background: var(--hover); }
 .attachment-menu > button > svg { color: var(--secondary); }
 .model-picker.ui-menu { padding: 7px; box-shadow: none; }
 .model-picker.ui-menu input { background: var(--surface); }
 .model-picker.ui-menu button { min-height: 35px; }
 .model-picker.ui-menu button[aria-pressed='true'] { color: var(--accent); background: var(--accent-soft); }
-.model-picker.ui-menu small { font-size: 10px; }
-.more-menu > div.ui-menu { border-radius: 9px; }
+.model-picker.ui-menu small { font-size: 11px; }
+.more-menu > div.ui-menu { border-radius: 8px; }
 .menu-separator { height: 1px; background: var(--line-soft); margin: 5px 4px; }

@@ -1,5 +1,19 @@
 .project-row { display: flex; align-items: center; gap: 1px; }
 .project-row > .project-toggle { padding: 8px 4px; color: var(--secondary); }
-.project-toggle > svg { transition: transform 150ms ease; }
+.project-toggle > svg { transition: transform var(--motion-fast) var(--ease-enter); }
 .project-toggle > svg.rotate { transform: rotate(90deg); }
 .project-row > .project-item { flex: 1; min-width: 0; padding-left: 3px; }
+.session-group { margin-top: 6px; }
+.session-group-title, .session-group > summary { display: flex; align-items: center; gap: 4px; padding: 4px 9px 2px; color: var(--muted); font-size: 11px; font-weight: 500; }
+.session-group > summary { list-style: none; cursor: pointer; border-radius: 6px; }
+.session-group > summary::-webkit-details-marker { display: none; }
+.session-group > summary:hover { color: var(--secondary); }
+.session-group > summary > svg { transition: transform var(--motion-fast) var(--ease-enter); }
+.session-group[open] > summary > svg { transform: rotate(90deg); }
+.session-group > summary > small { margin-left: auto; font-variant-numeric: tabular-nums; }
+.session-item i.done { opacity: .55; }
+@media (prefers-reduced-motion: no-preference) {
+  .session-list .session-item { animation: fade-in var(--motion-fast) ease; }
+  .session-item i { animation: pulse 2s ease-in-out infinite; }
+  .session-item i.done { animation: pop-in var(--motion-med) var(--ease-enter); }
+}

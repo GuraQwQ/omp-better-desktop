@@ -1,6 +1,6 @@
 # OMP feature map
 
-Generated from upstream `2d39e5f5d26c12d49b241f58905b5526106d2a1e`. This is an inventory of execution surfaces, not a claim that each surface has been verified. Settings are discovered live using `desktop_settings`; every registry entry uses the settings form.
+Generated from upstream `c29f7c56f5530d805bb2887ade964aa55970d8e1`. This is an inventory of execution surfaces, not a claim that each surface has been verified. Settings are discovered live using `desktop_settings`; every registry entry uses the settings form.
 
 | Kind | Capability | Surface |
 |---|---|---|
@@ -135,6 +135,7 @@ Generated from upstream `2d39e5f5d26c12d49b241f58905b5526106d2a1e`. This is an i
 | slash | `extensions` | extensions |
 | slash | `agents` | agents |
 | slash | `git` | diff |
+| slash | `local` | terminal |
 | slash | `hub` | agents |
 | slash | `branch` | tree |
 | slash | `fork` | tree |
@@ -208,8 +209,11 @@ Generated from upstream `2d39e5f5d26c12d49b241f58905b5526106d2a1e`. This is an i
 | rpc | `cancel_subagent` | rpc |
 | rpc | `steer_subagent` | rpc |
 | rpc | `live_start` | rpc |
+| rpc | `live_connect` | rpc |
 | rpc | `live_stop` | rpc |
 | rpc | `live_mute` | rpc |
+| rpc | `dictation_start` | rpc |
+| rpc | `dictation_stop` | rpc |
 | rpc | `set_model` | rpc |
 | rpc | `cycle_model` | rpc |
 | rpc | `get_available_models` | rpc |
@@ -227,10 +231,14 @@ Generated from upstream `2d39e5f5d26c12d49b241f58905b5526106d2a1e`. This is an i
 | rpc | `bash` | rpc |
 | rpc | `abort_bash` | rpc |
 | rpc | `get_session_stats` | rpc |
+| rpc | `get_session_lease` | rpc |
 | rpc | `export_html` | rpc |
 | rpc | `switch_session` | rpc |
 | rpc | `branch` | rpc |
 | rpc | `fork` | rpc |
+| rpc | `navigate_tree` | rpc |
+| rpc | `abort_branch_summary` | rpc |
+| rpc | `set_label` | rpc |
 | rpc | `get_branch_messages` | rpc |
 | rpc | `get_last_assistant_text` | rpc |
 | rpc | `set_session_name` | rpc |

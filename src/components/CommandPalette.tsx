@@ -13,6 +13,7 @@ export default function CommandPalette({ t, sessionId, cwd, close, send, onError
   const [args, setArgs] = useState('');
   const [output, setOutput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [active, setActive] = useState(0);
   const [fields, setFields] = useState<Record<string, string>>({});
   const runningSession = useRef(sessionId);
   const dialog = useRef<HTMLDialogElement>(null);
@@ -75,18 +76,20 @@ export default function CommandPalette({ t, sessionId, cwd, close, send, onError
     } catch (error) { onError(error); } finally { setBusy(false); }
   };
   const filtered = entries.filter(entry => `${entry.name} ${entry.description ?? ''}`.toLowerCase().includes(query.toLowerCase()));
+  const current = Math.min(active, Math.max(filtered.length - 1, 0));
+  useEffect(() => { dialog.current?.querySelector('.is-active')?.scrollIntoView({ block: 'nearest' }); }, [current, filtered.length]);
   const selectEntry = (entry: CatalogEntry) => {
     const target = rpcCommand(entry);
     setSelected(target ? { ...entry, name: target, kind: 'rpc', surface: 'rpc' } : entry);
     setArgs(''); setFields({}); setOutput('');
   };
   return <dialog className="command-dialog" ref={dialog} onCancel={close} onClick={e => { if (e.target === dialog.current) close(); }}>
-    <div className="command-inner"><header><Search size={18} /><input autoFocus aria-label={t.searchCommands} placeholder={t.searchCommands} value={query} onChange={e => { setQuery(e.target.value); setSelected(null); }} /><button className="keycap" onClick={close}>Esc</button></header>
+    <div className="command-inner"><header><Search size={18} /><input autoFocus role="combobox" aria-expanded={!selected} aria-controls="command-listbox" aria-activedescendant={!selected && filtered.length ? `command-option-${current}` : undefined} aria-label={t.searchCommands} placeholder={t.searchCommands} value={query} onChange={e => { setQuery(e.target.value); setSelected(null); setActive(0); }} onKeyDown={e => { if (selected || !filtered.length || e.nativeEvent.isComposing) return; if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); setActive((current + (e.key === 'ArrowDown' ? 1 : -1) + filtered.length) % filtered.length); } else if (e.key === 'Enter') { e.preventDefault(); selectEntry(filtered[current]); } }} /><button className="keycap" onClick={close}>Esc</button></header>
       {selected ? <div className="command-details"><button className="quiet-button" onClick={() => setSelected(null)}>← {t.commands}</button><h2>{selected.kind === 'cli' ? 'omp ' : selected.kind === 'rpc' || selected.kind === 'tool' ? '' : '/'}{selected.name}</h2><p>{selected.description}</p>{selected.kind === 'rpc' ? Object.entries(properties).map(([key, definition]) => {
         const field = resolved(definition);
         const enumValues = field.enum ?? field.anyOf?.filter((item: Json) => item.const !== undefined).map((item: Json) => item.const);
         return <label key={key}>{key}{params.required?.includes(key) ? ' *' : ''}{enumValues ? <select value={fields[key] ?? ''} onChange={event => setFields(previous => ({ ...previous, [key]: event.target.value }))}><option value="">—</option>{enumValues.map((value: string) => <option key={value} value={value}>{value}</option>)}</select> : field.type === 'boolean' ? <select value={fields[key] ?? ''} onChange={event => setFields(previous => ({ ...previous, [key]: event.target.value }))}><option value="">—</option><option value="true">{t.yes}</option><option value="false">{t.no}</option></select> : <input value={fields[key] ?? ''} type={field.type === 'number' || field.type === 'integer' ? 'number' : 'text'} placeholder={field.description ?? (['object', 'array'].includes(field.type) ? 'JSON' : '')} onChange={event => setFields(previous => ({ ...previous, [key]: event.target.value }))} />}</label>;
-      }) : <label>{t.commandArgs}<input value={args} onChange={e => setArgs(e.target.value)} placeholder={selected.input?.hint ?? selected.usage ?? ''} onKeyDown={e => { if (e.key === 'Enter') void run(); }} /></label>}<button className="primary-button" disabled={busy} onClick={run}><Play size={14} />{busy ? t.loading : t.execute}</button>{output && <pre className="command-output">{output}</pre>}</div> : <div className="command-results">{filtered.length ? filtered.map((entry, index) => <button key={`${entry.kind}:${entry.name}:${index}`} onClick={() => selectEntry(entry)}><Command size={16} /><span><strong>{entry.kind === 'cli' ? 'omp ' : entry.kind === 'rpc' || entry.kind === 'tool' ? '' : '/'}{entry.name}</strong><small>{entry.description || t.commandKinds[entry.kind as keyof Copy["commandKinds"]] || entry.kind}</small></span><ArrowUpRight size={14} /></button>) : <p className="panel-empty">{t.noResults}</p>}</div>}
+      }) : <label>{t.commandArgs}<input value={args} onChange={e => setArgs(e.target.value)} placeholder={selected.input?.hint ?? selected.usage ?? ''} onKeyDown={e => { if (e.key === 'Enter') void run(); }} /></label>}<button className="primary-button" disabled={busy} onClick={run}><Play size={14} />{busy ? t.loading : t.execute}</button>{output && <pre className="command-output">{output}</pre>}</div> : <div className="command-results" id="command-listbox" role="listbox" aria-label={t.commands}>{filtered.length ? filtered.map((entry, index) => <button key={`${entry.kind}:${entry.name}:${index}`} id={`command-option-${index}`} role="option" aria-selected={index === current} className={index === current ? 'is-active' : undefined} tabIndex={-1} onClick={() => selectEntry(entry)}><Command size={16} /><span><strong>{entry.kind === 'cli' ? 'omp ' : entry.kind === 'rpc' || entry.kind === 'tool' ? '' : '/'}{entry.name}</strong><small>{entry.description || t.commandKinds[entry.kind as keyof Copy["commandKinds"]] || entry.kind}</small></span><ArrowUpRight size={14} /></button>) : <p className="panel-empty">{t.noResults}</p>}</div>}
       <footer>{t.commandHelp}<span>{filtered.length}</span></footer>
     </div>
   </dialog>;
