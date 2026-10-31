@@ -1,0 +1,281 @@
+diff --git a/packages/coding-agent/src/eval/read-batch.ts b/packages/coding-agent/src/eval/read-batch.ts
+new file mode 100644
+index 0000000..17a4a1b
+--- /dev/null
++++ b/packages/coding-agent/src/eval/read-batch.ts
+@@ -0,0 +1,59 @@
++import { isRecord } from "@oh-my-pi/pi-utils";
++import { cfgTokenOptimizationProgrammatic } from "../session/context-settings";
++import type { ToolSession } from "../tools";
++import { callSessionTool } from "./js/tool-bridge";
++import type { EvalPreludeDefinition } from "./preludes";
++
++/** 固定只读批次；每项仍通过原生工具的校验、审批和读取路径。 */
++export function createReadBatchPrelude(session: ToolSession): EvalPreludeDefinition {
++	return {
++		name: "read_batch",
++		documentation:
++			"`await readBatch(paths)` reads independent paths (up to 4 concurrently), returning ordered `{path,result,error?}` items. `result` preserves native text/details/images; errors stay per item. Use `:raw` for exact text or native JSON selectors for filtered data. Keep the array in the kernel, print only decision evidence, and retry only items with `error`.",
++		inlineDocumentation: true,
++		javascript: `globalThis.readBatch = async paths => (await globalThis.__omp_prelude__("read_batch", { paths })).details;`,
++		python: `async def readBatch(paths):\n    return (await _omp_prelude("read_batch", {"paths": paths}))["details"]\n`,
++		exports: ["readBatch"],
++		approval: "read",
++		enabled: () => cfgTokenOptimizationProgrammatic.get(session.settings),
++		invoke: async (parameters, context) => {
++			if (
++				!isRecord(parameters) ||
++				!Array.isArray(parameters.paths) ||
++				!parameters.paths.every((path: unknown) => typeof path === "string" && path.length > 0)
++			) {
++				throw new TypeError("readBatch expects an array of nonempty paths.");
++			}
++			const paths: string[] = parameters.paths;
++			const results: { path: string; result?: unknown; error?: string }[] = [];
++			let cursor = 0;
++			await Promise.all(
++				Array.from({ length: Math.min(4, paths.length) }, async () => {
++					while (cursor < paths.length) {
++						context.signal?.throwIfAborted();
++						const index = cursor++;
++						const path = paths[index];
++						try {
++							const result = await callSessionTool("read", { path }, { session, signal: context.signal });
++							const error =
++								isRecord(result) && "hasError" in result && result.hasError === true
++									? "text" in result
++										? String(result.text) || "Read failed."
++										: "Read failed."
++									: undefined;
++							results[index] = { path, result, ...(error === undefined ? {} : { error }) };
++						} catch (error) {
++							context.signal?.throwIfAborted();
++							results[index] = {
++								path,
++								error: (error instanceof Error ? error.message : String(error)) || "Read failed.",
++							};
++						}
++					}
++				}),
++			);
++			const failures = results.filter(result => result.error !== undefined).length;
++			return { content: [{ type: "text", text: `${paths.length} reads, ${failures} failed.` }], details: results };
++		},
++	};
++}
+diff --git a/packages/coding-agent/src/prompts/system/programmatic-tool-use.md b/packages/coding-agent/src/prompts/system/programmatic-tool-use.md
+index 325488e..737c842 100644
+--- a/packages/coding-agent/src/prompts/system/programmatic-tool-use.md
++++ b/packages/coding-agent/src/prompts/system/programmatic-tool-use.md
+@@ -1,7 +1,7 @@
+ # Programmatic tool use
+ 
+-For multi-step deterministic processing or a batch of independent tool calls, prefer a short `{{toolRefs.eval}}` program when it avoids repeated model round trips. Invoke specialized operations through `await tool.<name>(args)`, and keep their permissions, approvals and dependency order.
++Batch already-known independent reads and checks in one response. In eval, use `readBatch(paths)` when available; retain its results and print the evidence needed for the next decision. Use native JSON/line selectors for large data. Keep source paths, versions and failures; reread only failed or changed items.
+ 
+-Filter, join, count and compare results locally before printing the evidence needed for the next decision. Keep failures, source paths and exact output identifiers visible; retain full results and use `output` with a query or range when more detail is needed. Retry only failed steps, since completed steps may already have changed state.
++Use `await tool.<name>(args)` for session tools. Run project tests through `tool.bash` in the project's runtime (e.g. `node --test`); eval's compiled `process.execPath` is OMP, and imported objects can belong to another VM realm. Await writes and todo updates in order. Finish a whole confirmed phase with one `todo done + phase`; otherwise issue the known updates in the same response as substantive work.
+ 
+-Use a direct tool call for a simple action. Stop the program where a new judgment or missing information is needed, inspect the result, then choose the next step.
++Simple actions stay direct. Stop a batch at decisions or missing information; preserve the original tests and completion criteria.
+diff --git a/packages/coding-agent/src/sdk.ts b/packages/coding-agent/src/sdk.ts
+index dfecb6a..7bd2edc 100644
+--- a/packages/coding-agent/src/sdk.ts
++++ b/packages/coding-agent/src/sdk.ts
+@@ -96,6 +96,7 @@ import { initializeWithSettings } from "./discovery";
+ import { setInvocationConfiguredExtensions, withOmpExtensionRootScope } from "./discovery/omp-extension-roots";
+ import { disposeVmContextsByOwner } from "./eval/js/context-manager";
+ import { getEnabledEvalPreludes, type EvalPreludeDefinition } from "./eval/preludes";
++import { createReadBatchPrelude } from "./eval/read-batch";
+ import { disposeAllKernelSessions, disposeKernelSessionsByOwner } from "./eval/py/executor";
+ import { defaultEvalSessionId } from "./eval/session-id";
+ import type { EditMode } from "@oh-my-pi/pi-tui/tools/edit";
+@@ -2586,9 +2587,14 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+ 		let computerPrelude: EvalPreludeDefinition | undefined;
+ 		let ratchetPrelude: EvalPreludeDefinition | undefined;
+ 		let archivePrelude: EvalPreludeDefinition | undefined;
++		let readBatchPrelude: EvalPreludeDefinition | undefined;
+ 		const getEvalPreludes = (): readonly EvalPreludeDefinition[] => {
+ 			if (restrictToolNames || !toolRegistry.has("eval") || !activeToolNames.has("eval")) return [];
+ 			const builtins: EvalPreludeDefinition[] = [];
++			if (cfgTokenOptimizationProgrammatic.get(settings) && activeToolNames.has("read")) {
++				readBatchPrelude ??= createReadBatchPrelude(toolSession);
++				builtins.push(readBatchPrelude);
++			}
+ 			if (cfgBrowserEnabled.get(settings)) {
+ 				browserPrelude ??= createBrowserPrelude(toolSession);
+ 				builtins.push(browserPrelude);
+diff --git a/packages/coding-agent/src/session/context-settings.ts b/packages/coding-agent/src/session/context-settings.ts
+index 9961cd3..51f19ed 100644
+--- a/packages/coding-agent/src/session/context-settings.ts
++++ b/packages/coding-agent/src/session/context-settings.ts
+@@ -18,7 +18,7 @@ export const cfgTokenOptimizationSkillCacheReuse = register({
+ 		group: "Token optimization",
+ 		label: "Reuse skill description cache",
+ 		description:
+-			"Recheck completed skill descriptions after waiting for a compression slot to avoid duplicate model calls. Current session descriptions stay unchanged.",
++			"Coordinate skill description compression across sessions sharing a cache. Current session descriptions stay unchanged.",
+ 	},
+ });
+ 
+@@ -31,7 +31,7 @@ export const cfgTokenOptimizationProgrammatic = register({
+ 		group: "Token optimization",
+ 		label: "Programmatic tool use",
+ 		description:
+-			"Guide the agent to use eval for multi-step deterministic processing and tool batches, retaining errors and references to full results. Simple actions stay direct.",
++			"Enable bounded read batches and guidance for project-native tests and combined progress updates. Preserve per-item errors, original results and simple direct calls.",
+ 	},
+ });
+ 
+diff --git a/packages/coding-agent/test/read-batch.test.ts b/packages/coding-agent/test/read-batch.test.ts
+new file mode 100644
+index 0000000..c091761
+--- /dev/null
++++ b/packages/coding-agent/test/read-batch.test.ts
+@@ -0,0 +1,146 @@
++import { describe, expect, it } from "bun:test";
++import type { AgentTool, AgentToolResult } from "@oh-my-pi/pi-agent-core";
++import { type } from "@oh-my-pi/omptype";
++import { Settings } from "../src/config/settings";
++import { createReadBatchPrelude } from "../src/eval/read-batch";
++import { cfgTokenOptimizationProgrammatic } from "../src/session/context-settings";
++import type { ToolSession } from "../src/tools";
++
++const parameters = type({ path: "string" });
++type Read = (path: string, signal?: AbortSignal) => Promise<AgentToolResult<unknown>>;
++
++function fixture(read: Read) {
++	const tool: AgentTool<typeof parameters> = {
++		name: "read",
++		label: "读取",
++		description: "测试原生工具桥参数与结果",
++		parameters,
++		execute: (_id, args, signal) => read(args.path, signal),
++	};
++	const session: ToolSession = {
++		cwd: process.cwd(),
++		hasUI: false,
++		getSessionFile: () => null,
++		getSessionSpawns: () => null,
++		settings: Settings.isolated(),
++		getToolByName: name => name === "read" ? tool : undefined,
++		getToolForEvalBridge: name => name === "read" ? tool : undefined,
++	};
++	const prelude = createReadBatchPrelude(session);
++	return {
++		session,
++		prelude,
++		run: (paths: unknown, signal?: AbortSignal) => prelude.invoke({ paths }, { session, signal, toolCallId: "read-batch-test" }),
++	};
++}
++
++const text = (value: string): AgentToolResult<unknown> => ({ content: [{ type: "text", text: value }] });
++
++describe("原生读取批次", () => {
++	it("默认关闭，沿用实时设置启用与撤回", () => {
++		const { session, prelude } = fixture(async path => text(path));
++		expect(prelude.enabled?.()).toBe(false);
++		cfgTokenOptimizationProgrammatic.override(session.settings, true);
++		expect(prelude.enabled?.()).toBe(true);
++		cfgTokenOptimizationProgrammatic.override(session.settings, false);
++		expect(prelude.enabled?.()).toBe(false);
++	});
++
++	it("固定四个原生读取并发，逆序完成仍按输入顺序返回", async () => {
++		const paths = Array.from({ length: 7 }, (_, index) => `p${index}`);
++		const gates = paths.map(() => Promise.withResolvers<void>());
++		const started = paths.map(() => Promise.withResolvers<void>());
++		const calls: string[] = [];
++		let active = 0;
++		let peak = 0;
++		const { run } = fixture(async path => {
++			const index = Number(path.slice(1));
++			calls.push(path);
++			active++;
++			peak = Math.max(peak, active);
++			started[index].resolve();
++			try { await gates[index].promise; return text(path); }
++			finally { active--; }
++		});
++		const pending = run(paths);
++		try {
++			await Promise.all(started.slice(0, 4).map(item => item.promise));
++			expect(calls).toEqual(paths.slice(0, 4));
++			gates[2].resolve();
++			await started[4].promise;
++			gates[0].resolve();
++			await started[5].promise;
++			gates[3].resolve();
++			await started[6].promise;
++		} finally { for (const gate of gates) gate.resolve(); }
++		const result = await pending;
++		expect(result.details).toEqual(paths.map(path => ({ path, result: path })));
++		expect(peak).toBe(4);
++		expect(active).toBe(0);
++	});
++
++	it("原生 text、details、images 与逐项错误保留，失败不吞掉其它成功项", async () => {
++		const details = { meta: { source: { path: "same.txt", version: "abc" } }, extra: [1, 2] };
++		const image = { type: "image" as const, mimeType: "image/png", data: "AA==" };
++		const { run } = fixture(async path => {
++			if (path === "throw") throw new Error("读取失败");
++			if (path === "error") return { ...text("原生错误"), details: { isError: true, reason: "fixture" } };
++			return { content: [{ type: "text", text: "[same.txt#ABCD]\n1:原文" }, image], details };
++		});
++		const result = await run(["same.txt", "throw", "error", "same.txt"]);
++		const rows = result.details as { path: string; result?: unknown; error?: string }[];
++		expect(rows.map(row => row.path)).toEqual(["same.txt", "throw", "error", "same.txt"]);
++		expect(rows[0].result).toEqual({ text: "[same.txt#ABCD]\n1:原文", details, images: [{ mimeType: image.mimeType, data: image.data }] });
++		expect(rows[1]).toEqual({ path: "throw", error: "读取失败" });
++		expect(rows[2]).toEqual({ path: "error", result: { text: "原生错误", details: { isError: true, reason: "fixture" }, hasError: true }, error: "原生错误" });
++		expect(rows[3]).toEqual(rows[0]);
++	});
++
++	it("空错误文本仍可被 error 筛选用于恢复", async () => {
++		const { run } = fixture(async () => ({ content: [], isError: true }));
++		const result = await run(["failed"]);
++		const rows = result.details as { error?: string }[];
++		expect(rows[0].error).toBeTruthy();
++	});
++
++	it("空批次无调用，非法路径在任何读取开始前拒绝", async () => {
++		const calls: string[] = [];
++		const { run } = fixture(async path => { calls.push(path); return text(path); });
++		expect((await run([])).details).toEqual([]);
++		for (const paths of [null, "p0", ["p0", 42], ["p0", ""], ["p0", null]]) {
++			await expect(run(paths)).rejects.toThrow("array of nonempty paths");
++		}
++		expect(calls).toEqual([]);
++	});
++
++	it("取消会停止派发余项并传递同一原生 signal", async () => {
++		const controller = new AbortController();
++		const gate = Promise.withResolvers<void>();
++		const calls: string[] = [];
++		const signals: (AbortSignal | undefined)[] = [];
++		const { run } = fixture(async (path, signal) => {
++			calls.push(path);
++			signals.push(signal);
++			if (calls.length === 4) {
++				controller.abort(new Error("合同取消"));
++				gate.resolve();
++			}
++			await gate.promise;
++			signal!.throwIfAborted();
++			return text(path);
++		});
++		const pending = run(Array.from({ length: 10 }, (_, index) => `p${index}`), controller.signal);
++		await expect(pending).rejects.toThrow("合同取消");
++		expect(calls).toEqual(["p0", "p1", "p2", "p3"]);
++		expect(signals.every(signal => signal === controller.signal)).toBe(true);
++	});
++
++	it("工具在会话中不可用时仍保留原生错误", async () => {
++		let called = false;
++		const { session, run } = fixture(async () => { called = true; return text("不应到达"); });
++		session.getToolForEvalBridge = () => undefined;
++		const result = await run(["p0"]);
++		expect((result.details as { error: string }[])[0].error).toContain("not available in this session");
++		expect(called).toBe(false);
++	});
++});

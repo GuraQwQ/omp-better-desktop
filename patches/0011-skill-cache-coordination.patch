@@ -1,0 +1,617 @@
+diff --git a/packages/coding-agent/src/extensibility/skill-descriptions.ts b/packages/coding-agent/src/extensibility/skill-descriptions.ts
+index b6a93cc..d220750 100644
+--- a/packages/coding-agent/src/extensibility/skill-descriptions.ts
++++ b/packages/coding-agent/src/extensibility/skill-descriptions.ts
+@@ -22,6 +22,11 @@ import {
+ import type { Settings } from "../config/settings";
+ import compressDescriptionPrompt from "../prompts/skills/compress-description.md" with { type: "text" };
+ import { Semaphore } from "../task/parallel";
++import {
++	type SkillDescriptionClaim,
++	type SkillDescriptionClaimOptions,
++	SkillDescriptionClaims,
++} from "./skill-description-claims";
+ import type { Skill } from "./skills";
+ 
+ const MAX_PREVIEW_CHARS = 100;
+@@ -255,12 +260,15 @@ export class SkillDescriptionStore {
+ 	readonly #db: Database;
+ 	readonly #select: Statement<{ description: string }, [string]>;
+ 	readonly #upsert: Statement<unknown, [string, string]>;
++	readonly #claimOptions?: SkillDescriptionClaimOptions;
++	#claims?: SkillDescriptionClaims;
+ 	#closeCall?: Promise<void>;
+ 	#closed = false;
+ 
+-	private constructor(dbPath: string, db: Database) {
++	private constructor(dbPath: string, db: Database, claimOptions?: SkillDescriptionClaimOptions) {
+ 		this.path = dbPath;
+ 		this.#db = db;
++		this.#claimOptions = claimOptions;
+ 		this.#select = db.prepare("SELECT description FROM skill_descriptions WHERE key = ?");
+ 		this.#upsert = db.prepare("INSERT OR REPLACE INTO skill_descriptions (key, description) VALUES (?, ?)");
+ 	}
+@@ -269,7 +277,10 @@ export class SkillDescriptionStore {
+ 	 * Open (creating if needed) the store at `dbPath`.
+ 	 * @throws when the directory or database cannot be created.
+ 	 */
+-	static open(dbPath: string = resolveSkillDescriptionsDbPath()): SkillDescriptionStore {
++	static open(
++		dbPath: string = resolveSkillDescriptionsDbPath(),
++		claimOptions?: SkillDescriptionClaimOptions,
++	): SkillDescriptionStore {
+ 		fs.mkdirSync(path.dirname(dbPath), { recursive: true, mode: 0o700 });
+ 		const db = new Database(dbPath, { create: true });
+ 		try {
+@@ -279,7 +290,7 @@ export class SkillDescriptionStore {
+ 			db.run("PRAGMA synchronous=NORMAL");
+ 			db.run("CREATE TABLE IF NOT EXISTS skill_descriptions (key TEXT PRIMARY KEY, description TEXT NOT NULL)");
+ 			if (process.platform !== "win32") fs.chmodSync(dbPath, 0o600);
+-			return new SkillDescriptionStore(dbPath, db);
++			return new SkillDescriptionStore(dbPath, db, claimOptions);
+ 		} catch (error) {
+ 			db.close();
+ 			throw error;
+@@ -296,6 +307,15 @@ export class SkillDescriptionStore {
+ 		this.#upsert.run(key, description);
+ 	}
+ 
++	claimCompression(key: string, unusableKey?: string): SkillDescriptionClaim {
++		this.#claims ??= new SkillDescriptionClaims(this.#db, this.#claimOptions);
++		return this.#claims.claim(key, unusableKey);
++	}
++
++	finishCompression(key: string, owner: string, result?: { key: string; description: string }): void {
++		this.#claims?.finish(key, owner, result);
++	}
++
+ 	/** Whether closing has begun and no new compression work is admitted. */
+ 	get isClosing(): boolean {
+ 		return this.#closeCall !== undefined;
+@@ -333,6 +353,11 @@ export class SkillDescriptionStore {
+ 
+ 	#closeDatabase(): void {
+ 		this.#closed = true;
++		try {
++			this.#claims?.close();
++		} catch (error) {
++			logger.warn("Skill description claim cleanup failed", { error: String(error) });
++		}
+ 		// Unfinalized statements keep the file handle open on Windows.
+ 		this.#select.finalize();
+ 		this.#upsert.finalize();
+@@ -405,43 +430,73 @@ export class SkillDescriptionCatalog {
+ 		// Defer model work until the current synchronous prompt rendering has finished.
+ 		const pending = Promise.resolve().then(async () => {
+ 			try {
+-				await compressionSlots.acquire();
+-				try {
+-					if (store.isClosing) return;
+-					if (this.reuseCache) {
+-						try {
+-							// 等待期间其他会话可能已完成压缩；保留本会话已冻结的描述。
+-							if (store.get(key) !== undefined) return;
+-						} catch (error) {
+-							logger.warn("Skill description cache recheck failed", { error: String(error) });
+-						}
+-					}
+-					// Unusable answers are remembered per model: that model is not asked again, a newly selected one is.
+-					const model = compressor.modelKey();
+-					const unusableKey = model === undefined ? undefined : `${key}:${model}`;
+-					if (unusableKey !== undefined && store.get(unusableKey) !== undefined) return;
+-					const request = prompt.render(compressDescriptionPrompt, {
+-						name: skill.name,
+-						description: skill.description,
+-					});
+-					let result: string | null = null;
++				while (!store.isClosing) {
++					let retryMs: number | undefined;
++					await compressionSlots.acquire();
+ 					try {
+-						result = validCompression(await compressor.compress(skill.name, skill.description, request));
+-					} catch (error) {
+-						if (!(error instanceof SkillDescriptionLengthError)) throw error;
+-					}
+-					if (store.isClosed) return;
+-					if (result !== null) {
+-						store.put(key, result);
+-					} else if (unusableKey !== undefined) {
+-						logger.warn("Skill description compression unusable; keeping the preview for this model", {
+-							skill: skill.name,
+-							model,
+-						});
+-						store.put(unusableKey, previewSkillDescription(skill.description));
++						if (store.isClosing) return;
++						if (this.reuseCache) {
++							try {
++								// 等待期间其他会话可能已完成压缩；保留本会话已冻结的描述。
++								if (store.get(key) !== undefined) return;
++							} catch (error) {
++								logger.warn("Skill description cache recheck failed", { error: String(error) });
++							}
++						}
++						const model = compressor.modelKey();
++						const unusableKey = model === undefined ? undefined : `${key}:${model}`;
++						if (unusableKey !== undefined && store.get(unusableKey) !== undefined) return;
++						let owner: string | undefined;
++						if (this.reuseCache) {
++							try {
++								const claim = store.claimCompression(key, unusableKey);
++								if (claim.status === "complete") return;
++								if (claim.status === "wait") retryMs = claim.retryMs;
++								else owner = claim.owner;
++							} catch (error) {
++								// 协调库暂不可用时沿用原压缩路径，保留可观测错误。
++								logger.warn("Skill description claim unavailable", { error: String(error) });
++							}
++						}
++						if (retryMs === undefined) {
++							try {
++								const request = prompt.render(compressDescriptionPrompt, {
++									name: skill.name,
++									description: skill.description,
++								});
++								let result: string | null = null;
++								try {
++									result = validCompression(await compressor.compress(skill.name, skill.description, request));
++								} catch (error) {
++									if (!(error instanceof SkillDescriptionLengthError)) throw error;
++								}
++								if (store.isClosed) return;
++								const saved =
++									result !== null
++										? { key, description: result }
++										: unusableKey === undefined
++											? undefined
++											: { key: unusableKey, description: previewSkillDescription(skill.description) };
++								if (result === null && unusableKey !== undefined) {
++									logger.warn("Skill description compression unusable; keeping the preview for this model", {
++										skill: skill.name,
++										model,
++									});
++								}
++								if (owner !== undefined) {
++									store.finishCompression(key, owner, saved);
++									owner = undefined;
++								} else if (saved) store.put(saved.key, saved.description);
++							} finally {
++								if (owner !== undefined && !store.isClosed) store.finishCompression(key, owner);
++							}
++							return;
++						}
++					} finally {
++						compressionSlots.release();
+ 					}
+-				} finally {
+-					compressionSlots.release();
++					// 其他进程压缩时释放本机槽位；等待只发生在已冻结预览后的后台任务。
++					await Bun.sleep(retryMs);
+ 				}
+ 			} catch (error) {
+ 				logger.warn("Skill description compression failed", { skill: skill.name, error: String(error) });
+diff --git a/packages/coding-agent/src/extensibility/skill-description-claims.ts b/packages/coding-agent/src/extensibility/skill-description-claims.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/coding-agent/src/extensibility/skill-description-claims.ts
+@@ -0,0 +1,82 @@
++import type { Database, Statement } from "bun:sqlite";
++
++// 原压缩请求有 30 秒超时；租约留出写库余量，终止进程无需常驻清理服务。
++const LEASE_MS = 45_000;
++const POLL_MS = 250;
++
++export type SkillDescriptionClaim =
++	| { status: "complete" }
++	| { status: "wait"; retryMs: number }
++	| { status: "owned"; owner: string };
++export interface SkillDescriptionClaimOptions {
++	/** 仅供嵌入调用与测试缩短恢复时间，不新增用户配置。 */
++	leaseMs?: number;
++}
++
++/** 复用描述库中的短事务；只在显式启用缓存协调后构造。 */
++export class SkillDescriptionClaims {
++	readonly #db: Database;
++	readonly #leaseMs: number;
++	readonly #cached: Statement<{ key: string }, [string, string | null]>;
++	readonly #lease: Statement<{ owner: string; expires_at: number }, [string]>;
++	readonly #insert: Statement<unknown, [string, string, number]>;
++	readonly #release: Statement<unknown, [string, string]>;
++	readonly #expired: Statement<unknown, [number]>;
++	readonly #put: Statement<unknown, [string, string]>;
++	readonly #owned = new Map<string, string>();
++
++	constructor(db: Database, options: SkillDescriptionClaimOptions = {}) {
++		this.#db = db;
++		this.#leaseMs = options.leaseMs ?? LEASE_MS;
++		db.run(
++			"CREATE TABLE IF NOT EXISTS skill_description_claims (key TEXT PRIMARY KEY, owner TEXT NOT NULL, expires_at INTEGER NOT NULL)",
++		);
++		db.run("CREATE INDEX IF NOT EXISTS skill_description_claims_expiry ON skill_description_claims(expires_at)");
++		this.#cached = db.prepare("SELECT key FROM skill_descriptions WHERE key IN (?, ?) LIMIT 1");
++		this.#lease = db.prepare("SELECT owner, expires_at FROM skill_description_claims WHERE key = ?");
++		this.#insert = db.prepare("INSERT INTO skill_description_claims (key, owner, expires_at) VALUES (?, ?, ?)");
++		this.#release = db.prepare("DELETE FROM skill_description_claims WHERE key = ? AND owner = ?");
++		this.#expired = db.prepare("DELETE FROM skill_description_claims WHERE expires_at <= ?");
++		this.#put = db.prepare("INSERT OR IGNORE INTO skill_descriptions (key, description) VALUES (?, ?)");
++	}
++
++	claim(key: string, unusableKey?: string): SkillDescriptionClaim {
++		const result = this.#db
++			.transaction((): SkillDescriptionClaim => {
++				const now = Date.now();
++				this.#expired.run(now);
++				if (this.#cached.get(key, unusableKey ?? null)) return { status: "complete" };
++				const lease = this.#lease.get(key);
++				if (lease) return { status: "wait", retryMs: Math.min(POLL_MS, Math.max(1, lease.expires_at - now)) };
++				const owner = crypto.randomUUID();
++				this.#insert.run(key, owner, now + this.#leaseMs);
++				return { status: "owned", owner };
++			})
++			.immediate();
++		if (result.status === "owned") this.#owned.set(key, result.owner);
++		return result;
++	}
++
++	/** 完成结果和释放租约同批提交；过期接管后的迟到结果不能覆盖新持有者。 */
++	finish(key: string, owner: string, result?: { key: string; description: string }): void {
++		this.#db
++			.transaction(() => {
++				if (this.#lease.get(key)?.owner !== owner) return;
++				if (result) this.#put.run(result.key, result.description);
++				this.#release.run(key, owner);
++			})
++			.immediate();
++		if (this.#owned.get(key) === owner) this.#owned.delete(key);
++	}
++
++	close(): void {
++		try {
++			for (const [key, owner] of this.#owned) this.#release.run(key, owner);
++			this.#expired.run(Date.now());
++		} finally {
++			this.#owned.clear();
++			for (const statement of [this.#cached, this.#lease, this.#insert, this.#release, this.#expired, this.#put])
++				statement.finalize();
++		}
++	}
++}
+diff --git a/packages/coding-agent/test/skill-description-coordination.test.ts b/packages/coding-agent/test/skill-description-coordination.test.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/coding-agent/test/skill-description-coordination.test.ts
+@@ -0,0 +1,264 @@
++import { Database } from "bun:sqlite";
++import { afterEach, beforeEach, expect, it } from "bun:test";
++import * as fs from "node:fs/promises";
++import * as os from "node:os";
++import * as path from "node:path";
++
++type Event = {
++	type: string;
++	pid: number;
++	id?: string;
++	call?: string;
++	name?: string;
++	rendered?: string[];
++	fresh?: string[];
++	elapsedMs?: number;
++};
++const fixture = path.join(import.meta.dir, "fixtures/skill-description-worker.ts");
++const compressed = "Use for planning and reviewing data migrations.";
++let directory: string;
++let dbPath: string;
++const workers: Worker[] = [];
++
++class Worker {
++	readonly events: Event[] = [];
++	readonly process;
++	readonly stderr: Promise<string>;
++	readonly read: Promise<void>;
++
++	constructor(enabled: boolean, leaseMs?: number) {
++		const child = Bun.spawn(
++			[process.execPath, fixture, dbPath, String(enabled), ...(leaseMs ? [String(leaseMs)] : [])],
++			{ stdin: "pipe", stdout: "pipe", stderr: "pipe" },
++		);
++		this.process = child;
++		this.stderr = new Response(child.stderr).text();
++		this.read = (async () => {
++			let pending = "";
++			const decoder = new TextDecoder();
++			for await (const bytes of child.stdout) {
++				pending += decoder.decode(bytes, { stream: true });
++				let end: number;
++				while ((end = pending.indexOf("\n")) >= 0) {
++					this.events.push(JSON.parse(pending.slice(0, end)));
++					pending = pending.slice(end + 1);
++				}
++			}
++		})();
++		workers.push(this);
++	}
++
++	send(command: Record<string, unknown>): void {
++		this.process.stdin.write(`${JSON.stringify(command)}\n`);
++	}
++	async event(type: string, id?: string): Promise<Event> {
++		await until(() => this.events.some(event => event.type === type && (id === undefined || event.id === id)));
++		return this.events.find(event => event.type === type && (id === undefined || event.id === id))!;
++	}
++	get calls(): Event[] {
++		return this.events.filter(event => event.type === "compress");
++	}
++	async close(): Promise<void> {
++		this.send({ type: "close" });
++		await this.event("closed");
++		expect(await this.process.exited).toBe(0);
++	}
++}
++
++async function until(condition: () => boolean, timeout = 8_000): Promise<void> {
++	const deadline = Date.now() + timeout;
++	while (!condition()) {
++		if (Date.now() >= deadline)
++			throw new Error(`等待子进程超时：${JSON.stringify(workers.map(worker => worker.events))}`);
++		await Bun.sleep(10);
++	}
++}
++
++async function pair(enabled = true, leaseMs?: number): Promise<[Worker, Worker]> {
++	const first = new Worker(enabled, leaseMs);
++	await first.event("ready");
++	const second = new Worker(enabled, leaseMs);
++	await second.event("ready");
++	expect(first.process.pid).not.toBe(second.process.pid);
++	return [first, second];
++}
++
++function claims(): number {
++	using db = new Database(dbPath, { readonly: true });
++	return db.query<{ total: number }, []>("SELECT COUNT(*) AS total FROM skill_description_claims").get()!.total;
++}
++
++beforeEach(async () => {
++	directory = await fs.mkdtemp(path.join(os.tmpdir(), "omp-skill-coordination-"));
++	dbPath = path.join(directory, "shared.db");
++});
++
++afterEach(async () => {
++	for (const worker of workers) worker.process.kill();
++	await Promise.all(
++		workers.map(async worker => {
++			await worker.process.exited;
++			await worker.read;
++			await worker.stderr;
++		}),
++	);
++	workers.length = 0;
++	await fs.rm(directory, { recursive: true, force: true });
++});
++
++it.each([false, true])("双进程同一未命中：开关为 %s 时保持对应调用数与冻结预览", async enabled => {
++	const pairWorkers = await pair(enabled);
++	for (const worker of pairWorkers) worker.send({ type: "render", id: "shared" });
++	const previews = await Promise.all(pairWorkers.map(worker => worker.event("rendered", "shared")));
++	await until(() => pairWorkers.reduce((sum, worker) => sum + worker.calls.length, 0) >= (enabled ? 1 : 2));
++	await Bun.sleep(100);
++	expect(pairWorkers.reduce((sum, worker) => sum + worker.calls.length, 0)).toBe(enabled ? 1 : 2);
++	for (const worker of pairWorkers) for (const call of worker.calls) worker.send({ type: "reply", call: call.call });
++	const done = await Promise.all(pairWorkers.map(worker => worker.event("done", "shared")));
++	for (let i = 0; i < done.length; i++) {
++		expect(done[i].rendered).toEqual(previews[i].rendered);
++		expect(done[i].fresh).toEqual([compressed]);
++	}
++	using db = new Database(dbPath, { readonly: true });
++	const table = db.query("SELECT name FROM sqlite_master WHERE name = 'skill_description_claims'").get();
++	expect(Boolean(table)).toBe(enabled);
++	if (enabled) expect(claims()).toBe(0);
++	console.log(
++		JSON.stringify({
++			scenario: "two-process-miss",
++			enabled,
++			pids: pairWorkers.map(worker => worker.process.pid),
++			compressionCalls: pairWorkers.reduce((sum, worker) => sum + worker.calls.length, 0),
++			renderMs: previews.map(event => event.elapsedMs),
++		}),
++	);
++});
++
++it("另一真实进程复用已成功缓存，不启动压缩", async () => {
++	const [first, second] = await pair();
++	first.send({ type: "render", id: "first" });
++	const call = await first.event("compress", "first");
++	first.send({ type: "reply", call: call.call });
++	await first.event("done", "first");
++	second.send({ type: "render", id: "cached" });
++	expect((await second.event("done", "cached")).rendered).toEqual([compressed]);
++	expect(second.calls).toHaveLength(0);
++	expect(claims()).toBe(0);
++});
++
++it("排队期间另一进程完成后复用，排队任务不提前占用租约", async () => {
++	const [queued, writer] = await pair();
++	queued.send({ type: "render", id: "blockers", names: ["one", "two", "three", "four"] });
++	await until(() => queued.calls.length === 4);
++	queued.send({ type: "render", id: "queued" });
++	await queued.event("rendered", "queued");
++	expect(claims()).toBe(4);
++	writer.send({ type: "render", id: "writer" });
++	const call = await writer.event("compress", "writer");
++	writer.send({ type: "reply", call: call.call });
++	await writer.event("done", "writer");
++	for (const call of queued.calls) queued.send({ type: "reply", call: call.call });
++	await queued.event("done", "queued");
++	expect(queued.calls).toHaveLength(4);
++	expect(claims()).toBe(0);
++});
++
++it("等待其他进程时释放压缩槽，独立技能继续执行", async () => {
++	const [owner, waiting] = await pair();
++	owner.send({ type: "render", id: "owners", names: ["one", "two", "three", "four"] });
++	await until(() => owner.calls.length === 4);
++	waiting.send({ type: "render", id: "waiting", names: ["one", "two", "three", "four", "independent"] });
++	const independent = await waiting.event("compress", "waiting");
++	expect(independent.name).toBe("independent");
++	waiting.send({ type: "reply", call: independent.call });
++	for (const call of owner.calls) owner.send({ type: "reply", call: call.call });
++	await waiting.event("done", "waiting");
++	expect(waiting.calls).toHaveLength(1);
++	expect(claims()).toBe(0);
++});
++
++it("持有者模型失败后释放认领，等待进程恢复压缩", async () => {
++	const [owner, waiting] = await pair();
++	owner.send({ type: "render", id: "owner" });
++	const first = await owner.event("compress", "owner");
++	waiting.send({ type: "render", id: "waiting" });
++	await waiting.event("rendered", "waiting");
++	owner.send({ type: "reply", call: first.call, error: "本地模拟传输失败" });
++	const retry = await waiting.event("compress", "waiting");
++	waiting.send({ type: "reply", call: retry.call });
++	expect((await waiting.event("done", "waiting")).fresh).toEqual([compressed]);
++	expect(claims()).toBe(0);
++});
++
++it("持有者真正终止后按短租约恢复，并清理无关过期认领", async () => {
++	const [owner, waiting] = await pair(true, 450);
++	owner.send({ type: "render", id: "owner" });
++	await owner.event("compress", "owner");
++	waiting.send({ type: "render", id: "waiting" });
++	await waiting.event("rendered", "waiting");
++	owner.process.kill();
++	await owner.process.exited;
++	using db = new Database(dbPath);
++	db.run("INSERT INTO skill_description_claims VALUES ('abandoned', 'terminated', ?)", [Date.now() - 1]);
++	const retry = await waiting.event("compress", "waiting");
++	waiting.send({ type: "reply", call: retry.call });
++	await waiting.event("done", "waiting");
++	expect(claims()).toBe(0);
++});
++
++it("租约过期接管后，旧持有者迟到结果不能覆盖成功缓存", async () => {
++	const [old, current] = await pair(true, 300);
++	old.send({ type: "render", id: "old" });
++	const stale = await old.event("compress", "old");
++	current.send({ type: "render", id: "current" });
++	const replacement = await current.event("compress", "current");
++	current.send({ type: "reply", call: replacement.call, text: "New successful routing description." });
++	await current.event("done", "current");
++	old.send({ type: "reply", call: stale.call, text: "Old delayed routing description." });
++	expect((await old.event("done", "old")).fresh).toEqual(["New successful routing description."]);
++	expect(claims()).toBe(0);
++});
++
++it("无效模型结果阻止同模型重复请求，换模型后可继续", async () => {
++	const [owner, waiting] = await pair();
++	owner.send({ type: "render", id: "invalid" });
++	const invalid = await owner.event("compress", "invalid");
++	waiting.send({ type: "render", id: "waiting" });
++	await waiting.event("rendered", "waiting");
++	owner.send({ type: "reply", call: invalid.call, text: "Invalid\nmultiple lines" });
++	await waiting.event("done", "waiting");
++	expect(waiting.calls).toHaveLength(0);
++	expect(claims()).toBe(0);
++	waiting.send({ type: "render", id: "new-model", model: "test/new" });
++	const replacement = await waiting.event("compress", "new-model");
++	waiting.send({ type: "reply", call: replacement.call });
++	expect((await waiting.event("done", "new-model")).fresh).toEqual([compressed]);
++	expect(claims()).toBe(0);
++});
++
++it("关闭等待进程不释放他人的认领", async () => {
++	const [owner, waiting] = await pair();
++	owner.send({ type: "render", id: "owner" });
++	const call = await owner.event("compress", "owner");
++	waiting.send({ type: "render", id: "waiting" });
++	await waiting.event("rendered", "waiting");
++	await waiting.close();
++	expect(claims()).toBe(1);
++	owner.send({ type: "reply", call: call.call });
++	await owner.event("done", "owner");
++	expect(claims()).toBe(0);
++});
++
++it("持有者关闭到达原有排空期限后释放租约，等待者无需等45秒", async () => {
++	const [owner, waiting] = await pair();
++	owner.send({ type: "render", id: "owner" });
++	await owner.event("compress", "owner");
++	waiting.send({ type: "render", id: "waiting" });
++	await waiting.event("rendered", "waiting");
++	const closing = owner.close();
++	const retry = await waiting.event("compress", "waiting");
++	waiting.send({ type: "reply", call: retry.call });
++	await waiting.event("done", "waiting");
++	await closing;
++	expect(claims()).toBe(0);
++}, 12_000);
+diff --git a/packages/coding-agent/test/fixtures/skill-description-worker.ts b/packages/coding-agent/test/fixtures/skill-description-worker.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/coding-agent/test/fixtures/skill-description-worker.ts
+@@ -0,0 +1,65 @@
++import * as path from "node:path";
++import { createInterface } from "node:readline";
++import { SkillDescriptionCatalog, SkillDescriptionStore } from "../../src/extensibility/skill-descriptions";
++import type { Skill } from "../../src/extensibility/skills";
++
++const [dbPath, enabled, leaseMs] = process.argv.slice(2);
++if (!dbPath) throw new Error("需要隔离的缓存路径");
++globalThis.fetch = (() => {
++	throw new Error("技能缓存测试禁止网络请求");
++}) as unknown as typeof fetch;
++const store = SkillDescriptionStore.open(dbPath, leaseMs ? { leaseMs: Number(leaseMs) } : undefined);
++const replies = new Map<string, ReturnType<typeof Promise.withResolvers<string>>>();
++const emit = (event: Record<string, unknown>) =>
++	process.stdout.write(`${JSON.stringify({ pid: process.pid, ...event })}\n`);
++const description =
++	"Use when planning or reviewing multi-step data migrations across services, checking rollout dependencies, preserving data consistency, and preparing safe rollback procedures.";
++emit({ type: "ready" });
++for await (const line of createInterface({ input: process.stdin })) {
++	const command = JSON.parse(line);
++	if (command.type === "render") {
++		const entries: Skill[] = (command.names ?? ["migrations"]).map((name: string) => ({
++			name,
++			description,
++			filePath: path.join(path.dirname(dbPath), name, "SKILL.md"),
++			baseDir: path.join(path.dirname(dbPath), name),
++			source: "native:project",
++		}));
++		const catalog = new SkillDescriptionCatalog({
++			store,
++			reuseCache: enabled === "true",
++			compress: {
++				modelKey: () => command.model ?? "test/fast",
++				compress: async name => {
++					const call = `${command.id}:${name}`;
++					const reply = Promise.withResolvers<string>();
++					replies.set(call, reply);
++					emit({ type: "compress", id: command.id, call, name });
++					return reply.promise;
++				},
++			},
++		});
++		const started = performance.now();
++		const rendered = catalog.render(entries).map(skill => skill.description);
++		emit({ type: "rendered", id: command.id, rendered, elapsedMs: performance.now() - started });
++		void catalog.waitForPending().then(() =>
++			emit({
++				type: "done",
++				id: command.id,
++				rendered: catalog.render(entries).map(skill => skill.description),
++				fresh: new SkillDescriptionCatalog({ store }).render(entries).map(skill => skill.description),
++			}),
++		);
++	} else if (command.type === "reply") {
++		const reply = replies.get(command.call);
++		if (!reply) throw new Error("未知的测试压缩调用");
++		replies.delete(command.call);
++		if (command.error) reply.reject(new Error(command.error));
++		else reply.resolve(command.text ?? "Use for planning and reviewing data migrations.");
++	} else if (command.type === "close") {
++		await store.close();
++		emit({ type: "closed" });
++		process.exit(0);
++	}
++}
++await store.close();
