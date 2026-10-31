@@ -8,6 +8,8 @@
 
 运行时包保存到 `artifacts/runtime-windows-x64`，包含 `omp.exe`、`LICENSE.omp`、上游 `THIRD-PARTY-NOTICES.txt` 和逐文件 SHA-256 manifest。生成协议与 Rust RPC 客户端来自同一已打补丁的源码。协议烟测、类型和 Rust 编译检查通过后才保留该候选；错误恢复会还原替换前文件。
 
+OMP 18.14.1 将第三方许可拆分到 `packages/coding-agent` 和 `packages/natives`。桌面打包合并这两份 notices 的全文，和上游 `--license` 使用相同的组件来源。
+
 替换前的文件摘要和恢复记录保存在 `artifacts/.staging-runtime-*`。文件占用导致回滚未完成时，该目录会保留并在错误中显示；解除占用后重新运行原构建命令，会先校验并恢复上次替换，再开始构建。目标出现手工修改时，会保留修改和原备份并提示冲突位置；保存或移开修改后可重试。恢复完成前应保留该目录。
 
 `bun run build:desktop` 再生成 NSIS 安装器，默认输出到 `build/desktop-msvc/release/bundle/nsis`。缓存默认位于仓库 `.cache`；脚本发现系统 MSVC 与 SDK，或使用显式环境变量，不依赖维护者的磁盘布局。`OMP_SOURCE_ROOT` 可提供本地只读克隆源，默认从锁定上游远程克隆。

@@ -11,7 +11,8 @@ export async function packageRuntime(): Promise<string> {
   if (!await binary.exists()) throw new Error('The OMP release builder did not produce its Windows runtime binary.');
   await fs.copyFile(path.join(upstreamRoot, 'packages/coding-agent/binaries/omp-windows-x64.exe'), path.join(output, executable));
   await fs.copyFile(path.join(upstreamRoot, 'LICENSE'), path.join(output, 'LICENSE.omp'));
-  await fs.copyFile(path.join(upstreamRoot, 'THIRD-PARTY-NOTICES.txt'), path.join(output, 'THIRD-PARTY-NOTICES.txt'));
+  const notices = await Promise.all(['packages/coding-agent/THIRD-PARTY-NOTICES.txt', 'packages/natives/THIRD-PARTY-NOTICES.txt'].map(file => fs.readFile(path.join(upstreamRoot, file), 'utf8')));
+  await fs.writeFile(path.join(output, 'THIRD-PARTY-NOTICES.txt'), notices.map(text => text.trimEnd()).join('\n\n') + '\n', 'utf8');
   const files = [];
   for (const name of [executable, 'LICENSE.omp', 'THIRD-PARTY-NOTICES.txt']) {
     const data = await Bun.file(path.join(output, name)).bytes();
