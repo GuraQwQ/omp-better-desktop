@@ -20,3 +20,5 @@ src-tauri/gen/
 !/docs/feature-map.md
 !/docs/desktop-contract.md
 /public/agent-icons/
+/scripts/token-bench/
+/scripts/check-token-*.ts

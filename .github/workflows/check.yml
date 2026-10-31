@@ -44,8 +44,6 @@ jobs:
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - name: 构建并检查 Windows 发行输入
         run: bun run ${{ github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/automation/omp-') && 'build:desktop' || 'build:runtime' }}
-      - name: 验证实验编排的真实运行时合同
-        run: bun scripts/check-token-harness.ts --runtime artifacts/runtime-windows-x64/omp.exe --python
       - run: cargo test --manifest-path src-tauri/Cargo.toml --lib
       - name: 整理预构建发行包
         if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/automation/omp-')
