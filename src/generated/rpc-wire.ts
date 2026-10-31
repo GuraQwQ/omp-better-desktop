@@ -1522,6 +1522,31 @@ export type RpcNotification = ReadyEvent | PromptResultEvent | SessionSettledEve
 /** Any frame the server writes to stdout (after reassembling `rpc_chunk` sequences), discriminated by `type`. */
 export type RpcServerFrame = RpcResponse | RpcHostRequest | RpcNotification;
 
+export interface DesktopManageParams {
+	resource: string;
+	action: string;
+	args?: Record<string, unknown>;
+}
+
+export interface DesktopManageResult {
+	items?: Record<string, unknown>[];
+	item?: Record<string, unknown>;
+	models?: Record<string, unknown>[];
+	presets?: Record<string, unknown>[];
+	message?: string;
+	storage?: string;
+	activePreset?: string;
+	restartRequired?: boolean;
+	ok?: boolean;
+	status?: string;
+	role?: string;
+	modelId?: string;
+	source?: string;
+	warnings?: string[];
+	info?: unknown;
+	result?: unknown;
+}
+
 export interface DesktopSettingsParams {
 	operation: "list" | "set" | "unset";
 	key?: string;
@@ -1917,6 +1942,7 @@ export interface GetBtwHistoryResult {
 
 /** Every RPC command's parameters and successful response `data`. */
 export interface RpcWireCommands {
+	desktop_manage: { params: DesktopManageParams; result: DesktopManageResult };
 	desktop_settings: { params: DesktopSettingsParams; result: DesktopSettingsResult };
 	desktop_commands: { params: undefined; result: DesktopCommandsResult };
 	negotiate_protocol: { params: NegotiateProtocolParams; result: NegotiateProtocolResult };

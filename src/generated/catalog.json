@@ -464,6 +464,9 @@
     "description": "Force next turn to use a specific tool",
     "surface": "prompt",
     "rpc": true,
+    "aliases": [
+      "force:"
+    ],
     "source": "packages/coding-agent/src/slash-commands/builtin-control.ts"
   },
   {
@@ -504,6 +507,9 @@
     "description": "Quit the application",
     "surface": "terminal",
     "rpc": false,
+    "aliases": [
+      "q"
+    ],
     "source": "packages/coding-agent/src/slash-commands/builtin-control.ts"
   },
   {
@@ -664,6 +670,9 @@
     "description": "Move this session into a new worktree, changes included",
     "surface": "prompt",
     "rpc": true,
+    "aliases": [
+      "worktree"
+    ],
     "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
   },
   {
@@ -720,6 +729,9 @@
     "description": "View and manage installed plugins",
     "surface": "prompt",
     "rpc": true,
+    "aliases": [
+      "plugin"
+    ],
     "source": "packages/coding-agent/src/slash-commands/builtin-marketplace.ts"
   },
   {
@@ -752,6 +764,9 @@
     "description": "Open provider setup",
     "surface": "settings",
     "rpc": false,
+    "aliases": [
+      "providers"
+    ],
     "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
   },
   {
@@ -816,13 +831,16 @@
     "description": "Switch model for this session",
     "surface": "models",
     "rpc": true,
+    "aliases": [
+      "models"
+    ],
     "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
   },
   {
     "name": "switch",
     "kind": "slash",
     "description": "",
-    "surface": "models",
+    "surface": "prompt",
     "rpc": true,
     "source": "packages/coding-agent/src/slash-commands/builtin-modes.ts"
   },
@@ -976,6 +994,9 @@
     "description": "Open Extension Control Center dashboard",
     "surface": "extensions",
     "rpc": false,
+    "aliases": [
+      "status"
+    ],
     "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
   },
   {
@@ -1008,6 +1029,9 @@
     "description": "Open the live Agent Hub (subagents, including finished ones)",
     "surface": "agents",
     "rpc": false,
+    "aliases": [
+      "subagents"
+    ],
     "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
   },
   {
@@ -1016,6 +1040,9 @@
     "description": "Rewind to a previous message, keeping the old path as a branch",
     "surface": "tree",
     "rpc": false,
+    "aliases": [
+      "rewind"
+    ],
     "source": "packages/coding-agent/src/slash-commands/builtin-session.ts"
   },
   {
@@ -1065,6 +1092,14 @@
     "surface": "terminal",
     "rpc": false,
     "source": "packages/coding-agent/src/slash-commands/builtin-skills.ts"
+  },
+  {
+    "name": "seance",
+    "kind": "slash",
+    "description": "Consult a saved session without resuming it",
+    "surface": "terminal",
+    "rpc": false,
+    "source": "packages/coding-agent/src/slash-commands/seance.ts"
   },
   {
     "name": "read",
@@ -1296,6 +1331,13 @@
     "description": "",
     "surface": "tools",
     "source": "packages/coding-agent/src/tools/builtin-names.ts"
+  },
+  {
+    "name": "desktop_manage",
+    "kind": "rpc",
+    "description": "使用原生管理器配置桌面运行时资源。",
+    "surface": "rpc",
+    "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
   },
   {
     "name": "desktop_settings",

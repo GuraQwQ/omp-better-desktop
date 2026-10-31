@@ -113,7 +113,7 @@ Generated from upstream `c29f7c56f5530d805bb2887ade964aa55970d8e1`. This is an i
 | slash | `loop` | terminal |
 | slash | `queue` | terminal |
 | slash | `model` | models |
-| slash | `switch` | models |
+| slash | `switch` | prompt |
 | slash | `fast` | prompt |
 | slash | `slow` | prompt |
 | slash | `skillful` | prompt |
@@ -144,6 +144,7 @@ Generated from upstream `c29f7c56f5530d805bb2887ade964aa55970d8e1`. This is an i
 | slash | `logout` | providers |
 | slash | `mcp` | mcp |
 | slash | `skills` | terminal |
+| slash | `seance` | terminal |
 | tool | `read` | tools |
 | tool | `bash` | tools |
 | tool | `edit` | tools |
@@ -177,6 +178,7 @@ Generated from upstream `c29f7c56f5530d805bb2887ade964aa55970d8e1`. This is an i
 | tool | `yield` | tools |
 | tool | `goal` | tools |
 | tool | `think` | tools |
+| rpc | `desktop_manage` | rpc |
 | rpc | `desktop_settings` | rpc |
 | rpc | `desktop_commands` | rpc |
 | rpc | `negotiate_protocol` | rpc |

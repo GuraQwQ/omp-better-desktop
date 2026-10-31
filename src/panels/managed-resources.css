@@ -1,0 +1,53 @@
+.managed-resources { min-width: 0; margin-bottom: 34px; }
+.managed-header { display: flex; gap: 16px; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+.managed-header h2 { margin-bottom: 8px; }
+.managed-header p, .managed-intro { color: var(--secondary); font-size: 12px; line-height: 1.7; margin-bottom: 0; max-width: 65ch; }
+.managed-header > button { flex-shrink: 0; }
+.managed-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.managed-toolbar > input { flex: 1; width: 100%; }
+.managed-feedback, .managed-notice { margin: 12px 0; font-size: 12px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.managed-feedback { color: var(--danger); }
+.managed-feedback p { margin-bottom: 4px; }
+.managed-notice { color: var(--secondary); }
+.managed-empty { padding: 16px 0; color: var(--secondary); font-size: 12px; }
+.managed-item { border-bottom: 1px solid var(--line-soft); padding: 17px 0; min-width: 0; }
+.managed-item-title strong { font-weight: 550; overflow-wrap: anywhere; }
+.managed-item-title > p { color: var(--secondary); font-size: 12px; line-height: 1.7; margin: 7px 0 0; max-width: 65ch; overflow-wrap: anywhere; }
+.managed-meta { display: flex; gap: 6px 14px; flex-wrap: wrap; color: var(--muted); font-size: 11px; margin-top: 4px; }
+.managed-meta > span { overflow-wrap: anywhere; max-width: 100%; }
+.managed-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
+.managed-actions > button:first-child { margin-left: -10px; }
+.managed-form { border-bottom: 1px solid var(--line); padding: 4px 0 22px; margin-bottom: 6px; }
+.managed-form fieldset { display: grid; gap: 14px; margin: 12px 0; }
+.managed-form .managed-actions > button:first-child { margin-left: 0; }
+.managed-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.managed-field { display: grid; gap: 6px; font-size: 12px; color: var(--secondary); min-width: 0; }
+.managed-field input, .managed-field textarea { width: 100%; }
+.managed-detail { margin-top: 12px; min-width: 0; }
+.managed-detail > summary { display: flex; align-items: center; gap: 6px; color: var(--secondary); padding: 5px 0; font-size: 12px; width: fit-content; }
+.managed-detail > summary svg { transition: transform var(--motion-fast) var(--ease-enter); }
+.managed-detail[open] > summary svg { transform: rotate(180deg); }
+.managed-detail[open] > .managed-field { margin-top: 12px; }
+.managed-path { display: block; overflow-wrap: anywhere; color: var(--muted); font-size: 11px; margin-top: 8px; }
+.managed-preview { max-height: 360px; overflow: auto; padding: 12px; background: var(--hover); border-radius: 6px; font-size: 12px; line-height: 1.7; white-space: pre-wrap; margin-bottom: 10px; }
+.managed-confirm { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 12px; }
+.managed-confirm > span { color: var(--secondary); overflow-wrap: anywhere; }
+.managed-confirm .managed-danger { color: var(--danger); }
+.managed-inline-form, .managed-file-input, .managed-setting-control { display: flex; align-items: center; gap: 6px; }
+.managed-inline-form > input, .managed-file-input > input, .managed-setting-control > input, .managed-setting-control > textarea, .managed-setting-control > .select-control { flex: 1; width: 100%; min-width: 0; }
+.managed-plugin-setting { border-bottom: 1px solid var(--line-soft); padding: 14px 0; }
+.managed-plugin-setting label strong { display: block; font-size: 12px; font-weight: 500; }
+.managed-plugin-setting label small { display: block; margin-top: 3px; line-height: 1.6; }
+.managed-setting-control { margin-top: 8px; }
+.managed-features { display: flex; gap: 8px 20px; flex-wrap: wrap; margin-bottom: 8px; }
+.managed-features > label, .managed-checkbox { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 6px 0; }
+.managed-features input, .managed-checkbox input { accent-color: var(--accent); width: 14px; height: 14px; margin: 0; }
+.managed-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 20px 0; border-bottom: 1px solid var(--line-soft); }
+.managed-tabs > button { color: var(--secondary); padding: 8px 12px; border-bottom: 1px solid transparent; }
+.managed-tabs > button[aria-pressed="true"] { color: var(--text); border-bottom-color: var(--text); }
+.managed-tabs > button:hover { background: var(--hover); }
+.managed-market-catalog { padding: 10px 0 0 12px; }
+.managed-market-plugin { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 12px 0; }
+.managed-market-plugin > div { min-width: 0; }
+.managed-market-plugin p { font-size: 12px; color: var(--secondary); margin: 5px 0 0; line-height: 1.7; }
+@media (max-width: 760px) { .managed-columns { grid-template-columns: 1fr; } .managed-header { gap: 8px; } .managed-toolbar { flex-wrap: wrap; } .managed-toolbar > input { flex-basis: 100%; } .managed-setting-control { flex-wrap: wrap; } .managed-setting-control > input, .managed-setting-control > textarea, .managed-setting-control > .select-control { flex-basis: 100%; } .managed-file-input { align-items: stretch; flex-direction: column; } }

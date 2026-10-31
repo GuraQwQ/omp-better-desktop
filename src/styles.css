@@ -1,4 +1,5 @@
 @import url('./tokens.css');
+@import url('./motion.css');
 
 * { box-sizing: border-box; }
 body { margin: 0; font-family: var(--font-ui); font-size: 13px; line-height: 1.5; background: var(--surface); color: var(--text); -webkit-font-smoothing: antialiased; }
@@ -290,13 +291,34 @@ kbd { font-size: 11px; color: var(--muted); }
 @keyframes pulse { 50% { opacity: .35; } }
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes pop-in { from { opacity: 0; transform: translateY(4px) scale(.97); } }
+@keyframes panel-enter { from { opacity: 0; transform: translateX(-4px); } }
+@keyframes content-enter { from { opacity: 0; transform: translateY(3px); } }
+@keyframes inspector-enter { from { opacity: 0; transform: translateX(8px); } }
+@keyframes surface-exit { to { opacity: 0; transform: translateY(2px) scale(.99); } }
+@keyframes fade-out { to { opacity: 0; } }
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
-button, summary { transition: background-color var(--motion-fast) ease, color var(--motion-fast) ease, border-color var(--motion-fast) ease; }
+button, summary { transition: background-color var(--motion-feedback) ease, color var(--motion-feedback) ease, border-color var(--motion-feedback) ease; }
+.icon-button, .primary-button, .new-conversation { transition: background-color var(--motion-feedback) ease, color var(--motion-feedback) ease, border-color var(--motion-feedback) ease, transform var(--motion-fast) var(--ease-enter); }
+.icon-button:active:not(:disabled) { transform: scale(.94); }
+.primary-button:active:not(:disabled), .new-conversation:active:not(:disabled) { transform: translateY(1px); }
 summary > svg:first-child, .usage-disclosure-icon { transition: transform var(--motion-fast) var(--ease-enter); }
 .capture-switch { transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease; }
 .capture-switch::before { transition: transform var(--motion-fast) var(--ease-enter), background-color var(--motion-fast) ease; }
-.attachment-menu, .model-picker, .select-menu, .file-mention-menu, .error-toast, .error-banner, .settings-question, .jump-latest, .session-usage[open] .usage-details, .more-menu[open] > .ui-menu, .command-dialog[open], .context-dialog[open] { animation: pop-in var(--motion-med) var(--ease-enter) both; }
+.attachment-menu, .model-picker, .select-menu, .file-mention-menu, .error-toast, .error-banner, .settings-question, .jump-latest, .session-usage[open] .usage-details, .more-menu[open] > .ui-menu { animation: pop-in var(--motion-fast) var(--ease-enter) both; }
+.attachment-menu, .model-picker, .file-mention-menu, .usage-details { transform-origin: bottom left; }
+.more-menu > .ui-menu { transform-origin: top right; }
+.command-dialog[open], .context-dialog[open] { animation: pop-in var(--motion-med) var(--ease-enter) both; }
+:is(.ui-menu, .command-dialog, .context-dialog)[data-exiting='true'] { pointer-events: none; animation: surface-exit var(--motion-exit) var(--ease-exit) both; }
+dialog[data-exiting='true'] { display: block; transition: overlay var(--motion-exit) allow-discrete; }
+dialog[data-exiting='true']::backdrop { background: transparent; }
+@supports selector(details::details-content) {
+  :is(.more-menu, .session-usage)::details-content { opacity: 0; transition: opacity var(--motion-exit) var(--ease-exit), content-visibility var(--motion-exit) allow-discrete; }
+  :is(.more-menu, .session-usage)[open]::details-content { opacity: 1; transition-duration: var(--motion-fast); }
+}
 .command-dialog[open]::backdrop, .context-dialog[open]::backdrop { animation: fade-in var(--motion-fast) ease both; }
+:root:not([data-motion='reduced']) .settings-content { animation: content-enter var(--motion-panel) var(--ease-enter); }
+:root:not([data-motion='reduced']) .inspector { animation: inspector-enter var(--motion-panel) var(--ease-enter); }
+:root:not([data-motion='reduced']) :is(.tool-steps-body, .tool-result-body, .thinking-body, .context-fold-body) { animation: content-enter var(--motion-fast) var(--ease-enter); }
 .message-actions { opacity: 0; transition: opacity var(--motion-fast) ease; }
 .message:hover .message-actions, .message-actions:focus-within, .message-actions:has(> .quiet-button) { opacity: 1; }
 .composer-input > textarea { field-sizing: content; }
@@ -316,4 +338,3 @@ summary > svg:first-child, .usage-disclosure-icon { transition: transform var(--
 @media (max-width: 1120px) { .app-shell { grid-template-columns: 210px minmax(0, 1fr); } .composer-area { padding-right: 22px; padding-left: 22px; } .welcome { padding-left: 26px; padding-right: 26px; } .inspector { position: absolute; right: 0; top: 0; bottom: 0; width: 360px; min-width: 260px; max-width: calc(100% - 20px); z-index: 8; box-shadow: var(--shadow); } .settings-content { padding: 28px 24px; } .effort-select { max-width: 62px; } }
 @media (max-width: 960px) { .app-shell { grid-template-columns: 190px minmax(0, 1fr); } .sidebar { padding-left: 8px; padding-right: 8px; } .sidebar kbd { display: none; } .starter-actions { flex-direction: column; width: 230px; } .starter-actions button { justify-content: space-between; } .settings-nav { width: 135px; padding-left: 12px; } .workspace-actions .quiet-button span { display: none; } .model-button { max-width: 155px; } .welcome h1 { font-size: 25px; } }
 @media (max-width: 620px) { .app-shell { grid-template-columns: minmax(0, 1fr); } .sidebar { display: none; } .welcome { padding: 30px 20px; } .welcome h1 { font-size: 23px; } .composer-area { padding: 0 14px 12px; } .settings-layout { flex-direction: column; } .settings-nav { width: 100%; display: flex; overflow: auto; padding: 10px; } .settings-nav button { white-space: nowrap; width: auto; } .settings-content { padding: 20px; } .setting-row { gap: 12px; } .transcript { padding: 20px 16px; } }
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } .shimmer-text { animation: none; background: none; -webkit-text-fill-color: currentColor; } }

@@ -3,6 +3,7 @@ import type { CSSProperties, KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown } from 'lucide-react';
 import './select.css';
+import MotionPresence from './MotionPresence';
 
 type Option = { value: string; label: string; disabled?: boolean };
 
@@ -31,6 +32,7 @@ export default function Select({ value, options, onChange, label, disabled = fal
     const width = Math.min(Math.max(rect.width, 144), innerWidth - 16);
     setPosition({ left: Math.max(8, Math.min(rect.left, innerWidth - width - 8)), width,
       maxHeight: Math.min(260, upwards ? above : below),
+      transformOrigin: upwards ? 'bottom left' : 'top left',
       ...(upwards ? { bottom: innerHeight - rect.top + 5 } : { top: rect.bottom + 5 }) });
     setActive(enabled.includes(index) ? index : enabled[0]);
     setOpen(true);
@@ -78,13 +80,13 @@ export default function Select({ value, options, onChange, label, disabled = fal
       onClick={() => open ? setOpen(false) : show()} onKeyDown={keydown}>
       <span>{options.find(option => option.value === value)?.label ?? value}</span><ChevronDown size={13} />
     </button>
-    {open && createPortal(<div ref={menu} id={id} role="listbox" aria-label={label} className="select-menu ui-menu" style={position}>
+    {createPortal(<MotionPresence open={open}><div ref={menu} id={id} role="listbox" aria-label={label} className="select-menu ui-menu" style={position}>
       {options.map((option, index) => <div key={option.value} id={`${id}-${index}`} role="option"
         ref={active === index ? activeOption : undefined} aria-selected={option.value === value} aria-disabled={option.disabled || undefined}
         className={`select-option ${active === index ? 'is-active' : ''}`} onPointerDown={event => event.preventDefault()}
         onPointerMove={() => { if (!option.disabled) setActive(index); }} onClick={() => choose(index)}>
         <span>{option.label}</span>{option.value === value && <Check size={14} />}
       </div>)}
-    </div>, document.body)}
+    </div></MotionPresence>, document.body)}
   </div>;
 }

@@ -8,7 +8,7 @@ export async function request<T = any>(type: string, fields: Json = {}): Promise
   if (native) return invoke<T>('desktop_command', { request: { type, ...fields } });
   if (type === 'bootstrap') return {
     dataRoot: '', runtime: null, projects: [],
-    preferences: { language: navigator.language.startsWith('zh') ? 'zh' : 'en', theme: 'system' },
+    preferences: { language: navigator.language.startsWith('zh') ? 'zh' : 'en', theme: 'system', motion: 'rich' },
   } as Bootstrap as T;
   if (type === 'preferences.set') return fields.patch as T;
   if (type === 'session.list' || type === 'command.catalog') return [] as T;

@@ -34,9 +34,17 @@ jobs:
           python-version: "3.12"
       - run: bun install --frozen-lockfile
       - run: bun run check
+      - name: 检查配置、导入界面与动效逻辑
+        shell: pwsh
+        run: |
+          foreach ($script in Get-ChildItem -LiteralPath scripts -Filter 'check-*.ts' | Sort-Object Name) {
+            bun $script.FullName
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - name: 构建并检查 Windows 发行输入
         run: bun run ${{ github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/automation/omp-') && 'build:desktop' || 'build:runtime' }}
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --lib
       - name: 整理预构建发行包
         if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/automation/omp-')
         shell: pwsh

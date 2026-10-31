@@ -1,6 +1,6 @@
-export interface ComposerDraft<Image> { text: string; images: Image[]; revision: number }
+export interface ComposerDraft<Image> { id: string; text: string; images: Image[]; revision: number }
 
-export const createDraft = <Image,>(text = '', images: Image[] = []): ComposerDraft<Image> => ({ text, images, revision: 0 });
+export const createDraft = <Image,>(text = '', images: Image[] = []): ComposerDraft<Image> => ({ id: crypto.randomUUID(), text, images, revision: 0 });
 
 export function updateDraft<Image>(draft: ComposerDraft<Image>, text: string, images = draft.images) {
   draft.text = text;

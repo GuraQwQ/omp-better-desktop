@@ -1,0 +1,37 @@
+:root[data-motion='rich'] {
+  --motion-fast: 180ms;
+  --motion-med: 260ms;
+  --motion-exit: 120ms;
+  --motion-panel: 220ms;
+}
+:root[data-motion='rich'] .sidebar { background-image: linear-gradient(165deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 58%); }
+:root[data-motion='rich'] .composer { background-image: linear-gradient(130deg, color-mix(in srgb, var(--accent-soft) 65%, transparent), transparent 72%); }
+:root[data-motion='rich'] .composer:focus-within { border-color: var(--accent-line); }
+:root[data-motion='rich'] .composer.is-busy { background-image: linear-gradient(120deg, var(--accent-soft), var(--surface-raised) 78%); }
+:root[data-motion='rich'] :is(.session-item.active, .settings-nav button.active) { background-image: linear-gradient(110deg, color-mix(in srgb, var(--accent) 9%, transparent), transparent); }
+:root[data-motion='rich'] :is(.session-todos-summary, .context-dialog > header, .command-inner > header) { background-image: linear-gradient(105deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 85%); }
+:root[data-motion='rich'] .primary-button { background-image: linear-gradient(120deg, transparent, color-mix(in srgb, var(--on-accent) 12%, transparent)); }
+:root[data-motion='rich'] .icon-button:hover:not(:disabled) { transform: translateY(-1px); }
+:root[data-motion='rich'] .icon-button:active:not(:disabled) { transform: scale(.93); }
+:root[data-motion='rich'] .welcome-symbol span { transform-origin: bottom; animation: welcome-rise 320ms var(--ease-enter) both; }
+:root[data-motion='rich'] .welcome-symbol span:nth-child(2) { animation-delay: 40ms; }
+:root[data-motion='rich'] .welcome-symbol span:nth-child(3) { animation-delay: 80ms; }
+:root[data-motion='rich'] :is(.select-option, .slash-completion-menu [role='option'], .model-picker button):nth-child(-n+6) { animation: content-enter 140ms var(--ease-enter) both; }
+:root[data-motion='rich'] :is(.select-option, .slash-completion-menu [role='option'], .model-picker button):nth-child(2) { animation-delay: 12ms; }
+:root[data-motion='rich'] :is(.select-option, .slash-completion-menu [role='option'], .model-picker button):nth-child(3) { animation-delay: 24ms; }
+:root[data-motion='rich'] :is(.select-option, .slash-completion-menu [role='option'], .model-picker button):nth-child(4) { animation-delay: 36ms; }
+:root[data-motion='rich'] :is(.select-option, .slash-completion-menu [role='option'], .model-picker button):nth-child(5) { animation-delay: 48ms; }
+:root[data-motion='rich'] :is(.select-option, .slash-completion-menu [role='option'], .model-picker button):nth-child(6) { animation-delay: 60ms; }
+:root[data-motion='rich'] :is(.inline-success, .session-todo-task.is-completed .session-todo-status) { animation: feedback-settle 220ms var(--ease-enter); }
+@keyframes welcome-rise { from { opacity: 0; transform: translateY(8px) scaleY(.65); } }
+@keyframes feedback-settle { from { opacity: .5; transform: scale(.85); } }
+
+:root[data-motion='reduced'] { --motion-fast: 80ms; --motion-med: 80ms; --motion-exit: 60ms; }
+:root[data-motion='reduced'] :is(.spin, .working-dot, .skeleton, .session-item i, .session-list .session-item) { animation: none; }
+:root[data-motion='reduced'] .shimmer-text { animation: none; background: none; -webkit-text-fill-color: currentColor; }
+:root[data-motion='reduced'] .skeleton { background: var(--line-soft); }
+:root[data-motion='reduced'] :is(.attachment-menu, .model-picker, .select-menu, .file-mention-menu, .error-toast, .error-banner, .settings-question, .jump-latest, .session-usage[open] .usage-details, .more-menu[open] > .ui-menu, .command-dialog[open], .context-dialog[open]) { animation: fade-in 80ms ease-out both; }
+:root[data-motion='reduced'] :is(.ui-menu, .command-dialog, .context-dialog)[data-exiting='true'] { animation: fade-out 60ms ease-in both; }
+:root[data-motion='reduced'] :is(.command-dialog[open], .context-dialog[open])::backdrop { animation-duration: 80ms; }
+:root[data-motion='reduced'] :is(svg, .capture-switch::before) { transition: none !important; }
+:root[data-motion='reduced'] :is(.icon-button:hover:not(:disabled), .icon-button:active:not(:disabled), .primary-button:active:not(:disabled), .new-conversation:active:not(:disabled)) { transform: none; }

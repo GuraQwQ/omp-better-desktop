@@ -12,8 +12,6 @@
 .session-group[open] > summary > svg { transform: rotate(90deg); }
 .session-group > summary > small { margin-left: auto; font-variant-numeric: tabular-nums; }
 .session-item i.done { opacity: .55; }
-@media (prefers-reduced-motion: no-preference) {
-  .session-list .session-item { animation: fade-in var(--motion-fast) ease; }
-  .session-item i { animation: pulse 2s ease-in-out infinite; }
-  .session-item i.done { animation: pop-in var(--motion-med) var(--ease-enter); }
-}
+:root:not([data-motion='reduced']) .session-list .session-item { animation: fade-in var(--motion-fast) ease; }
+:root:not([data-motion='reduced']) .session-item i { animation: pulse 2s ease-in-out infinite; }
+:root:not([data-motion='reduced']) .session-item i.done { animation: pop-in var(--motion-med) var(--ease-enter); }

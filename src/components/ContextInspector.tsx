@@ -4,6 +4,8 @@ import { RefreshCw, X } from 'lucide-react';
 import { request, rpc } from '../lib/bridge';
 import { copy, localizeError } from '../lib/i18n';
 import { readContextMessages } from '../lib/context-inspection';
+import { normalizeHistoryMessages } from '../lib/session-state';
+import { todoHistory } from '../lib/session-todos';
 import type { Json, Language, SessionView } from '../lib/types';
 import { Fold, Original } from './ContextDetails';
 import RequestCaptures from './RequestCaptures';
@@ -24,6 +26,7 @@ const labels = {
     noMessages: '当前会话没有消息。', section: '提示词段', records: '条消息', definitions: '个工具',
     raw: '原始 JSON', copy: '复制原文', copied: '已复制', state: '会话状态原文', stats: '用量统计原文',
     model: '模型', provider: '提供商', thinking: '思考级别', compaction: '自动压缩', on: '开启', off: '关闭', unknown: '未提供',
+    todos: 'Todo 历史', todoHint: '按时间追溯每次 Todo 更新的阶段、状态和任务详情。', noTodos: '此会话没有 Todo 更新记录。', todoRecords: '次更新',
   },
   en: {
     title: 'Advanced context', close: 'Close advanced context', refresh: 'Refresh snapshot', loading: 'Reading…', retry: 'Retry',
@@ -39,9 +42,10 @@ const labels = {
     noMessages: 'This conversation has no messages.', section: 'Prompt section', records: 'messages', definitions: 'tools',
     raw: 'Raw JSON', copy: 'Copy original', copied: 'Copied', state: 'Raw session state', stats: 'Raw usage statistics',
     model: 'Model', provider: 'Provider', thinking: 'Thinking level', compaction: 'Auto compaction', on: 'On', off: 'Off', unknown: 'Unavailable',
+    todos: 'Todo history', todoHint: 'Trace the phases, status and task details of each Todo update in order.', noTodos: 'This conversation has no Todo updates.', todoRecords: 'updates',
   },
 };
-export default function ContextInspector({ session, language, close }: { session: SessionView; language: Language; close: () => void }) {
+export default function ContextInspector({ session, language, close, exiting = false }: { session: SessionView; language: Language; close: () => void; exiting?: boolean }) {
   const text = labels[language];
   const dialog = useRef<HTMLDialogElement>(null);
   const [revision, setRevision] = useState(0);
@@ -54,15 +58,19 @@ export default function ContextInspector({ session, language, close }: { session
   const [messages, setMessages] = useState<Json | null>(null);
   const [messageError, setMessageError] = useState('');
   const [messagesLoading, setMessagesLoading] = useState(false);
+  const [todosRequested, setTodosRequested] = useState(false);
+  const [todos, setTodos] = useState<ReturnType<typeof todoHistory> | null>(null);
+  const [todosLoading, setTodosLoading] = useState(false);
+  const [todoError, setTodoError] = useState('');
   const messageRevision = useRef(0);
   const identity = `${session.id}:${session.path}:${session.historyOnly}`;
   const currentIdentity = useRef(identity);
   currentIdentity.current = identity;
   useEffect(() => {
     const element = dialog.current;
-    element?.showModal();
     return () => element?.close();
   }, []);
+  useEffect(() => { if (exiting) dialog.current?.close(); else dialog.current?.showModal(); }, [exiting]);
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setState(null); setStats(null); setErrors([]); setCapturedAt('');
@@ -89,15 +97,27 @@ export default function ContextInspector({ session, language, close }: { session
       .finally(() => { if (current()) setMessagesLoading(false); });
     return () => { cancelled = true; };
   }, [identity, revision, messagesRequested]);
+  useEffect(() => {
+    if (!todosRequested) return;
+    let cancelled = false;
+    const current = () => !cancelled && currentIdentity.current === identity;
+    setTodosLoading(true); setTodos(null); setTodoError('');
+    // 历史追溯读取保存的分支日志，保留上下文压缩前的更新。
+    void readContextMessages(session.path ? { ...session, historyOnly: true } : session, current)
+      .then(result => { if (current()) setTodos(todoHistory(normalizeHistoryMessages(result?.messages ?? [], 'todo-history'))); })
+      .catch(error => { if (current()) setTodoError(String(error)); })
+      .finally(() => { if (current()) setTodosLoading(false); });
+    return () => { cancelled = true; };
+  }, [identity, revision, todosRequested]);
 
   const prompt = state?.systemPrompt;
   const tools: Json[] | undefined = state?.dumpTools;
   const entries: Json[] = messages?.messages ?? [];
   const refresh = () => setRevision(value => value + 1);
-  const dismiss = () => { dialog.current?.close(); close(); };
+  const dismiss = close;
   const roleName = (role: string) => language === 'zh' ? ({ user: '用户', assistant: '助手', toolResult: '工具结果', developer: '开发者', custom: '自定义', system: '系统' }[role] ?? role) : role;
   const original = (value: unknown, plain = false) => <Original value={value} plain={plain} language={language} />;
-  return createPortal(<dialog className="context-dialog" ref={dialog} aria-labelledby="context-dialog-title" aria-describedby="context-request-hint" onCancel={event => { event.preventDefault(); dismiss(); }} onClick={event => { if (event.target === dialog.current) dismiss(); }}>
+  return createPortal(<dialog className="context-dialog" ref={dialog} data-exiting={exiting || undefined} inert={exiting} aria-hidden={exiting || undefined} aria-labelledby="context-dialog-title" aria-describedby="context-request-hint" onCancel={event => { event.preventDefault(); dismiss(); }} onClick={event => { if (event.target === dialog.current) dismiss(); }}>
     <header><div><h2 id="context-dialog-title">{text.title}</h2><p>{session.historyOnly ? text.history : text.live}{capturedAt && <> · {text.snapshot} {new Intl.DateTimeFormat(language === 'zh' ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(capturedAt))}</>}</p></div><div className="context-dialog-actions"><button className="icon-button" title={text.refresh} aria-label={text.refresh} disabled={loading || messagesLoading} onClick={refresh}><RefreshCw size={15} /></button><button autoFocus className="icon-button" title={text.close} aria-label={text.close} onClick={dismiss}><X size={17} /></button></div></header>
     <div className="context-dialog-body">
       <p id="context-request-hint" className="context-note">{text.requestHint}</p>
@@ -114,6 +134,10 @@ export default function ContextInspector({ session, language, close }: { session
       </Fold>
       <Fold title={text.tools} meta={tools ? `${tools.length} ${text.definitions}` : undefined}>
         {loading ? <p role="status">{text.loading}</p> : tools ? <>{tools.map((tool, index) => <Fold key={index} title={tool.name}>{original(tool)}</Fold>)}<Fold title={text.raw}>{original(tools)}</Fold></> : <p>{session.historyOnly ? text.noHistoryTools : text.noTools}</p>}
+      </Fold>
+      <Fold title={text.todos} meta={todos ? `${todos.length} ${text.todoRecords}` : undefined} onOpen={() => setTodosRequested(true)}>
+        <p className="context-section-hint">{text.todoHint}</p>
+        {todosLoading ? <p role="status">{text.loading}</p> : todoError ? <div role="alert"><p>{localizeError(todoError, language)}</p><button className="quiet-button" onClick={refresh}>{text.retry}</button></div> : todos && (todos.length ? todos.map((entry, index) => <Fold key={entry.id} title={`${index + 1} · ${entry.operation ?? 'todo'}`} meta={`${entry.completed}/${entry.total}`}>{original({ timestamp: entry.timestamp, operation: entry.operation, phases: entry.phases })}</Fold>) : <p>{text.noTodos}</p>)}
       </Fold>
       <Fold title={text.runtime}>
         {state && <dl className="context-runtime-info">{[

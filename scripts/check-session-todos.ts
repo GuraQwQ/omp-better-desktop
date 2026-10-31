@@ -1,0 +1,47 @@
+import assert from 'node:assert/strict';
+import { readTodoPhases, sessionTodoPhases, summarizeTodos, todoPhasesFromMessage, todoHistory } from '../src/lib/session-todos';
+import { sessionKey } from '../src/lib/session-identity';
+import { applyEvent } from '../src/lib/session-state';
+import type { Message, SessionView } from '../src/lib/types';
+
+const phases = [{ name: '实现', tasks: [{ content: '完成项', status: 'completed' }, { content: '下一项', status: 'pending' }, { content: '正在处理\n保留原文', status: 'in_progress' }] }, { name: '检查', tasks: [{ content: '等待服务', status: 'blocked', blocker: '需要测试环境' }, { content: '放弃项', status: 'abandoned' }] }];
+const parsed = readTodoPhases(phases)!;
+assert.equal(parsed.length, 2);
+assert.equal(parsed[0].tasks[2].content, '正在处理\n保留原文');
+assert.deepEqual(summarizeTodos(parsed), { total: 5, completed: 1, current: parsed[0].tasks[2], allClosed: false });
+assert.equal(summarizeTodos(readTodoPhases([{ name: '', tasks: [{ content: '下一项', status: 'pending' }, { content: '阻塞项', status: 'blocked' }] }])!).current?.content, '下一项');
+assert.equal(summarizeTodos(readTodoPhases([{ name: '', tasks: [{ content: '阻塞项', status: 'blocked' }] }])!).current?.status, 'blocked');
+assert.equal(summarizeTodos(readTodoPhases([{ name: '', tasks: [{ content: '完成', status: 'completed' }, { content: '取消', status: 'abandoned' }] }])!).allClosed, true);
+assert.equal(readTodoPhases({ tasks: [] }), undefined);
+assert.equal(readTodoPhases([{ name: '无效', tasks: [{ content: '不虚构状态', status: 'unknown' }] }]), undefined);
+assert.deepEqual(readTodoPhases([{ name: '空阶段', tasks: [] }, { name: '空文本', tasks: [{ content: ' ', status: 'pending' }] }]), []);
+
+const message: Message = { id: 'todo', role: 'toolResult', toolName: 'todo', content: '日志不是状态', details: { op: 'init', phases } };
+assert.deepEqual(todoPhasesFromMessage(message), parsed);
+assert.equal(todoPhasesFromMessage({ ...message, isError: true }), undefined);
+assert.equal(todoPhasesFromMessage({ ...message, running: true }), undefined);
+assert.equal(todoPhasesFromMessage({ ...message, details: { op: 'view', phases } }), undefined);
+assert.equal(todoPhasesFromMessage({ ...message, toolName: 'read' }), undefined);
+assert.deepEqual(todoPhasesFromMessage({ ...message, result: { details: { op: 'drop', phases: [] } } }), []);
+assert.equal(todoPhasesFromMessage({ ...message, result: { isError: true, details: { phases } } }), undefined);
+
+const session: SessionView = { id: 'A', cwd: 'D:/fixture', status: 'ready', state: {}, messages: [message], pending: [] };
+assert.deepEqual(sessionTodoPhases(session), parsed);
+assert.deepEqual(sessionTodoPhases({ ...session, state: { todoPhases: [] } }), []);
+assert.deepEqual(sessionTodoPhases({ ...session, messages: [message, { ...message, result: { details: { op: 'drop', phases: [] } } }] }), []);
+assert.deepEqual(sessionTodoPhases({ ...session, messages: [message, { ...message, isError: true, details: { phases: [] } }] }), parsed);
+assert.deepEqual(sessionTodoPhases({ ...session, id: 'B', state: {}, messages: [] }), []);
+assert.notEqual(sessionKey(session), sessionKey({ ...session, id: 'B' }));
+assert.equal(sessionKey({ ...session, path: 'D:/fixture/conversation.jsonl' }), sessionKey({ ...session, id: 'reconnected', path: 'd:\\fixture\\conversation.jsonl' }));
+assert.deepEqual(sessionTodoPhases(undefined), []);
+const live = { ...session, state: { todoPhases: [] } };
+const updated = applyEvent(live, { type: 'tool_execution_end', toolCallId: 'todo-live', toolName: 'todo', result: { details: { op: 'init', phases } } });
+assert.deepEqual(updated.state.todoPhases, parsed);
+assert.deepEqual(applyEvent(updated, { type: 'todo_reminder', todos: [{ content: '下一项', status: 'pending' }] }).state.todoPhases, parsed);
+assert.deepEqual(applyEvent(updated, { type: 'todo_auto_clear' }).state.todoPhases, []);
+assert.deepEqual(applyEvent(updated, { type: 'tool_execution_end', toolCallId: 'todo-error', toolName: 'todo', isError: true, result: { details: { phases: [] } } }).state.todoPhases, parsed);
+assert.deepEqual(applyEvent(updated, { type: 'message_end', message: { ...message, id: 'todo-cleared', details: { op: 'drop', phases: [] } } }).state.todoPhases, []);
+const history = todoHistory([message, { ...message, id: 'failed', isError: true }, { ...message, id: 'cleared', result: { details: { op: 'drop', phases: [] } } }]);
+assert.deepEqual(history.map(entry => [entry.id, entry.operation, entry.completed, entry.total]), [['todo', 'init', 1, 5], ['cleared', 'drop', 0, 0]]);
+assert.deepEqual(history[0].phases, parsed);
+console.log('会话任务结构、状态、进度、历史还原、清空与会话隔离检查通过。');

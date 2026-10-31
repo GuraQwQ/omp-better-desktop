@@ -8,7 +8,7 @@ import { prependHistoryPage } from './lib/session-history';
 import { editableEntry, messageImages, retryMessageIndex } from './lib/message-actions';
 import { searchSessions } from './lib/session-search';
 import './components/conversation-actions.css';
-import { terminalCommand } from './lib/command-routes';
+import { mergeCommandEntries, terminalCommand } from './lib/command-routes';
 import { sessionKey, sessionPathKey, storeSession, uniqueSessions } from './lib/session-identity';
 import './components/project-list.css';
 import type { Bootstrap, CatalogEntry, Json, Message, Project, SessionSummary, SessionView } from './lib/types';
@@ -16,6 +16,10 @@ import type { InspectorTab } from './panels/Inspector';
 import Transcript from './components/Transcript';
 import Question from './components/Question';
 import SessionActivity from './components/SessionActivity';
+import SessionTodos from './components/SessionTodos';
+import ConversationLayout from './components/ConversationLayout';
+import { sessionTodoPhases, summarizeTodos } from './lib/session-todos';
+import MotionPresence from './components/MotionPresence';
 import QueuedMessages from './components/QueuedMessages';
 import ComposerInput from './components/ComposerInput';
 import Select from './components/Select';
@@ -26,6 +30,7 @@ import SavedSessions from './components/SavedSessions';
 import { notify, NOTIFY_AFTER_MS } from './lib/notify';
 import { getCurrentWindow, UserAttentionType } from '@tauri-apps/api/window';
 import { version } from '../package.json';
+import { applyMotion, normalizeMotion } from './lib/motion';
 
 const Settings = lazy(() => import('./panels/Settings'));
 const Inspector = lazy(() => import('./panels/Inspector'));
@@ -34,7 +39,8 @@ const CommandPalette = lazy(() => import('./components/CommandPalette'));
 
 // theme-boot.js 在首帧前读取这个缓存，避免深色用户启动时先闪浅色。
 const cachedTheme: Bootstrap['preferences']['theme'] = (() => { try { const value = localStorage.getItem('omp-theme'); return value === 'light' || value === 'dark' ? value : 'system'; } catch { return 'system'; } })();
-const initial: Bootstrap = { dataRoot: '', runtime: null, projects: [], preferences: { language: navigator.language.startsWith('zh') ? 'zh' : 'en', theme: cachedTheme } };
+const cachedMotion = (() => { try { return normalizeMotion(localStorage.getItem('omp-motion')); } catch { return 'rich'; } })();
+const initial: Bootstrap = { dataRoot: '', runtime: null, projects: [], preferences: { language: navigator.language.startsWith('zh') ? 'zh' : 'en', theme: cachedTheme, motion: cachedMotion } };
 const PageSkeleton = ({ label }: { label: string }) => <div className="page-loading" role="status" aria-label={label}><span className="skeleton" style={{ width: '42%' }} /><span className="skeleton" style={{ width: '88%' }} /><span className="skeleton" style={{ width: '64%' }} /></div>;
 type SessionTarget = { source?: SessionView; cwd: string; draftKey: string; revision: number };
 
@@ -55,6 +61,7 @@ export default function App() {
   const [settingsTab, setSettingsTab] = useState('general');
   const [settingsQuery, setSettingsQuery] = useState('');
   const [commandsOpen, setCommandsOpen] = useState(false);
+  const [commandCatalog, setCommandCatalog] = useState<CatalogEntry[]>([]);
   const [sidebar, setSidebar] = useState(true);
   const [inspector, setInspector] = useState<InspectorTab | null>(null);
   const [terminalId, setTerminalId] = useState('');
@@ -111,6 +118,9 @@ export default function App() {
   const showDraft = (value: ComposerDraft<typeof images[number]>) => { if (visibleDraft.current === value) { setDraft(value.text); setImages(value.images); } };
   const changeDraft = (value: ComposerDraft<typeof images[number]>, text: string, attachments = value.images) => { updateDraft(value, text, attachments); showDraft(value); };
   const busy = isSessionRunning(session);
+  const todoProgress = summarizeTodos(sessionTodoPhases(session));
+  const layoutKey = `${sidebar}:${inspector}:${todoProgress.total > 0 && !todoProgress.allClosed}`;
+  const slashCommands = mergeCommandEntries(commandCatalog, session?.state.availableCommands ?? []);
   const pending = Object.values(sessions).flatMap(s => s.pending.map(question => ({ sessionId: s.id, title: s.title, question })));
   const showError = useCallback((value: unknown) => { if (value instanceof DOMException && value.name === 'AbortError') return; setError(value instanceof Error ? value.message : String(value)); }, []);
   abortRef.current = busy && session && !settingsOpen && !commandsOpen ? () => { void rpc(session.id, 'abort').catch(showError); } : undefined;
@@ -156,6 +166,7 @@ export default function App() {
   useEffect(() => { activeIdRef.current = activeId; showDraft(composerDraft); }, [activeId, draftKey]);
   useEffect(activateRuntime, [session?.id, session?.historyOnly]);
   useEffect(() => {
+    void request<CatalogEntry[]>('command.catalog').then(setCommandCatalog).catch(showError);
     request<Bootstrap>('bootstrap').then(value => { setBootstrap(value); if (value.projects.length) { setProject(value.projects[0]); setExpandedProjects(previous => ({ ...previous, [value.projects[0].path]: true })); } }).catch(showError).finally(() => setBooting(false));
     let unlisten: (() => void) | undefined;
     let disposed = false;
@@ -182,7 +193,7 @@ export default function App() {
       }
       if (payload.event.type === 'extension_error' || payload.event.type === 'notice' && payload.event.level === 'error') showError(payload.event.error ?? payload.event.message);
       if (payload.event.type === 'session_settled' && payload.sessionId === activeIdRef.current && !releasedIds.current.has(payload.sessionId)) void refreshSession(payload.sessionId, true).catch(error => { if (!releasedIds.current.has(payload.sessionId)) showError(error); });
-      if (['prompt_result', 'config_update', 'session_info_update'].includes(payload.event.type)) {
+      if (['prompt_result', 'config_update', 'session_info_update', 'todo_reminder'].includes(payload.event.type)) {
         if (sessionsRef.current[payload.sessionId] && !sessionsRef.current[payload.sessionId].historyOnly && !releasedIds.current.has(payload.sessionId)) void rpc(payload.sessionId, 'get_state').then(state => setSessions(old => old[payload.sessionId] && !old[payload.sessionId].historyOnly ? ({ ...old, [payload.sessionId]: { ...old[payload.sessionId], state: { ...old[payload.sessionId].state, ...state }, path: state.sessionFile ?? old[payload.sessionId].path } }) : old)).catch(error => { if (!releasedIds.current.has(payload.sessionId) && !sessionsRef.current[payload.sessionId]?.historyOnly) showError(error); });
       }
       eventQueue.current.push(payload);
@@ -207,6 +218,7 @@ export default function App() {
     try { localStorage.setItem('omp-theme', theme); } catch { /* 缓存只用于下次启动首帧 */ }
     apply(); media.addEventListener('change', apply); return () => media.removeEventListener('change', apply);
   }, [bootstrap.preferences]);
+  useEffect(() => { applyMotion(bootstrap.preferences.motion); }, [bootstrap.preferences.motion]);
   useEffect(() => { if (project) void refreshHistory(project.path); }, [project?.path, activeId]);
   useEffect(() => {
     if (!sessionQuery.trim()) return;
@@ -329,6 +341,29 @@ export default function App() {
     const revision = selectionRevision.current;
     return withRuntime(() => prepareSession(false, { source: sessionsRef.current[activeIdRef.current], cwd, draftKey: activeIdRef.current || `new:${sessionPathKey(cwd)}`, revision }));
   };
+  const reconnectSettingsSession = () => {
+    const target: SessionTarget = { source: sessionsRef.current[activeIdRef.current], cwd, draftKey: activeIdRef.current || `new:${sessionPathKey(cwd)}`, revision: selectionRevision.current };
+    return withRuntime(async () => {
+      if (target.revision !== selectionRevision.current) return;
+      const current = target.source;
+      if (current && !current.historyOnly && !releasedIds.current.has(current.id)) {
+        const closed = await request<Json>('session.close', { id: current.id });
+        releasedIds.current.add(current.id);
+        target.source = { ...current, path: closed.path ?? undefined, historyOnly: true };
+        putSession(target.source);
+      }
+      if (target.revision !== selectionRevision.current) return;
+      await prepareSession(false, target);
+    });
+  };
+  const loadSlashCommands = async () => {
+    if (!cwd || !bootstrap.runtime) return;
+    try {
+      const current = await openSession();
+      const result = await rpc(current.id, 'get_available_commands');
+      setSessions(old => old[current.id] ? { ...old, [current.id]: { ...old[current.id], state: { ...old[current.id].state, availableCommands: result.commands } } } : old);
+    } catch (error) { showError(error); }
+  };
   const openSettings = (tab = 'general', query = '') => {
     setModelPicker(false); setAttachmentMenu(false); setSettingsTab(tab); setSettingsQuery(query); setSettingsOpen(true);
   };
@@ -374,8 +409,7 @@ export default function App() {
     try {
       const slash = /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
       if (slash && !submission.images.length) {
-        const catalog = await request<CatalogEntry[]>('command.catalog');
-        const entry = catalog.find(item => item.kind === 'slash' && item.name === slash[1]);
+        const entry = slashCommands.find(item => item.kind === 'slash' && (item.name === slash[1] || item.aliases?.includes(slash[1])));
         if (entry && navigateCommand(entry, slash[2] ?? '', true)) { if (acknowledgeDraft(submission)) showDraft(submission.draft); return; }
       }
       await withRuntime(async () => {
@@ -469,15 +503,20 @@ export default function App() {
     if (entry.kind === 'slash') {
       if (entry.name === 'new') { run(async current => { await rpc(current.id, 'new_session'); await refreshSession(current.id, true); }); return true; }
       if (['quit', 'exit'].includes(entry.name)) { void closeSession(); return true; }
-      if (entry.name === 'restart') { run(async current => { await request('session.close', { id: current.id }); const opened = await request<Json>('session.open', { cwd: current.cwd, path: current.path }); setSessions(old => { const next: Record<string, SessionView> = { ...old, [opened.id]: { ...current, id: opened.id, state: opened.state, status: 'ready', pending: [] } }; delete next[current.id]; return next; }); setActiveId(opened.id); }); return true; }
+      if (entry.name === 'restart') { void reconnectSettingsSession().catch(showError); return true; }
       if (typed && entry.name === 'btw' && args.trim()) { run(async current => { await rpc(current.id, 'btw', { question: args }); }); return true; }
       if (typed && entry.name === 'queue' && args.trim()) { run(async current => { await rpc(current.id, 'follow_up', { message: args }); await refreshSession(current.id); }); return true; }
+    }
+    if (!args.trim()) {
+      const settingPages: Record<string, string> = { mcp: 'mcp', extensions: 'plugins', plugins: 'plugins', marketplace: 'plugins', skills: 'skills', ssh: 'ssh', agents: 'agents', modelpreset: 'models' };
+      const page = entry.kind === 'slash' ? settingPages[entry.name] : undefined;
+      if (page) { void openSettings(page); return true; }
     }
     if (typed && entry.rpc !== false) return false;
     const surface = args.trim() ? undefined : entry.kind === 'slash' && entry.name === 'setup' ? 'providers' : entry.surface;
     if (surface === 'settings' || surface === 'providers') { void openSettings(surface === 'settings' ? 'omp' : 'providers'); return true; }
     if (surface === 'models') { void toggleModels(); return true; }
-    const panels: Record<string, InspectorTab> = { context: 'context', usage: 'context', diff: 'review', agents: 'agents', jobs: 'tasks', tree: 'tree', tools: 'context' };
+    const panels: Record<string, InspectorTab> = { context: 'context', diff: 'review', agents: 'agents', jobs: 'tasks', tree: 'tree', tools: 'context' };
     if (surface && panels[surface]) { setSettingsOpen(false); setInspector(panels[surface]); return true; }
     if (surface === 'sessions') { setSettingsOpen(false); setSidebar(true); return true; }
     const input = terminalCommand(entry, args);
@@ -529,10 +568,10 @@ export default function App() {
       <div className="sidebar-bottom"><button className={`nav-item ${settingsOpen ? 'selected' : ''}`} onClick={() => settingsOpen ? setSettingsOpen(false) : openSettings('general')}><Settings2 size={16} /><span>{t.settings}</span></button><div className="runtime-pill"><span className={`status-dot ${bootstrap.runtime ? 'connected' : ''}`} /><span>{bootstrap.runtime ? `OMP ${bootstrap.runtime.version}` : t.notInstalled}</span><span className="version">v{version}</span></div></div>
     </aside>}
     <main className="main-area">
-      {settingsOpen ? <Suspense fallback={<PageSkeleton label={t.loading} />}><Settings key={`${settingsTab}:${settingsQuery}`} initialQuery={settingsQuery} initialTab={settingsTab} bootstrap={bootstrap} t={t} sessionId={session && !session.historyOnly ? session.id : undefined} ensureSession={cwd && bootstrap.runtime ? () => openSession().then(current => current.id) : undefined} update={setBootstrap} onError={showError} close={() => setSettingsOpen(false)} /></Suspense> : <>
+      {settingsOpen ? <Suspense fallback={<PageSkeleton label={t.loading} />}><Settings key={`${settingsTab}:${settingsQuery}`} initialQuery={settingsQuery} initialTab={settingsTab} cwd={cwd} reconnectSession={cwd && bootstrap.runtime ? reconnectSettingsSession : undefined} bootstrap={bootstrap} t={t} sessionId={session && !session.historyOnly ? session.id : undefined} ensureSession={cwd && bootstrap.runtime ? () => openSession().then(current => current.id) : undefined} update={setBootstrap} onError={showError} close={() => setSettingsOpen(false)} /></Suspense> : <>
         <WindowSlot inert={!!terminalId}><div className="header-location">{!sidebar && <button className="icon-button" title={t.expand} onClick={() => setSidebar(true)}><PanelLeftOpen size={18} /></button>}<Folder size={15} /><button onClick={addProject}>{project?.name ?? t.openProject}</button>{session && <><span className="breadcrumb-divider">/</span><span className="header-title">{session.title}</span></>}</div><div className="workspace-actions"><button className={`quiet-button ${inspector === 'review' ? 'active' : ''}`} disabled={!cwd} onClick={() => setInspector(value => value === 'review' ? null : 'review')}><FileDiff size={15} /><span>{t.review}</span></button><button className="icon-button" title={t.context} disabled={!cwd} onClick={() => setInspector(value => value === 'context' ? null : 'context')}><Layers size={17} /></button><details ref={moreMenu} className="more-menu" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false; }} onClick={event => { if ((event.target as Element).closest("button")) { event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); } }}><summary className="icon-button" title={t.more}><ChevronDown size={16} /></summary><div className="ui-menu">{(['files', 'agents', 'tasks', 'tree'] as InspectorTab[]).map(tab => <button disabled={!cwd} key={tab} onClick={() => setInspector(tab)}>{t[tab]}</button>)}<div className="menu-separator" /><button disabled={!session || session.historyOnly || !session.state.isSettled} onClick={() => { setTerminalInput(''); setTerminalId(session!.id); }}>{t.terminal}</button><button disabled={!session || session.historyOnly} onClick={() => { if (session) rpc(session.id, 'export_html').then(result => prepareCommand(String(result.path ?? result))).catch(showError); }}>{t.export}</button><button disabled={!session || busy} onClick={() => prepareCommand('/fork')}>{t.fork}</button><button disabled={!session || busy} onClick={closeSession}>{t.close} {t.session}</button></div></details></div></WindowSlot>
         {error && <div className="error-banner" role="alert"><CircleHelp size={16} /><span>{localizeError(error, bootstrap.preferences.language)}</span><button className="icon-button" title={t.dismiss} onClick={() => setError('')}><X size={15} /></button></div>}
-        {terminalId ? <Suspense fallback={<PageSkeleton label={t.loading} />}><TerminalPanel id={terminalId} initialCommand={terminalInput} t={t} onError={showError} close={closeTerminal} /></Suspense> : <div className="workspace-body"><GenerationRateProvider session={session} language={bootstrap.preferences.language} cache={rateCache.current}><div className="conversation-column">
+        {terminalId ? <Suspense fallback={<PageSkeleton label={t.loading} />}><TerminalPanel id={terminalId} initialCommand={terminalInput} t={t} onError={showError} close={closeTerminal} /></Suspense> : <ConversationLayout layoutKey={layoutKey} identity={session ? sessionKey(session) : draftKey}><GenerationRateProvider session={session} language={bootstrap.preferences.language} cache={rateCache.current}><SessionTodos session={session} language={bootstrap.preferences.language} /><div className="conversation-column">
           {session?.messages.length ? <Transcript key={sessionKey(session)} restoreKey={sessionKey(session)} pinNonce={pinNonce} showTurns={bootstrap.preferences.showTurnNumber !== false} messages={session.messages} t={t} busy={busy} activity={session.state.activity} actionsDisabled={sending || messageAction} onEdit={editMessage} onRetry={retryTurn} loadEarlier={session.nextCursor ? earlier : undefined} loadingEarlier={historyPageLoading?.id === session.id && historyPageLoading.revision === selectionRevision.current} /> : <div className="welcome"><div className="welcome-symbol"><span /><span /><span /></div><h1>{t.welcome}</h1><p>{t.welcomeText}</p>{!native && <p className="browser-note">{t.nativeOnly}</p>}<div className="starter-actions">{[[t.exploreAction, t.explorePrompt], [t.reviewAction, t.reviewPrompt], [t.buildAction, t.buildPrompt]].map(([label, prompt]) => <button key={label} onClick={() => { changeDraft(composerDraft, prompt); textarea.current?.focus(); }}>{label}<ArrowUpRight size={14} /></button>)}</div></div>}
           <div className="composer-area">{activeQuestion && session && <Question key={activeQuestion.id} question={activeQuestion} t={t} answer={response => answer(session.id, response).catch(showError)} />}
             {session && !session.historyOnly && <SessionActivity session={session} t={t} refresh={() => refreshSession(session.id)} onError={showError} />}
@@ -540,11 +579,11 @@ export default function App() {
             {session && !session.historyOnly && <QueuedMessages key={sessionKey(session)} begin={beginQueueAction} end={endQueueAction} session={session} t={t} disabled={sending || messageAction} refresh={() => refreshSession(session.id)} restore={(text, images) => restoreQueuedDraft(session.id, text, images)} onError={showError} />}
             <div className={`composer ${busy ? 'is-busy' : ''}`}>
               {images.length > 0 && <div className="attachments">{images.map((image, i) => <div key={i}><img src={`data:${image.mimeType};base64,${image.data}`} alt={image.name} /><span>{image.name}</span><button className="icon-button" title={t.remove} disabled={messageAction && actionPending.current === 'edit'} onClick={() => changeDraft(composerDraft, composerDraft.text, composerDraft.images.filter((_, index) => index !== i))}><X size={12} /></button></div>)}</div>}
-              <ComposerInput key={draftKey} textareaRef={textarea} value={draft} onChange={text => changeDraft(composerDraft, text)} onSend={() => void send()} onRecall={recallLast} disabled={messageAction && actionPending.current === 'edit'} cwd={cwd} t={t} />
+              <ComposerInput key={composerDraft.id} textareaRef={textarea} value={draft} onChange={text => changeDraft(composerDraft, text)} onSend={() => void send()} onRecall={recallLast} commands={slashCommands} language={bootstrap.preferences.language} onCommandsOpen={() => void loadSlashCommands()} disabled={messageAction && actionPending.current === 'edit'} cwd={cwd} t={t} />
               <div className="composer-toolbar"><input className="visually-hidden" type="file" tabIndex={-1} accept="image/*" multiple ref={fileInput} onChange={async event => { const input = event.currentTarget; const target = composerDraft; const files = Array.from(input.files ?? []); try { for (const file of files) { const data = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }); changeDraft(target, target.text, [...target.images, { type: 'image', data, mimeType: file.type, name: file.name }]); } } catch (error) { showError(error); } finally { input.value = ''; } }} />
                 <div className="attachment-control" ref={attachmentControl} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setAttachmentMenu(false); }}>
                   <button ref={addButton} disabled={messageAction && actionPending.current === 'edit'} className="icon-button" title={t.addContent} aria-haspopup="menu" aria-expanded={attachmentMenu} aria-controls={attachmentMenu ? 'attachment-menu' : undefined} onClick={() => { setAttachmentMenu(value => !value); setModelPicker(false); }}><Plus size={18} /></button>
-                  {attachmentMenu && <div id="attachment-menu" className="attachment-menu ui-menu" role="menu" aria-label={t.addContent} onKeyDown={event => {
+                  <MotionPresence open={attachmentMenu}><div id="attachment-menu" className="attachment-menu ui-menu" role="menu" aria-label={t.addContent} onKeyDown={event => {
                     const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
                     const index = items.indexOf(document.activeElement as HTMLButtonElement);
                     if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) { event.preventDefault(); items[event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length]?.focus(); }
@@ -552,19 +591,19 @@ export default function App() {
                     <button role="menuitem" onClick={() => { setAttachmentMenu(false); addButton.current?.focus(); fileInput.current?.click(); }}><ImagePlus size={16} />{t.addImage}</button>
                     <button role="menuitem" disabled={!native} title={!native ? t.nativeOnly : undefined} onClick={() => void attachPath(false)}><FilePlus2 size={16} />{t.attachFile}</button>
                     <button role="menuitem" disabled={!native} title={!native ? t.nativeOnly : undefined} onClick={() => void attachPath(true)}><FolderPlus size={16} />{t.attachFolder}</button>
-                  </div>}
+                  </div></MotionPresence>
                 </div>
-                <div className="model-control" ref={modelControl}><button ref={modelButton} className="model-button" aria-haspopup="dialog" aria-expanded={modelPicker} disabled={!cwd || !bootstrap.runtime} onClick={toggleModels}>{session?.state.model?.name ?? session?.state.model?.id ?? t.chooseModel}<ChevronDown size={12} /></button>{modelPicker && <div className="model-picker ui-menu" role="dialog" aria-label={t.chooseModel}><input autoFocus aria-label={t.search} placeholder={t.search} value={modelQuery} onChange={e => setModelQuery(e.target.value)} /><div>{models.filter(model => `${model.name} ${model.id} ${model.provider}`.toLowerCase().includes(modelQuery.toLowerCase())).map(model => <button key={`${model.provider}:${model.id}`} aria-pressed={session?.state.model?.id === model.id && session?.state.model?.provider === model.provider} onClick={() => chooseModel(model)}><strong>{model.name ?? model.id}</strong><small>{model.provider}</small></button>)}{!models.length && <p role="status">{modelsLoading ? t.loading : t.noModels}</p>}{models.length > 0 && !models.some(model => `${model.name} ${model.id} ${model.provider}`.toLowerCase().includes(modelQuery.toLowerCase())) && <p>{t.noResults}</p>}</div></div>}</div>
+                <div className="model-control" ref={modelControl}><button ref={modelButton} className="model-button" aria-haspopup="dialog" aria-expanded={modelPicker} disabled={!cwd || !bootstrap.runtime} onClick={toggleModels}>{session?.state.model?.name ?? session?.state.model?.id ?? t.chooseModel}<ChevronDown size={12} /></button><MotionPresence open={modelPicker}><div className="model-picker ui-menu" role="dialog" aria-label={t.chooseModel}><input autoFocus aria-label={t.search} placeholder={t.search} value={modelQuery} onChange={e => setModelQuery(e.target.value)} /><div>{models.filter(model => `${model.name} ${model.id} ${model.provider}`.toLowerCase().includes(modelQuery.toLowerCase())).map(model => <button key={`${model.provider}:${model.id}`} aria-pressed={session?.state.model?.id === model.id && session?.state.model?.provider === model.provider} onClick={() => chooseModel(model)}><strong>{model.name ?? model.id}</strong><small>{model.provider}</small></button>)}{!models.length && <p role="status">{modelsLoading ? t.loading : t.noModels}</p>}{models.length > 0 && !models.some(model => `${model.name} ${model.id} ${model.provider}`.toLowerCase().includes(modelQuery.toLowerCase())) && <p>{t.noResults}</p>}</div></div></MotionPresence></div>
                 {session && !session.historyOnly && <Select label={t.effort} value={session.state.thinkingLevel ?? 'medium'} options={Object.entries(t.effortLevels).map(([value, label]) => ({ value, label }))} onChange={level => rpc(session.id, 'set_thinking_level', { level }).then(() => setSessions(old => ({ ...old, [session.id]: { ...old[session.id], state: { ...old[session.id].state, thinkingLevel: level } } }))).catch(showError)} />}
                 <GenerationRate /><span className="spacer" />{busy && <Select label={t.queued} value={delivery} onChange={setDelivery} options={[{ value: 'steer', label: t.steer }, { value: 'follow_up', label: t.followUp }]} />}{busy && session && !draft ? <button className="send-button stop-button" title={t.stop} onClick={() => rpc(session.id, 'abort').catch(showError)}><Square size={14} fill="currentColor" /></button> : <button className="send-button" title={t.send} disabled={sending || messageAction || (!draft.trim() && !images.length) || !cwd || !bootstrap.runtime} onClick={() => send()}>{sending || messageAction ? <LoaderCircle size={16} className="spin" /> : <ArrowUp size={18} />}</button>}
               </div>
             </div><div className="composer-footnote"><span><span className={`status-dot ${busy ? 'working' : 'connected'}`} />{busy ? t.running : session?.pending.length ? t.waiting : t.ready}</span><span>{cwd ? <><FolderOpen size={12} />{cwd}</> : <button onClick={addProject}>{t.openProject}</button>}</span></div>
             <SessionUsage session={session} language={bootstrap.preferences.language} cache={usageCache.current} />
           </div>
-        </div>{inspector && <Suspense fallback={<aside className="inspector"><PageSkeleton label={t.loading} /></aside>}><Inspector language={bootstrap.preferences.language} onSessionChanged={() => session ? refreshSession(session.id, true) : Promise.resolve()} tab={inspector} session={session} cwd={cwd} t={t} onError={showError} close={() => setInspector(null)} send={prepareCommand} /></Suspense>}</GenerationRateProvider></div>}
+        </div>{inspector && <Suspense fallback={<aside className="inspector"><PageSkeleton label={t.loading} /></aside>}><Inspector language={bootstrap.preferences.language} onSessionChanged={() => session ? refreshSession(session.id, true) : Promise.resolve()} tab={inspector} session={session} cwd={cwd} t={t} onError={showError} close={() => setInspector(null)} send={prepareCommand} /></Suspense>}</GenerationRateProvider></ConversationLayout>}
       </>}
       {settingsOpen && pending.length > 0 && <div className="settings-question"><Question key={pending[0].question.id} question={pending[0].question} t={t} answer={response => answer(pending[0].sessionId, response).catch(showError)} /></div>}{settingsOpen && error && <div className="error-toast" role="alert"><span>{localizeError(error, bootstrap.preferences.language)}</span><button className="icon-button" title={t.dismiss} onClick={() => setError('')}><X size={15} /></button></div>}
     </main>
-    {commandsOpen && <Suspense fallback={null}><CommandPalette onSessionChanged={id => refreshSession(id, true)} ensureSession={async () => (await openSession()).id} navigate={navigateCommand} t={t} cwd={cwd} sessionId={session && !session.historyOnly ? session.id : undefined} close={() => setCommandsOpen(false)} send={prepareCommand} onError={showError} /></Suspense>}
+    <Suspense fallback={null}><MotionPresence open={commandsOpen}><CommandPalette language={bootstrap.preferences.language} onSessionChanged={id => refreshSession(id, true)} ensureSession={async () => (await openSession()).id} navigate={navigateCommand} t={t} cwd={cwd} sessionId={session && !session.historyOnly ? session.id : undefined} close={() => setCommandsOpen(false)} send={prepareCommand} onError={showError} /></MotionPresence></Suspense>
   </div></div>;
 }

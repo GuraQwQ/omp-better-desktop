@@ -5144,6 +5144,50 @@ impl<'de> Deserialize<'de> for RpcServerFrame {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DesktopManageParams {
+	pub resource: String,
+	pub action: String,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub args: Option<Map<String, Value>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DesktopManageResult {
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub items: Option<Vec<Map<String, Value>>>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub item: Option<Map<String, Value>>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub models: Option<Vec<Map<String, Value>>>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub presets: Option<Vec<Map<String, Value>>>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub message: Option<String>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub storage: Option<String>,
+	#[serde(rename = "activePreset", default, skip_serializing_if = "Option::is_none")]
+	pub active_preset: Option<String>,
+	#[serde(rename = "restartRequired", default, skip_serializing_if = "Option::is_none")]
+	pub restart_required: Option<bool>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub ok: Option<bool>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub status: Option<String>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub role: Option<String>,
+	#[serde(rename = "modelId", default, skip_serializing_if = "Option::is_none")]
+	pub model_id: Option<String>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub source: Option<String>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub warnings: Option<Vec<String>>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub info: Option<Value>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub result: Option<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DesktopSettingsParams {
 	pub operation: DesktopSettingsParamsOperation,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
@@ -6133,6 +6177,25 @@ fn default_queue_update_event_live_steered() -> i64 {
 
 fn default_ask_question_multi() -> bool {
 	serde_json::from_str("false").expect("valid wire default")
+}
+
+/// 使用原生管理器配置桌面运行时资源。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DesktopManageCommand {
+	pub resource: String,
+	pub action: String,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub args: Option<Map<String, Value>>,
+}
+
+impl Command for DesktopManageCommand {
+	const NAME: &'static str = "desktop_manage";
+	const TIMEOUT_MS: Option<u64> = Some(360000);
+	type Output = DesktopManageResult;
+
+	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
+		serde_json::from_value::<DesktopManageResult>(data.unwrap_or_else(|| Value::Object(Map::new())))
+	}
 }
 
 /// Read or update settings through the runtime registry and persistence layer.

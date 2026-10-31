@@ -1,0 +1,5 @@
+.agent-source-icon { display: inline-block; flex: 0 0 auto; width: 20px; height: 20px; object-fit: contain; vertical-align: middle; }
+.agent-source-fallback { color: var(--secondary); }
+.agent-source-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.agent-source-name > strong { min-width: 0; }
+.import-source-list .agent-source-icon { margin-top: 1px; }
