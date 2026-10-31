@@ -1,6 +1,7 @@
 use crate::{
     history,
     platform::{ProcessJob, hidden, runtime_environment},
+    questions::Questions,
     request_capture, storage,
 };
 use omp_rpc::{Client, ClientOptions, Event, RpcInbound};
@@ -27,11 +28,13 @@ pub struct Session {
     settled: Arc<AtomicBool>,
     capture_context: PathBuf,
     launch_args: Vec<String>,
+    questions: Arc<Questions>,
     _job: ProcessJob,
 }
 
 impl Drop for Session {
     fn drop(&mut self) {
+        self.questions.close();
         let _ = std::fs::remove_file(&self.capture_context);
         if let Some(parent) = self.capture_context.parent() {
             let _ = std::fs::remove_dir(parent);
@@ -87,6 +90,7 @@ impl Sessions {
             .filter(|(id, session)| {
                 active.as_deref() != Some(id.as_str())
                     && session.settled.load(Ordering::Acquire)
+                    && !session.questions.has_pending()
                     && Arc::strong_count(&session.client) == 1
             })
             .map(|(id, _)| id.clone())
@@ -169,17 +173,34 @@ impl Sessions {
         let id = uuid::Uuid::new_v4().to_string();
         let capture_context = request_capture::context(root, &id);
         let mut process = command(root)?;
-        let launch_args = crate::launch::read(root, &cwd)?.arguments();
+        let launch_profile = crate::launch::read(root, &cwd)?;
+        let launch_args = launch_profile.arguments();
+        let async_questions = crate::config(root)?["preferences"]["asyncQuestions"] == true
+            && !launch_profile.no_tools
+            && (launch_profile.tools.is_empty()
+                || launch_profile.tools.iter().any(|name| name == "ask"));
         process.env("OMP_DESKTOP_REQUEST_CAPTURE_SESSION_ID", &id);
         process
             .current_dir(&cwd)
             .args(["--mode", "rpc-ui"])
             .args(&launch_args);
+        if async_questions {
+            let overlay = crate::questions::install_overlay(root)?;
+            process.arg(format!("--config={}", overlay.display()));
+        }
         if let Some(path) = &path {
             process.arg("--session").arg(path);
         }
-        let (client, receiver) =
-            Client::spawn(process, ClientOptions::default()).map_err(|e| e.to_string())?;
+        let question_app = app.clone();
+        let question_session = id.clone();
+        let questions = Arc::new(Questions::new(move |event| {
+            emit(&question_app, &question_session, event);
+        }));
+        let mut options = ClientOptions::default();
+        if async_questions {
+            options.tools.push(questions.tool());
+        }
+        let (client, receiver) = Client::spawn(process, options).map_err(|e| e.to_string())?;
         let job = ProcessJob::attach(client.pid().ok_or("Runtime did not start.")?)?;
         let client = Arc::new(client);
         let state = client
@@ -212,6 +233,7 @@ impl Sessions {
                 settled: settled.clone(),
                 capture_context: capture_context.clone(),
                 launch_args,
+                questions,
                 _job: job,
             },
         );
@@ -293,7 +315,7 @@ impl Sessions {
     }
 
     pub fn rpc(&self, app: AppHandle, id: &str, frame: Value) -> Result<Value, String> {
-        let (client, settled, path_cell, capture_context) = {
+        let (client, settled, path_cell, capture_context, questions) = {
             let sessions = self.sessions.lock().unwrap();
             let session = sessions
                 .get(id)
@@ -303,6 +325,7 @@ impl Sessions {
                 session.settled.clone(),
                 session.path.clone(),
                 session.capture_context.clone(),
+                session.questions.clone(),
             )
         };
         let is_prompt = matches!(
@@ -319,7 +342,21 @@ impl Sessions {
             }
         }
         let command_type = frame["type"].as_str().unwrap_or("").to_owned();
-        let result = client.call_raw(frame).map_err(|e| e.to_string());
+        let clears_questions = matches!(
+            command_type.as_str(),
+            "abort"
+                | "abort_and_prompt"
+                | "abort_and_restore_queue"
+                | "new_session"
+                | "open_session"
+                | "switch_session"
+        );
+        let send = || client.call_raw(frame).map_err(|e| e.to_string());
+        let result = if clears_questions {
+            questions.interrupt(send)
+        } else {
+            send()
+        };
         if let Ok(value) = &result {
             if value["agentInvoked"] == false {
                 settled.store(true, Ordering::Release);
@@ -351,13 +388,25 @@ impl Sessions {
         result
     }
 
-    pub fn ui(&self, id: &str, mut response: Value) -> Result<Value, String> {
+    pub fn ui(&self, app: AppHandle, id: &str, mut response: Value) -> Result<Value, String> {
         response["type"] = json!("extension_ui_response");
-        let sessions = self.sessions.lock().unwrap();
-        sessions
-            .get(id)
-            .ok_or("Session is closed.")?
-            .client
+        let (client, questions) = {
+            let sessions = self.sessions.lock().unwrap();
+            let session = sessions.get(id).ok_or("Session is closed.")?;
+            (session.client.clone(), session.questions.clone())
+        };
+        if let Some(result) = questions.respond(&response, |message| {
+            self.rpc(
+                app.clone(),
+                id,
+                json!({"type":"prompt","message":message,"streamingBehavior":"steer"}),
+            )
+        }) {
+            drop(client);
+            self.release_idle(&app);
+            return result;
+        }
+        client
             .send(&RpcInbound::from_value(response).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
         Ok(Value::Null)
@@ -398,12 +447,13 @@ impl Sessions {
             .lock()
             .unwrap()
             .values()
-            .map(|s| s.client.clone())
+            .map(|s| (s.client.clone(), s.questions.clone()))
             .collect();
         let handles: Vec<_> = clients
             .into_iter()
-            .map(|client| {
+            .map(|(client, questions)| {
                 thread::spawn(move || {
+                    questions.close();
                     let _ = client.call_raw(json!({"type":"abort"}));
                 })
             })

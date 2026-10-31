@@ -19,7 +19,7 @@ The webview calls `invoke('desktop_command', { request })`. Requests have a stri
 | session.open | cwd, path? | `{id,cwd,path?,state}` |
 | session.close | id | `{path}`; refuses while unsettled; `path` is null until the session is persisted |
 | session.rpc | id, command | OMP response data |
-| session.ui | id, response | null; extension_ui_response frame |
+| session.ui | id, response | native: null; asynchronous ask: `{accepted,ack}` or `{cancelled:true}` |
 | workspace.diff | cwd | `{diff,status}` |
 | workspace.files | cwd | relative file path array |
 | workspace.read | cwd,path | string |
@@ -31,6 +31,18 @@ The webview calls `invoke('desktop_command', { request })`. Requests have a stri
 | terminal.close | id | null; resume through session.open |
 
 `runtime` is null or `{path,version,revision,...}`. Preferences contain `language:'en'|'zh'`, `theme:'system'|'light'|'dark'` and `motion:'rich'|'normal'|'reduced'`. Missing `motion` defaults to `rich`; reading an older configuration does not rewrite it. The UI does not import the engine. Native file/folder selection uses `@tauri-apps/plugin-dialog`.
+
+## 异步提问
+
+`preferences.asyncQuestions` 默认 `true`，设置中的“异步提问”切换对新连接生效；缺少此字段的旧配置按开启处理，读取不会重写配置。开启时由桌面宿主直接提供同名 `ask` 工具，登记问题后立即返回 `{status:'pending',questionId}`，代理可继续处理不依赖答案的工作。关闭后新连接使用 OMP 原生同步 `ask`。用户显式关闭全部工具或在工具清单中排除 `ask` 时，沿用该选择。
+
+宿主复用上游 `ClientOptions.tools`、HostTool 与 RPC，不修改内核或 vendor。同名注册前，RPC 进程在用户启动参数之后追加受管的 `<dataRoot>/cache/host-ask.json` 配置覆盖，将原生 `ask.enabled` 设为 `false`，再注册宿主 `ask`，避免上游的同名工具冲突。覆盖文件幂等安装、原子替换，由现有缓存清理入口管理；不写用户 OMP 设置，也不进入终端接管参数。OMP 配置视图中的原生 `ask.enabled` 来源会反映这个覆盖文件，宿主工具仍可用。
+
+问题复用 `extension_ui_request` 的 `method:'ask'`，增加 `async:true`，包含一至三个问题，字段沿用原生 `id/question/header/options/multi/recommended`。`recommended` 为选项索引，仅作提示，不代替用户选择。选项支持描述，空选项允许自由输入。GUI 的草稿、提交状态和错误按会话与问题 ID 保存在内存；切设置和切会话保留草稿，不持久化秘密输入。问题内容内部滚动，提交和取消按钮保持可见；卡片内 Esc 仅取消该问题，Ctrl/Cmd+Enter 提交。
+
+回答仍通过 `session.ui` 回到所属会话。宿主识别自己的问题 ID，经原生 `prompt` 的 `streamingBehavior:'steer'` 通道送达，只等待命令 ACK；模型在下一安全边界读取答案，不中断正在执行的工具。正常 ACK 成功后的重复提交不重发，发送失败保留问题供用户重试。协议没有业务幂等键，若答案已收到但 ACK 丢失，手动重试仍可能重复。
+
+等待回答期间不会释放空闲会话；普通任务完成仍保留未答问题。取消、停止、关闭、断连、重连及切换底层会话清理对应问题。问题状态限定本次应用生命周期。原有 `confirm/input/editor/select/open_url` 继续使用各自协议，工具审批沿用 OMP 策略。
 
 ## OMP 图形化配置
 

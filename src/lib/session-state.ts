@@ -1,5 +1,6 @@
 import type { Json, Message, SessionView } from './types';
 import { todoPhasesFromMessage } from './session-todos';
+import { clearQuestions, removeQuestion } from './question-draft';
 
 export function isSessionRunning(session?: SessionView): boolean {
   return !!session && !session.historyOnly && (!!session.state.isStreaming || ['running', 'background'].includes(session.status) || session.state.isSettled === false);
@@ -41,12 +42,12 @@ export function applyEvents(session: SessionView, events: Json[]): SessionView {
 
 export const applyEvent = (session: SessionView, event: Json): SessionView => applyEvents(session, [event]);
 export function returnFromTerminal(session: SessionView, runtimeReleased: boolean): SessionView {
-  return runtimeReleased ? { ...session, historyOnly: true } : session;
+  return runtimeReleased ? { ...clearQuestions(session), historyOnly: true } : session;
 }
 
 function reduceEvent(session: SessionView, event: Json): SessionView {
   if (event.type === 'desktop_status') {
-    if (event.status === 'released' || event.status === 'disconnected') return { ...session, path: event.path === null && !session.messages.length ? undefined : event.path ?? session.path, historyOnly: true, status: 'ready', state: { ...session.state, isStreaming: false, isSettled: true, activity: undefined } };
+    if (event.status === 'released' || event.status === 'disconnected') return { ...clearQuestions(session), path: event.path === null && !session.messages.length ? undefined : event.path ?? session.path, historyOnly: true, status: 'ready', state: { ...session.state, isStreaming: false, isSettled: true, activity: undefined } };
     return { ...session, status: event.status };
   }
   if (event.type === 'agent_start') return { ...session, status: 'running', state: { ...session.state, isStreaming: true, isSettled: false, desktopRunAnchor: session.messages.at(-1)?.id ?? null } };
@@ -59,7 +60,7 @@ function reduceEvent(session: SessionView, event: Json): SessionView {
   if (event.type === 'queue_update') return { ...session, state: { ...session.state, queuedMessages: { steering: event.steering ?? [], followUp: event.followUp ?? [], ...(event.liveSteered !== undefined ? { liveSteered: event.liveSteered } : {}) } } };
   if (event.type === 'available_commands_update') return { ...session, state: { ...session.state, availableCommands: event.commands ?? [] } };
   if (event.type === 'todo_auto_clear') return { ...session, state: { ...session.state, todoPhases: [] } };
-  if (event.type === 'session_info_update') return { ...session, title: event.title ?? event.sessionName ?? event.name ?? session.title, path: event.sessionFile ?? session.path };
+  if (event.type === 'session_info_update') return { ...(session.path && event.sessionFile !== undefined && event.sessionFile !== session.path ? clearQuestions(session) : session), title: event.title ?? event.sessionName ?? event.name ?? session.title, path: event.sessionFile === null ? undefined : event.sessionFile ?? session.path };
   if (event.type === 'btw_record') return { ...session, state: { ...session.state, btwRecords: [event.record, ...(session.state.btwRecords ?? []).filter((record: Json) => record.id !== event.record.id)] } };
   if (event.type === 'btw_delta') return { ...session, state: { ...session.state, btwRecords: (session.state.btwRecords ?? []).map((record: Json) => {
     if (record.id !== event.recordId) return record;
@@ -74,9 +75,13 @@ function reduceEvent(session: SessionView, event: Json): SessionView {
   if (event.type === 'live_end') return { ...session, state: { ...session.state, live: { ...session.state.live, active: false, error: event.error } } };
   if (event.type === 'extension_ui_request') {
     if (event.method === 'set_editor_text') return { ...session, draft: event.text ?? '' };
-    if (event.method === 'cancel') return { ...session, pending: session.pending.filter(p => p.id !== event.targetId) };
+    if (event.method === 'cancel') return removeQuestion(session, event.targetId);
     if (['select', 'confirm', 'input', 'editor', 'ask', 'open_url'].includes(event.method)) {
-      return { ...session, pending: [...session.pending.filter(p => p.id !== event.id), event] };
+      if (session.historyOnly) return session;
+      const existing = session.pending.find(item => item.id === event.id);
+      if (existing && JSON.stringify(existing) === JSON.stringify(event)) return session;
+      const current = existing ? removeQuestion(session, event.id) : session;
+      return { ...current, pending: [...current.pending, event] };
     }
     return session;
   }

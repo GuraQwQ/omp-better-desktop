@@ -31,6 +31,7 @@ import { notify, NOTIFY_AFTER_MS } from './lib/notify';
 import { getCurrentWindow, UserAttentionType } from '@tauri-apps/api/window';
 import { version } from '../package.json';
 import { applyMotion, normalizeMotion } from './lib/motion';
+import { answerableQuestion, clearQuestions, completeQuestion, questionDraft, updateQuestionDraft } from './lib/question-draft';
 
 const Settings = lazy(() => import('./panels/Settings'));
 const Inspector = lazy(() => import('./panels/Inspector'));
@@ -126,7 +127,16 @@ export default function App() {
   abortRef.current = busy && session && !settingsOpen && !commandsOpen ? () => { void rpc(session.id, 'abort').catch(showError); } : undefined;
   const replaceActiveId = (id: string) => { activeIdRef.current = id; commitActiveId(id); };
   const setActiveId = (id: string) => { selectionRevision.current++; replaceActiveId(id); };
+  const updateSession = (id: string, update: (current: SessionView) => SessionView) => {
+    const merge = (previous: Record<string, SessionView>) => {
+      if (!previous[id]) return previous;
+      const updated = update(previous[id]);
+      return updated === previous[id] ? previous : { ...previous, [id]: updated };
+    };
+    sessionsRef.current = merge(sessionsRef.current); setSessions(merge);
+  };
   const putSession = (value: SessionView, replaceId?: string) => {
+    if (value.historyOnly) value = clearQuestions(value);
     const merge = (previous: Record<string, SessionView>) => { const next = { ...previous }; if (replaceId && replaceId !== value.id) delete next[replaceId]; return storeSession(next, value); };
     sessionsRef.current = merge(sessionsRef.current); setSessions(merge);
   };
@@ -171,8 +181,8 @@ export default function App() {
     let unlisten: (() => void) | undefined;
     let disposed = false;
     void onDesktopEvent(payload => {
-      if (payload.event.type === 'desktop_status' && ['released', 'disconnected'].includes(payload.event.status)) {
-        releasedIds.current.add(payload.sessionId);
+      if (payload.event.type === 'desktop_status' && ['released', 'disconnected'].includes(payload.event.status) || payload.event.type === 'extension_ui_request' && payload.event.method === 'cancel' || payload.event.type === 'session_info_update') {
+        if (payload.event.type === 'desktop_status') releasedIds.current.add(payload.sessionId);
         const current = sessionsRef.current[payload.sessionId];
         if (current) sessionsRef.current = { ...sessionsRef.current, [payload.sessionId]: applyEvent(current, payload.event) };
       }
@@ -325,7 +335,8 @@ export default function App() {
           if (!releasedIds.current.has(opened.id)) btw = await rpc(opened.id, 'get_btw_history');
         } catch (error) { if (!releasedIds.current.has(opened.id)) throw error; }
       }
-      const value: SessionView = { id: opened.id, cwd: targetCwd, path: opened.path ?? source?.path, title: opened.state?.sessionName ?? source?.title ?? t.newTitle, messages: page ? normalizeHistoryMessages(page.messages, 'reopen') : source?.messages ?? existing?.messages ?? [], nextCursor: page ? page.nextCursor : source?.nextCursor, state: { ...opened.state, btwRecords: btw.records }, status: 'ready', pending: source?.pending ?? existing?.pending ?? [], historyOnly: releasedIds.current.has(opened.id), hidden: forPrompt ? false : source ? !!source.hidden : true };
+      const liveQuestions = existing && !releasedIds.current.has(opened.id) ? existing : undefined;
+      const value: SessionView = { id: opened.id, cwd: targetCwd, path: opened.path ?? source?.path, title: opened.state?.sessionName ?? source?.title ?? t.newTitle, messages: page ? normalizeHistoryMessages(page.messages, 'reopen') : source?.messages ?? existing?.messages ?? [], nextCursor: page ? page.nextCursor : source?.nextCursor, state: { ...opened.state, btwRecords: btw.records }, status: 'ready', pending: liveQuestions?.pending ?? [], questionDrafts: liveQuestions?.questionDrafts, historyOnly: releasedIds.current.has(opened.id), hidden: forPrompt ? false : source ? !!source.hidden : true };
       // 启动会更换会话 ID，草稿对象及编辑修订随之迁移。
       drafts.current[value.id] = sourceDraft;
       if (sourceDraftKey !== value.id && drafts.current[sourceDraftKey] === sourceDraft) delete drafts.current[sourceDraftKey];
@@ -349,7 +360,7 @@ export default function App() {
       if (current && !current.historyOnly && !releasedIds.current.has(current.id)) {
         const closed = await request<Json>('session.close', { id: current.id });
         releasedIds.current.add(current.id);
-        target.source = { ...current, path: closed.path ?? undefined, historyOnly: true };
+        target.source = { ...clearQuestions(current), path: closed.path ?? undefined, historyOnly: true };
         putSession(target.source);
       }
       if (target.revision !== selectionRevision.current) return;
@@ -432,9 +443,16 @@ export default function App() {
     try { const current = await openSession(); const result = await rpc(current.id, 'set_model', { provider: model.provider, modelId: model.id }); setSessions(old => old[current.id] ? ({ ...old, [current.id]: { ...old[current.id], state: { ...old[current.id].state, model: result.model ?? result ?? model } } }) : old); setModelPicker(false); modelButton.current?.focus(); } catch (e) { showError(e); }
   };
   const answer = async (id: string, response: Json) => {
-    const question = sessions[id]?.pending.find(p => p.id === response.id);
-    if (question?.method !== 'open_url') await request('session.ui', { id, response });
-    setSessions(old => ({ ...old, [id]: { ...old[id], pending: old[id].pending.filter(p => p.id !== response.id) } }));
+    const owner = sessionsRef.current[id];
+    const question = answerableQuestion(owner, response.id);
+    if (!question || releasedIds.current.has(id)) return;
+    updateSession(id, current => updateQuestionDraft(current, question.id, draft => ({ ...draft, submitting: true, error: undefined })));
+    try {
+      if (question.method !== 'open_url') await request('session.ui', { id, response });
+      updateSession(id, current => completeQuestion(current, question));
+    } catch (error) {
+      updateSession(id, current => current.pending.includes(question) ? updateQuestionDraft(current, question.id, draft => ({ ...draft, submitting: false, error: error instanceof Error ? error.message : String(error) })) : current);
+    }
   };
   const recallLast = () => { const list = session?.messages ?? []; for (let i = list.length - 1; i >= 0; i--) if (list[i].role === 'user') { changeDraft(composerDraft, messageText(list[i])); return; } };
   const prepareCommand = (text: string) => { changeDraft(composerDraft, text); setSettingsOpen(false); textarea.current?.focus(); };
@@ -446,7 +464,10 @@ export default function App() {
     const history = replaceMessages && path ? await readMessages(id, path, Math.max(100, sessionsRef.current[id]?.messages.length ?? source.messages.length)) : undefined;
     const btw = replaceMessages ? await rpc(id, 'get_btw_history') : undefined;
     if (sessionsRef.current[id]?.path !== source.path || sessionsRef.current[id]?.historyOnly) return;
-    setSessions(old => old[id] ? ({ ...old, [id]: { ...old[id], state: { ...old[id].state, ...state, ...(btw ? { btwRecords: btw.records } : {}) }, title: state.sessionName ?? t.newTitle, path: state.sessionFile ?? old[id].path, ...(history ? { messages: normalizeHistoryMessages(history.messages, 'reload'), nextCursor: history.nextCursor } : {}) } }) : old);
+    updateSession(id, current => {
+      const retained = current.path && state.sessionFile !== undefined && state.sessionFile !== current.path ? clearQuestions(current) : current;
+      return { ...retained, state: { ...retained.state, ...state, ...(btw ? { btwRecords: btw.records } : {}) }, title: state.sessionName ?? t.newTitle, path: state.sessionFile ?? current.path, ...(history ? { messages: normalizeHistoryMessages(history.messages, 'reload'), nextCursor: history.nextCursor } : {}) };
+    });
   };
   const restoreQueuedDraft = (id: string, text: string, restoredImages: ReturnType<typeof messageImages>) => {
     const value = getDraft(id);
@@ -480,7 +501,7 @@ export default function App() {
           drafts.current[id] = createDraft(previousDraft, previousImages);
           putSession({ ...current, id, historyOnly: true, status: 'ready', pending: [] });
         }
-        putSession({ ...current, state, path: state.sessionFile, messages: normalizeHistoryMessages(page.messages, 'branch'), nextCursor: page.nextCursor, hidden: false, status: 'ready' });
+        putSession({ ...clearQuestions(current), state, path: state.sessionFile, messages: normalizeHistoryMessages(page.messages, 'branch'), nextCursor: page.nextCursor, hidden: false, status: 'ready' });
         changeDraft(getDraft(current.id), result.text ?? '', messageImages(entry.message));
         if (activeIdRef.current === current.id || selectionRevision.current === target.revision) {
           setActiveId(current.id); showDraft(getDraft(current.id)); textarea.current?.focus();
@@ -501,7 +522,7 @@ export default function App() {
   const navigateCommand = (entry: CatalogEntry, args = '', typed = false): boolean => {
     const run = (action: (current: SessionView) => Promise<void>) => { void withRuntime(async () => action(await prepareSession())).catch(showError); };
     if (entry.kind === 'slash') {
-      if (entry.name === 'new') { run(async current => { await rpc(current.id, 'new_session'); await refreshSession(current.id, true); }); return true; }
+      if (entry.name === 'new') { run(async current => { await rpc(current.id, 'new_session'); updateSession(current.id, clearQuestions); await refreshSession(current.id, true); }); return true; }
       if (['quit', 'exit'].includes(entry.name)) { void closeSession(); return true; }
       if (entry.name === 'restart') { void reconnectSettingsSession().catch(showError); return true; }
       if (typed && entry.name === 'btw' && args.trim()) { run(async current => { await rpc(current.id, 'btw', { question: args }); }); return true; }
@@ -573,7 +594,7 @@ export default function App() {
         {error && <div className="error-banner" role="alert"><CircleHelp size={16} /><span>{localizeError(error, bootstrap.preferences.language)}</span><button className="icon-button" title={t.dismiss} onClick={() => setError('')}><X size={15} /></button></div>}
         {terminalId ? <Suspense fallback={<PageSkeleton label={t.loading} />}><TerminalPanel id={terminalId} initialCommand={terminalInput} t={t} onError={showError} close={closeTerminal} /></Suspense> : <ConversationLayout layoutKey={layoutKey} identity={session ? sessionKey(session) : draftKey}><GenerationRateProvider session={session} language={bootstrap.preferences.language} cache={rateCache.current}><SessionTodos session={session} language={bootstrap.preferences.language} /><div className="conversation-column">
           {session?.messages.length ? <Transcript key={sessionKey(session)} restoreKey={sessionKey(session)} pinNonce={pinNonce} showTurns={bootstrap.preferences.showTurnNumber !== false} messages={session.messages} t={t} busy={busy} activity={session.state.activity} actionsDisabled={sending || messageAction} onEdit={editMessage} onRetry={retryTurn} loadEarlier={session.nextCursor ? earlier : undefined} loadingEarlier={historyPageLoading?.id === session.id && historyPageLoading.revision === selectionRevision.current} /> : <div className="welcome"><div className="welcome-symbol"><span /><span /><span /></div><h1>{t.welcome}</h1><p>{t.welcomeText}</p>{!native && <p className="browser-note">{t.nativeOnly}</p>}<div className="starter-actions">{[[t.exploreAction, t.explorePrompt], [t.reviewAction, t.reviewPrompt], [t.buildAction, t.buildPrompt]].map(([label, prompt]) => <button key={label} onClick={() => { changeDraft(composerDraft, prompt); textarea.current?.focus(); }}>{label}<ArrowUpRight size={14} /></button>)}</div></div>}
-          <div className="composer-area">{activeQuestion && session && <Question key={activeQuestion.id} question={activeQuestion} t={t} answer={response => answer(session.id, response).catch(showError)} />}
+          <div className="composer-area">{activeQuestion && session && <Question key={session.id + ":" + activeQuestion.id} question={activeQuestion} draft={questionDraft(session, activeQuestion)} change={update => updateSession(session.id, current => updateQuestionDraft(current, activeQuestion.id, update))} language={bootstrap.preferences.language} t={t} answer={response => answer(session.id, response)} />}
             {session && !session.historyOnly && <SessionActivity session={session} t={t} refresh={() => refreshSession(session.id)} onError={showError} />}
             {!bootstrap.runtime && !booting && <button className="setup-callout" onClick={() => openSettings('runtime')}><span className="setup-icon"><TerminalSquare size={18} /></span><span><strong>{t.installRuntime}</strong><small>{t.installText}</small></span><ArrowUpRight size={16} /></button>}
             {session && !session.historyOnly && <QueuedMessages key={sessionKey(session)} begin={beginQueueAction} end={endQueueAction} session={session} t={t} disabled={sending || messageAction} refresh={() => refreshSession(session.id)} restore={(text, images) => restoreQueuedDraft(session.id, text, images)} onError={showError} />}
@@ -602,7 +623,7 @@ export default function App() {
           </div>
         </div>{inspector && <Suspense fallback={<aside className="inspector"><PageSkeleton label={t.loading} /></aside>}><Inspector language={bootstrap.preferences.language} onSessionChanged={() => session ? refreshSession(session.id, true) : Promise.resolve()} tab={inspector} session={session} cwd={cwd} t={t} onError={showError} close={() => setInspector(null)} send={prepareCommand} /></Suspense>}</GenerationRateProvider></ConversationLayout>}
       </>}
-      {settingsOpen && pending.length > 0 && <div className="settings-question"><Question key={pending[0].question.id} question={pending[0].question} t={t} answer={response => answer(pending[0].sessionId, response).catch(showError)} /></div>}{settingsOpen && error && <div className="error-toast" role="alert"><span>{localizeError(error, bootstrap.preferences.language)}</span><button className="icon-button" title={t.dismiss} onClick={() => setError('')}><X size={15} /></button></div>}
+      {settingsOpen && pending.length > 0 && <div className="settings-question"><Question key={pending[0].sessionId + ":" + pending[0].question.id} question={pending[0].question} draft={questionDraft(sessions[pending[0].sessionId], pending[0].question)} change={update => updateSession(pending[0].sessionId, current => updateQuestionDraft(current, pending[0].question.id, update))} language={bootstrap.preferences.language} t={t} answer={response => answer(pending[0].sessionId, response)} /></div>}{settingsOpen && error && <div className="error-toast" role="alert"><span>{localizeError(error, bootstrap.preferences.language)}</span><button className="icon-button" title={t.dismiss} onClick={() => setError("")}><X size={15} /></button></div>}
     </main>
     <Suspense fallback={null}><MotionPresence open={commandsOpen}><CommandPalette language={bootstrap.preferences.language} onSessionChanged={id => refreshSession(id, true)} ensureSession={async () => (await openSession()).id} navigate={navigateCommand} t={t} cwd={cwd} sessionId={session && !session.historyOnly ? session.id : undefined} close={() => setCommandsOpen(false)} send={prepareCommand} onError={showError} /></MotionPresence></Suspense>
   </div></div>;

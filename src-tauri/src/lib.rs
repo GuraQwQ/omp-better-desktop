@@ -4,6 +4,7 @@ mod history;
 mod launch;
 mod platform;
 mod providers;
+mod questions;
 mod request_capture;
 mod sessions;
 mod storage;
@@ -80,6 +81,9 @@ fn config(root: &Path) -> Result<Value, String> {
     if cfg["preferences"]["motion"].is_null() {
         cfg["preferences"]["motion"] = json!("rich");
     }
+    if cfg["preferences"]["asyncQuestions"].is_null() {
+        cfg["preferences"]["asyncQuestions"] = json!(true);
+    }
     Ok(cfg)
 }
 
@@ -91,7 +95,7 @@ fn set_preferences(root: &Path, patch: &Value) -> Result<Value, String> {
             "language" if matches!(value.as_str(), Some("en" | "zh")) => {}
             "theme" if matches!(value.as_str(), Some("system" | "light" | "dark")) => {}
             "motion" if matches!(value.as_str(), Some("rich" | "normal" | "reduced")) => {}
-            "showTurnNumber" | "notifyOnDone" if value.is_boolean() => {}
+            "showTurnNumber" | "notifyOnDone" | "asyncQuestions" if value.is_boolean() => {}
             _ => return Err(format!("Invalid preference {key}")),
         };
         cfg["preferences"][key] = value.clone();
@@ -109,6 +113,10 @@ mod preference_tests {
         let root = std::env::temp_dir().join(format!("omp-motion-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         assert_eq!(config(&root).unwrap()["preferences"]["motion"], "rich");
+        assert_eq!(
+            config(&root).unwrap()["preferences"]["asyncQuestions"],
+            true
+        );
         let original = json!({"preferences":{"language":"zh","theme":"dark"},"projects":[{"path":"D:/项目"}],"launch":{"保留":"原文"}});
         save(&root.join("desktop.json"), &original).unwrap();
         assert_eq!(config(&root).unwrap()["preferences"]["motion"], "rich");
@@ -124,8 +132,17 @@ mod preference_tests {
             assert_eq!(saved["projects"], original["projects"]);
             assert_eq!(saved["launch"], original["launch"]);
         }
+        for enabled in [true, false] {
+            set_preferences(&root, &json!({"asyncQuestions":enabled})).unwrap();
+            let saved = config(&root).unwrap();
+            assert_eq!(saved["preferences"]["asyncQuestions"], enabled);
+            assert_eq!(saved["projects"], original["projects"]);
+            assert_eq!(saved["launch"], original["launch"]);
+        }
         let before = fs::read(root.join("desktop.json")).unwrap();
         assert!(set_preferences(&root, &json!({"motion":"invalid"})).is_err());
+        assert_eq!(fs::read(root.join("desktop.json")).unwrap(), before);
+        assert!(set_preferences(&root, &json!({"asyncQuestions":"true"})).is_err());
         assert_eq!(fs::read(root.join("desktop.json")).unwrap(), before);
         assert!(
             root.file_name()
@@ -259,9 +276,11 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
             text(&request, "id")?,
             request["command"].clone(),
         ),
-        "session.ui" => desktop
-            .sessions
-            .ui(text(&request, "id")?, request["response"].clone()),
+        "session.ui" => desktop.sessions.ui(
+            app.clone(),
+            text(&request, "id")?,
+            request["response"].clone(),
+        ),
         "session.close" => desktop.sessions.close(text(&request, "id")?),
         "terminal.open" => {
             let _guard = desktop.data_access.read().unwrap();

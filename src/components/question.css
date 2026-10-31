@@ -1,0 +1,12 @@
+.question:has(form) { display: flex; flex-direction: column; overflow: hidden; }
+.question > * { flex-shrink: 0; }
+.question > form { display: flex; flex-direction: column; flex-shrink: 1; min-height: 0; }
+.question .question-fields { min-height: 0; overflow: auto; }
+.question .question-actions { flex-shrink: 0; }
+.question-heading > strong { min-width: 0; overflow-wrap: anywhere; }
+.question-background { margin-inline-start: auto; color: var(--secondary); font-size: 11px; white-space: nowrap; }
+.question-field-header { display: block; margin-block-end: 4px; }
+.question-recommendation { margin-inline-start: 7px; color: var(--secondary); font-size: 11px; font-weight: 400; }
+.question .answer-option > span { min-width: 0; overflow-wrap: anywhere; }
+.question .question-control { width: 100%; }
+.question .question-error { color: var(--danger); white-space: pre-wrap; overflow-wrap: anywhere; }

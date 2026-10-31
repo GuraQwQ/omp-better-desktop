@@ -3,14 +3,16 @@ import { listen } from '@tauri-apps/api/event';
 import type { Bootstrap, DesktopEvent, Json } from './types';
 
 export const native = isTauri();
+let previewPreferences: Bootstrap['preferences'] | undefined;
 
 export async function request<T = any>(type: string, fields: Json = {}): Promise<T> {
   if (native) return invoke<T>('desktop_command', { request: { type, ...fields } });
+  previewPreferences ??= { language: typeof navigator !== 'undefined' && navigator.language?.startsWith('zh') ? 'zh' : 'en', theme: 'system', motion: 'rich', asyncQuestions: true };
   if (type === 'bootstrap') return {
     dataRoot: '', runtime: null, projects: [],
-    preferences: { language: navigator.language.startsWith('zh') ? 'zh' : 'en', theme: 'system', motion: 'rich' },
+    preferences: { ...previewPreferences },
   } as Bootstrap as T;
-  if (type === 'preferences.set') return fields.patch as T;
+  if (type === 'preferences.set') { previewPreferences = { ...previewPreferences, ...fields.patch }; return { ...previewPreferences } as T; }
   if (type === 'session.list' || type === 'command.catalog') return [] as T;
   throw new Error('Open the desktop application to access local projects and the OMP runtime. / 请打开桌面应用以访问本地项目和 OMP 运行时。');
 }
