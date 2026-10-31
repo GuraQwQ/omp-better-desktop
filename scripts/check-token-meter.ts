@@ -91,6 +91,8 @@ try {
   assert.equal(json.attempts[0].requestBytes, Buffer.byteLength(body));
   assert.equal(json.attempts[0].responseBytes, Buffer.byteLength(jsonBody));
   assert.ok(json.attempts[0].firstByteMs! <= json.attempts[0].elapsedMs);
+  assert.ok(json.attempts[0].startedAtMs! <= json.attempts[0].endedAtMs!);
+  assert.ok(json.attempts[0].journalWaitMs! >= 0);
 
   const streamed = await fetch(meter.baseUrlFor('sse') + '/chat/completions', requestOptions('chat-sse'));
   assert.equal(streamed.headers.get('x-preserved'), 'yes');
@@ -226,6 +228,7 @@ try {
     assert.equal(interrupted.unknownCacheUsageCount, 2);
     assert.equal(interrupted.attempts.find(row => row.id === abandoned.id)?.error, 'interrupted');
     assert.equal(interrupted.attempts.find(row => row.id === abandoned.id)?.usage, null);
+    assert.equal(interrupted.attempts.find(row => row.id === abandoned.id)?.endedAtMs, undefined);
     assert.equal(await fs.readFile(interruptedFile, 'utf8'), interruptedEvidence);
     await interruptedMeter.stop();
     const interruptedAgain = await recover(interruptedDir);

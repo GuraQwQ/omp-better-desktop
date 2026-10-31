@@ -84,6 +84,14 @@ try {
   await assert.rejects(rpc.request('reject'), /fixture-rejected/);
   await assert.rejects(rpc.request('never', {}, 30), /超时/);
   await assert.rejects(rpc.wait(frame => frame.type === 'absent', 30), /超时/);
+  const reserved = await rpc.request('echo', { id: 'caller-id', type: 'wrong-type', value: 'kept' });
+  assert.equal((reserved.data as { type: string }).type, 'echo');
+  assert.notEqual(reserved.id, 'caller-id');
+  const sibling = open().rpc;
+  await within(sibling.ready(), 3000, '并行RPC未ready');
+  const [one, two] = await Promise.all([rpc.request('get_state'), sibling.request('get_state')]);
+  assert.notEqual((one.data as { pid: number }).pid, (two.data as { pid: number }).pid);
+  await sibling.stop();
 
   for (const message of ['same-chunk', 'inline-settled', 'late-settled']) {
     const result = await within(rpc.prompt(message, 500), 1000, 'prompt 快终态丢失：' + message);

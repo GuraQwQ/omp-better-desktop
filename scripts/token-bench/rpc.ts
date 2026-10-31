@@ -18,7 +18,7 @@ export function openRpc(executable: string, args: string[], cwd: string, env: No
   const rejectPending = (error: Error) => { for (const entry of pending.values()) entry.reject(error); pending.clear(); };
   child.once('error', error => { terminalError = error; rejectPending(error); });
   child.stdin.on('error', error => { terminalError = error; rejectPending(error); });
-  child.once('exit', (code, signal) => rejectPending(new Error('OMP 已退出：' + (signal ?? code))));
+  child.once('exit', (code, signal) => { exited = true; terminalError ??= new Error('OMP 已退出：' + (signal ?? code)); rejectPending(terminalError); });
   child.stderr.on('data', chunk => onStderr(chunk.toString()));
   lines.on('line', line => {
     let frame: Frame;
@@ -45,7 +45,7 @@ export function openRpc(executable: string, args: string[], cwd: string, env: No
     const result = new Promise<Frame>((resolve, reject) => {
       pending.set(id, { resolve, reject });
       timer = setTimeout(() => { pending.delete(id); reject(new Error('RPC 超时：' + type)); }, timeoutMs);
-      child.stdin.write(JSON.stringify({ id, type, ...params }) + '\n');
+      child.stdin.write(JSON.stringify({ ...params, id, type }) + '\n');
     });
     try { return await result; } finally { clearTimeout(timer!); }
   };
@@ -64,6 +64,7 @@ export function openRpc(executable: string, args: string[], cwd: string, env: No
     signal?.addEventListener('abort', cancelled, { once: true });
   });
   return {
+    pid: child.pid,
     request,
     wait,
     ready: async () => { if (!readySeen) await wait(frame => frame.type === 'ready', 60_000); },
@@ -83,7 +84,9 @@ export function openRpc(executable: string, args: string[], cwd: string, env: No
     async stop() {
       if (!exited) {
         child.stdin.end();
-        await Promise.race([exit, new Promise(resolve => setTimeout(resolve, 5_000))]);
+        let timer: ReturnType<typeof setTimeout>;
+        try { await Promise.race([exit, new Promise(resolve => { timer = setTimeout(resolve, 5_000); })]); }
+        finally { clearTimeout(timer!); }
       }
       if (!exited && child.pid) {
         if (process.platform === 'win32') {

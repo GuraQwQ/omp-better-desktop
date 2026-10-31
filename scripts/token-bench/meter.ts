@@ -17,6 +17,9 @@ export interface MeterAttempt {
   method: string;
   path: string;
   status?: number;
+  startedAtMs?: number;
+  endedAtMs?: number;
+  journalWaitMs?: number;
   elapsedMs: number;
   /** 转发层收到响应正文首字节的时间，不是模型 TTFT。 */
   firstByteMs?: number;
@@ -71,6 +74,7 @@ function restoredAttempt(value: unknown): MeterAttempt {
   for (const key of ['elapsedMs', 'requestBytes', 'responseBytes'] as const) if (count(row[key]) === undefined) throw new Error('计量字段无效');
   if (row.status !== undefined && count(row.status) === undefined) throw new Error('状态字段无效');
   if (row.firstByteMs !== undefined && count(row.firstByteMs) === undefined) throw new Error('首字节字段无效');
+  for (const key of ['startedAtMs', 'endedAtMs', 'journalWaitMs'] as const) if (row[key] !== undefined && count(row[key]) === undefined) throw new Error('时间字段无效');
   if (row.model !== undefined && typeof row.model !== 'string') throw new Error('模型字段无效');
   if (row.error !== undefined && !['upstream', 'cancelled', 'stream', 'usage_missing', 'interrupted'].includes(String(row.error))) throw new Error('错误字段无效');
   if (row.pending && (row.complete || row.usage !== null)) throw new Error('开始记录不能包含终态用量');
@@ -91,6 +95,9 @@ function restoredAttempt(value: unknown): MeterAttempt {
     id: row.id, runId: row.runId, kind: row.kind, method: row.method, path: row.path,
     ...(row.model === undefined ? {} : { model: row.model as string }),
     ...(row.status === undefined ? {} : { status: row.status as number }),
+    ...(row.startedAtMs === undefined ? {} : { startedAtMs: row.startedAtMs as number }),
+    ...(row.endedAtMs === undefined ? {} : { endedAtMs: row.endedAtMs as number }),
+    ...(row.journalWaitMs === undefined ? {} : { journalWaitMs: row.journalWaitMs as number }),
     elapsedMs: row.elapsedMs as number,
     ...(row.firstByteMs === undefined ? {} : { firstByteMs: row.firstByteMs as number }),
     requestBytes: row.requestBytes as number, responseBytes: row.responseBytes as number,
@@ -120,7 +127,7 @@ async function recoverAttempts(file: string): Promise<{ attempts: MeterAttempt[]
     unique.set(row.id, row);
   }
   // 遗留开始行可能已经产生费用，恢复为未知而不是永久运行中或零消耗。
-  const attempts = [...unique.values()].map(row => row.pending ? { ...row, pending: false, complete: false, usage: null, error: 'interrupted' as const } : row);
+  const attempts = [...unique.values()].map(row => row.pending ? { ...row, endedAtMs: undefined, pending: false, complete: false, usage: null, error: 'interrupted' as const } : row);
   return { attempts, separator: text.length > 0 && !text.endsWith('\n') ? '\n' : '' };
 }
 
@@ -281,7 +288,7 @@ export async function startMeter({ targetBaseUrl, outputDir }: { targetBaseUrl: 
       endpoint.pathname = target.pathname.replace(/\/$/, '') + suffix;
       endpoint.search = url.search;
       const started = performance.now();
-      const attempt: MeterAttempt = { id: crypto.randomUUID(), runId, kind: request.method === 'POST' && /\/(?:chat\/completions|completions|responses(?:\/compact)?)\/?$/.test(suffix) ? 'model' : 'metadata', method: request.method, path: endpoint.pathname, elapsedMs: 0, requestBytes: 0, responseBytes: 0, usage: null, complete: false, pending: true };
+      const attempt: MeterAttempt = { id: crypto.randomUUID(), runId, kind: request.method === 'POST' && /\/(?:chat\/completions|completions|responses(?:\/compact)?)\/?$/.test(suffix) ? 'model' : 'metadata', method: request.method, path: endpoint.pathname, startedAtMs: Date.now(), elapsedMs: 0, requestBytes: 0, responseBytes: 0, usage: null, complete: false, pending: true };
       attempts.push(attempt);
       const startedWrite = appendAttempt(attempt);
       const abort = new AbortController();
@@ -292,6 +299,7 @@ export async function startMeter({ targetBaseUrl, outputDir }: { targetBaseUrl: 
       const finish = (complete: boolean, error?: MeterAttempt['error']) => {
         if (!attempt.pending) return;
         attempt.pending = false; attempt.complete = complete; attempt.elapsedMs = performance.now() - started;
+        attempt.endedAtMs = Date.now();
         attempt.usage = complete || parsed?.terminal ? parsed?.candidate ?? null : null;
         attempt.error = error ?? (attempt.kind === 'model' && !attempt.usage ? 'usage_missing' : undefined);
         active.delete(abort);
@@ -311,6 +319,7 @@ export async function startMeter({ targetBaseUrl, outputDir }: { targetBaseUrl: 
       headers.delete('host'); headers.delete('connection'); headers.delete('transfer-encoding');
       try {
         await startedWrite;
+        attempt.journalWaitMs = performance.now() - started;
         const response = await fetch(endpoint, { method: request.method, headers, body, signal: abort.signal, redirect: 'manual' });
         attempt.status = response.status;
         parsed = new ResponseUsage(response.headers.get('content-type')?.includes('text/event-stream') ?? false, setModel);
