@@ -17,6 +17,7 @@ const sources: Record<string, [string, string]> = {
 };
 
 const groupNames: Record<string, string> = {
+  'Token optimization': 'Token 优化',
   Advisor: '顾问', Agent: '代理', Approvals: '审批', 'Auto-Learn': '自动学习', 'Available Tools': '可用工具',
   Collab: '协作', 'Commands & Skills': '命令与技能', Compaction: '上下文压缩', Composer: '输入框', Computer: '计算机操作',
   Developer: '开发者', 'Discovery & MCP': '发现与 MCP', Display: '显示', Editing: '编辑', 'Eval & Runtimes': '执行环境',

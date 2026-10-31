@@ -13,6 +13,7 @@
     "update:upstream": "bun scripts/update-upstream.ts",
     "build:runtime": "bun scripts/build-runtime.ts",
     "smoke:runtime": "bun scripts/smoke-runtime.ts",
+    "bench:tokens": "bun scripts/token-bench/run.ts",
     "build:desktop": "bun scripts/build-runtime.ts --bundle-desktop",
     "clean": "bun scripts/clean.ts"
   },

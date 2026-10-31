@@ -1,0 +1,328 @@
+diff --git a/packages/coding-agent/src/extensibility/skill-descriptions.ts b/packages/coding-agent/src/extensibility/skill-descriptions.ts
+index 613527a..b6a93cc 100644
+--- a/packages/coding-agent/src/extensibility/skill-descriptions.ts
++++ b/packages/coding-agent/src/extensibility/skill-descriptions.ts
+@@ -350,11 +350,15 @@ export class SkillDescriptionCatalog {
+ 	readonly #store: SkillDescriptionStore | undefined;
+ 	readonly #compress?: SkillDescriptionCompressor;
+ 	readonly #snapshot = new Map<string, string>();
++	reuseCache: boolean;
+ 
+ 	/** `store` defaults to {@link sharedSkillDescriptionStore}; without one, prompts keep previews. */
+-	constructor(options: { store?: SkillDescriptionStore; compress?: SkillDescriptionCompressor } = {}) {
++	constructor(
++		options: { store?: SkillDescriptionStore; compress?: SkillDescriptionCompressor; reuseCache?: boolean } = {},
++	) {
+ 		this.#store = options.store ?? sharedSkillDescriptionStore();
+ 		this.#compress = options.compress;
++		this.reuseCache = options.reuseCache ?? false;
+ 	}
+ 
+ 	/** Read the session's frozen prompt hints without starting new model work. */
+@@ -404,6 +408,14 @@ export class SkillDescriptionCatalog {
+ 				await compressionSlots.acquire();
+ 				try {
+ 					if (store.isClosing) return;
++					if (this.reuseCache) {
++						try {
++							// 等待期间其他会话可能已完成压缩；保留本会话已冻结的描述。
++							if (store.get(key) !== undefined) return;
++						} catch (error) {
++							logger.warn("Skill description cache recheck failed", { error: String(error) });
++						}
++					}
+ 					// Unusable answers are remembered per model: that model is not asked again, a newly selected one is.
+ 					const model = compressor.modelKey();
+ 					const unusableKey = model === undefined ? undefined : `${key}:${model}`;
+diff --git a/packages/coding-agent/src/prompts/system/programmatic-tool-use.md b/packages/coding-agent/src/prompts/system/programmatic-tool-use.md
+new file mode 100644
+index 0000000..325488e
+--- /dev/null
++++ b/packages/coding-agent/src/prompts/system/programmatic-tool-use.md
+@@ -0,0 +1,7 @@
++# Programmatic tool use
++
++For multi-step deterministic processing or a batch of independent tool calls, prefer a short `{{toolRefs.eval}}` program when it avoids repeated model round trips. Invoke specialized operations through `await tool.<name>(args)`, and keep their permissions, approvals and dependency order.
++
++Filter, join, count and compare results locally before printing the evidence needed for the next decision. Keep failures, source paths and exact output identifiers visible; retain full results and use `output` with a query or range when more detail is needed. Retry only failed steps, since completed steps may already have changed state.
++
++Use a direct tool call for a simple action. Stop the program where a new judgment or missing information is needed, inspect the result, then choose the next step.
+diff --git a/packages/coding-agent/src/sdk.ts b/packages/coding-agent/src/sdk.ts
+index 1c571be..dfecb6a 100644
+--- a/packages/coding-agent/src/sdk.ts
++++ b/packages/coding-agent/src/sdk.ts
+@@ -402,6 +402,8 @@ import {
+ 	cfgSnapcompactShape,
+ 	cfgSnapcompactSystemPrompt,
+ 	cfgSnapcompactToolResults,
++	cfgTokenOptimizationProgrammatic,
++	cfgTokenOptimizationSkillCacheReuse,
+ 	cfgWorkspaceAdditionalDirectories,
+ } from "./session/context-settings";
+ import { cfgTaskBatch, cfgTaskDisabledAgents, cfgTaskEager, cfgTaskMaxConcurrency } from "./task/settings";
+@@ -1354,6 +1356,8 @@ export interface BuildSystemPromptOptions {
+ 	systemPromptTemplate?: string;
+ 	appendPrompt?: string;
+ 	inlineToolDescriptors?: boolean;
++	/** 显式启用程序化工具编排指导。 */
++	programmatic?: boolean;
+ 	includeWorkspaceTree?: boolean;
+ 	/** Include the read-only security:// resource inventory entry. Default: false. */
+ 	securityEnabled?: boolean;
+@@ -1384,6 +1388,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
+ 		contextFiles: options.contextFiles,
+ 		appendSystemPrompt: options.appendPrompt,
+ 		inlineToolDescriptors: options.inlineToolDescriptors,
++		programmatic: options.programmatic,
+ 		includeWorkspaceTree: options.includeWorkspaceTree,
+ 		securityEnabled: options.securityEnabled,
+ 		evalPreludes: options.evalPreludes,
+@@ -4005,6 +4010,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+ 				: openSessionSkillDescriptionStore(agentDir);
+ 		const skillDescriptions = new SkillDescriptionCatalog({
+ 			store: ownedSkillDescriptionStore,
++			reuseCache: cfgTokenOptimizationSkillCacheReuse.get(settings),
+ 			// Like the other one-shot model calls, each compression request resolves
+ 			// its own telemetry handle, so its usage stays out of the run summary.
+ 			// The first requests can start before `agent` is constructed; they use
+@@ -4220,6 +4226,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+ 				skillsSettings: cfgSkills.get(settings),
+ 				inlineToolDescriptors,
+ 				nativeTools,
++				programmatic: cfgTokenOptimizationProgrammatic.get(settings),
+ 				intentField: cfgToolsIntentTracing.get(settings) ? INTENT_FIELD : undefined,
+ 				eagerTasks: cfgTaskEager.get(settings) !== "default",
+ 				eagerTasksAlways: cfgTaskEager.get(settings) === "always",
+@@ -5062,6 +5069,9 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+ 				session.emitNotice("error", `Failed to rebuild the system prompt after a settings change: ${error}`);
+ 			}
+ 		});
++		cfgTokenOptimizationSkillCacheReuse.listen(session, enabled => {
++			skillDescriptions.reuseCache = enabled;
++		});
+ 		// Agent-level tool-call switches: the loop snapshots them per prompt run, so a
+ 		// change applies from the next run without splitting one response's schema/strip.
+ 		// The prompt listener above republishes the intent-field guidance.
+diff --git a/packages/coding-agent/src/session/context-settings.ts b/packages/coding-agent/src/session/context-settings.ts
+index 747a4ca..9961cd3 100644
+--- a/packages/coding-agent/src/session/context-settings.ts
++++ b/packages/coding-agent/src/session/context-settings.ts
+@@ -9,6 +9,32 @@ import { SHAPE_VARIANT_NAMES } from "@oh-my-pi/snapcompact";
+ const EMPTY_STRING_ARRAY: string[] = [];
+ const EMPTY_MODEL_COMPACTION_THRESHOLDS: Record<string, AgentCompactionThresholdOverride> = {};
+ 
++export const cfgTokenOptimizationSkillCacheReuse = register({
++	id: "tokenOptimization.skillCacheReuse",
++	type: "boolean",
++	default: false,
++	ui: {
++		tab: "context",
++		group: "Token optimization",
++		label: "Reuse skill description cache",
++		description:
++			"Recheck completed skill descriptions after waiting for a compression slot to avoid duplicate model calls. Current session descriptions stay unchanged.",
++	},
++});
++
++export const cfgTokenOptimizationProgrammatic = register({
++	id: "tokenOptimization.programmatic",
++	type: "boolean",
++	default: false,
++	ui: {
++		tab: "context",
++		group: "Token optimization",
++		label: "Programmatic tool use",
++		description:
++			"Guide the agent to use eval for multi-step deterministic processing and tool batches, retaining errors and references to full results. Simple actions stay direct.",
++	},
++});
++
+ export const cfgWorkspaceAdditionalDirectories = register({
+ 	id: "workspace.additionalDirectories",
+ 	type: "array",
+diff --git a/packages/coding-agent/src/system-prompt.ts b/packages/coding-agent/src/system-prompt.ts
+index fa2b5c1..31a0560 100644
+--- a/packages/coding-agent/src/system-prompt.ts
++++ b/packages/coding-agent/src/system-prompt.ts
+@@ -38,6 +38,7 @@ import pragmaticPersonality from "./prompts/system/personalities/pragmatic.md" w
+ import projectPromptTemplate from "./prompts/system/project-prompt.md" with { type: "text" };
+ import systemPromptTemplate from "./prompts/system/system-prompt.md" with { type: "text" };
+ import userAppendPromptTemplate from "./prompts/system/user-append.md" with { type: "text" };
++import programmaticToolPrompt from "./prompts/system/programmatic-tool-use.md" with { type: "text" };
+ import { normalizeConcurrencyLimit } from "./task/parallel";
+ import type { ActiveRepoContext } from "@oh-my-pi/pi-tui/status-line/host";
+ import { XD_URL_PREFIX } from "@oh-my-pi/pi-tui/tools/xd-url";
+@@ -50,7 +51,7 @@ import { cfgEvalAutoBackgroundEnabled } from "./eval/settings";
+ import { cfgTtsrBuiltinRules, cfgTtsrDisabledRules, cfgTtsrEnabled } from "./export/ttsr-settings";
+ import { cfgTuiAutoGraph, cfgTuiReactions, cfgTuiRenderMermaid, cfgTuiRenderSvg } from "./modes/settings";
+ import { cfgSecretsEnabled } from "./secrets/settings";
+-import { cfgToolsFormat } from "./session/context-settings";
++import { cfgTokenOptimizationProgrammatic, cfgToolsFormat } from "./session/context-settings";
+ import {
+ 	cfgIncludeModelInPrompt,
+ 	cfgIncludeWorkspaceTree,
+@@ -79,6 +80,7 @@ export const cfgSystemPromptInputs = combine({
+ 	includeWorkspaceTree: cfgIncludeWorkspaceTree,
+ 	inlineToolDescriptors: cfgInlineToolDescriptors,
+ 	toolsFormat: cfgToolsFormat,
++	programmatic: cfgTokenOptimizationProgrammatic,
+ 	intentTracing: cfgToolsIntentTracing,
+ 	xdevDocs: cfgToolsXdevDocs,
+ 	xdevInlineDevices: cfgToolsXdevInlineDevices,
+@@ -527,6 +529,8 @@ export interface BuildSystemPromptOptions {
+ 	 * `namespace functions { … }` catalog. Default: true
+ 	 */
+ 	nativeTools?: boolean;
++	/** 显式启用程序化工具编排指导，默认沿用原生提示词。 */
++	programmatic?: boolean;
+ 	/** Skills settings for discovery. */
+ 	skillsSettings?: SkillsSettings;
+ 	/** Working directory. Default: getProjectDir() */
+@@ -1056,6 +1060,9 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
+ 		rendered = prompt.render(systemPromptTemplate, data);
+ 	}
+ 	const systemPrompt = [rendered];
++	if (options.programmatic && data.tools.includes("eval")) {
++		systemPrompt.push(prompt.render(programmaticToolPrompt, data).trim());
++	}
+ 	for (const prelude of evalPreludes) {
+ 		const guidance = prelude.guidance?.trim();
+ 		if (guidance) systemPrompt.push(guidance);
+diff --git a/packages/coding-agent/test/skill-descriptions-xdg.test.ts b/packages/coding-agent/test/skill-descriptions-xdg.test.ts
+index fb3854e..d0ce143 100644
+--- a/packages/coding-agent/test/skill-descriptions-xdg.test.ts
++++ b/packages/coding-agent/test/skill-descriptions-xdg.test.ts
+@@ -163,6 +163,73 @@ describe("skill description failure caching and shutdown", () => {
+ 		return compressor;
+ 	}
+ 
++	it.each([false, true])("等待期间出现成功缓存时，reuseCache=%s 保持相应调用行为和当前快照", async reuseCache => {
++		using store = SkillDescriptionStore.open(path.join(tempDir, "cache.db"));
++		using writer = SkillDescriptionStore.open(store.path);
++		const occupied = Promise.withResolvers<void>();
++		const release = Promise.withResolvers<string>();
++		let started = 0;
++		const blockers = new SkillDescriptionCatalog({
++			store,
++			compress: fast(async () => {
++				if (++started === 4) occupied.resolve();
++				return release.promise;
++			}),
++		});
++		blockers.render(Array.from({ length: 4 }, (_, index) => skill(`occupied-${index}`)));
++		await occupied.promise;
++		const entry = skill("queued");
++		const replacement = "Use for migrations with another completed result.";
++		const compress = vi.fn(async () => compressed);
++		const queued = new SkillDescriptionCatalog({ store, compress: fast(compress), reuseCache });
++		const read = spyOn(store, "get");
++		const preview = queued.render([entry])[0].description;
++		try {
++			// 用第二个 SQLite 连接模拟排队期间另一会话提交相同缓存键。
++			const key = read.mock.calls.at(-1)![0];
++			writer.put(key, replacement);
++		} finally {
++			read.mockRestore();
++			release.resolve(compressed);
++			await Promise.all([blockers.waitForPending(), queued.waitForPending()]);
++		}
++		expect(compress).toHaveBeenCalledTimes(reuseCache ? 0 : 1);
++		expect(queued.render([entry])[0].description).toBe(preview);
++		expect(new SkillDescriptionCatalog({ store }).render([entry])[0].description).toBe(
++			reuseCache ? replacement : compressed,
++		);
++	});
++
++	it("成功缓存未命中时继续压缩，模型失败后下一会话仍能重试", async () => {
++		using store = SkillDescriptionStore.open(path.join(tempDir, "cache.db"));
++		const compress = vi.fn(async () => compressed).mockRejectedValueOnce(new Error("temporary failure"));
++		const first = new SkillDescriptionCatalog({ store, compress: fast(compress), reuseCache: true });
++		first.render([skill()]);
++		await first.waitForPending();
++		expect(storedDescriptions(store.path)).toEqual([]);
++		const retry = new SkillDescriptionCatalog({ store, compress: fast(compress), reuseCache: true });
++		retry.render([skill()]);
++		await retry.waitForPending();
++		expect(compress).toHaveBeenCalledTimes(2);
++		expect(storedDescriptions(store.path)).toEqual([compressed]);
++	});
++
++	it("额外缓存重查失败时仍执行原有压缩流程", async () => {
++		using store = SkillDescriptionStore.open(path.join(tempDir, "cache.db"));
++		const originalGet = store.get.bind(store);
++		let reads = 0;
++		spyOn(store, "get").mockImplementation(key => {
++			if (++reads === 2) throw new Error("temporary cache read failure");
++			return originalGet(key);
++		});
++		const compress = vi.fn(async () => compressed);
++		const catalog = new SkillDescriptionCatalog({ store, compress: fast(compress), reuseCache: true });
++		catalog.render([skill()]);
++		await catalog.waitForPending();
++		expect(compress).toHaveBeenCalledTimes(1);
++		expect(storedDescriptions(store.path)).toEqual([compressed]);
++	});
++
+ 	it.each([
+ 		["more than 12 words", "one two three four five six seven eight nine ten eleven twelve thirteen"],
+ 		["more than 160 characters", "x".repeat(161)],
+diff --git a/packages/coding-agent/test/token-optimization-prompt.test.ts b/packages/coding-agent/test/token-optimization-prompt.test.ts
+new file mode 100644
+index 0000000..a3b131b
+--- /dev/null
++++ b/packages/coding-agent/test/token-optimization-prompt.test.ts
+@@ -0,0 +1,54 @@
++import { describe, expect, it } from "bun:test";
++import { TempDir } from "@oh-my-pi/pi-utils";
++import { Settings } from "../src/config/settings";
++import { cfgTokenOptimizationProgrammatic } from "../src/session/context-settings";
++import { buildSystemPrompt, cfgSystemPromptInputs, type BuildSystemPromptOptions } from "../src/system-prompt";
++
++function options(cwd: string, toolNames = ["eval", "read"]): BuildSystemPromptOptions {
++	return {
++		cwd,
++		toolNames,
++		contextFiles: [],
++		noContextFiles: true,
++		skills: [],
++		rules: [],
++		alwaysApplyRules: [],
++		activeRepoContext: null,
++		workspaceTree: { rootPath: cwd, rendered: "", truncated: false, totalLines: 0, agentsMdFiles: [] },
++	};
++}
++
++describe("程序化工具编排提示词隔离", () => {
++	it("设置只在显式开启时添加独立指导，关闭后恢复原有字节", async () => {
++		using directory = TempDir.createSync("omp-token-prompt-");
++		const base = options(directory.path());
++		const settings = Settings.isolated();
++		const original = await buildSystemPrompt(base);
++		const defaults = await buildSystemPrompt({
++			...base,
++			programmatic: cfgSystemPromptInputs.get(settings).programmatic,
++		});
++		expect(defaults).toEqual(original);
++
++		cfgTokenOptimizationProgrammatic.override(settings, true);
++		const enabled = await buildSystemPrompt({
++			...base,
++			programmatic: cfgSystemPromptInputs.get(settings).programmatic,
++		});
++		const extra = enabled.systemPrompt.filter(block => !original.systemPrompt.includes(block));
++		expect(extra).toHaveLength(1);
++		expect(extra[0]).toContain("tool.<name>(args)");
++		expect(enabled.systemPrompt.filter(block => block !== extra[0])).toEqual(original.systemPrompt);
++
++		cfgTokenOptimizationProgrammatic.override(settings, false);
++		expect(
++			await buildSystemPrompt({ ...base, programmatic: cfgSystemPromptInputs.get(settings).programmatic }),
++		).toEqual(original);
++	});
++
++	it("没有 eval 的会话不收到无法执行的程序化指导", async () => {
++		using directory = TempDir.createSync("omp-token-prompt-tools-");
++		const base = options(directory.path(), ["read"]);
++		expect(await buildSystemPrompt({ ...base, programmatic: true })).toEqual(await buildSystemPrompt(base));
++	});
++});

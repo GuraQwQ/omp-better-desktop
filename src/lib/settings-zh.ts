@@ -1,6 +1,14 @@
 // 中文文案改编自 oh-my-pi-gui 的 schema-zh.ts 与 schema-option-zh.ts，并按当前 OMP 设置元数据校订。
 // Copyright (c) 2026 nornzach；MIT 许可及完整归属见 THIRD-PARTY-NOTICES.md。
 export const settingsZh: Record<string, { label: string; description?: string; options?: Record<string, string> }> = {
+  "tokenOptimization.skillCacheReuse": {
+    "label": "复用技能描述缓存",
+    "description": "等待压缩名额后再次检查已完成的技能描述缓存，避免重复调用模型。当前会话的描述保持不变。"
+  },
+  "tokenOptimization.programmatic": {
+    "label": "程序化工具编排",
+    "description": "引导代理使用 eval 完成多步确定性处理与批量工具调用，保留错误和原文引用；简单操作仍直接执行。"
+  },
   "auth.broker.url": {
     "label": "认证代理 URL"
   },
