@@ -1,9 +1,20 @@
 name: 合并并发布上游更新
 
 on:
-  workflow_run:
-    workflows: [Windows 检查]
-    types: [completed]
+  workflow_call:
+    inputs:
+      build_run:
+        type: string
+        required: true
+      build_attempt:
+        type: string
+        required: true
+      head_sha:
+        type: string
+        required: true
+      head_branch:
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -14,7 +25,6 @@ concurrency:
 
 jobs:
   release:
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'workflow_dispatch' && startsWith(github.event.workflow_run.head_branch, 'automation/omp-')
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -24,16 +34,19 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
       BASE_BRANCH: ${{ github.event.repository.default_branch }}
-      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
-      BUILD_RUN: ${{ github.event.workflow_run.id }}
-      BUILD_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+      HEAD_SHA: ${{ inputs.head_sha }}
+      HEAD_BRANCH: ${{ inputs.head_branch }}
+      BUILD_RUN: ${{ inputs.build_run }}
+      BUILD_ATTEMPT: ${{ inputs.build_attempt }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ github.event.workflow_run.id }}
-          name: omp-windows-${{ github.event.workflow_run.run_attempt }}
+          run-id: ${{ inputs.build_run }}
+          name: omp-windows-${{ inputs.build_attempt }}
           path: release
       - name: 合并已检查候选并发布预构建包
         shell: bash
@@ -47,6 +60,7 @@ jobs:
             echo '::notice::该构建已不对应当前上游更新 PR，跳过发布'
             exit 0
           fi
+          node scripts/upstream-pr.mjs verify "$PR_NUMBER"
 
           jq -e --arg sha "$HEAD_SHA" '.sourceSha == $sha and (.desktopVersion | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) and (.upstreamVersion | test("^[0-9A-Za-z.+-]+$"))' release/build-info.json > /dev/null
           VERSION=$(jq -r .desktopVersion release/build-info.json)
