@@ -34,7 +34,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   } else if (operation === 'verify') {
     if (pr.head.sha !== process.env.HEAD_SHA) throw Error('构建提交已被新的 PR 提交替代。');
   } else if (operation === 'enable' && pr.state === 'open') {
-    if (pr.mergeable_state === 'behind') {
+    if (api(`compare/${baseBranch}...${pr.head.sha}`).behind_by > 0) {
       gh('api', `repos/${repository}/pulls/${number}/update-branch`, '--method', 'PUT', '-f', `expected_head_sha=${pr.head.sha}`);
       const previous = pr.head.sha;
       for (let attempt = 0; pr.head.sha === previous && attempt < 12; attempt++) {
