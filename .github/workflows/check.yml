@@ -9,9 +9,16 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: windows-check-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   windows:
     runs-on: windows-latest
+    outputs:
+      patch: ${{ steps.upstream.outputs.eligible }}
+      head_sha: ${{ steps.upstream.outputs.head_sha }}
     env:
       OMP_DESKTOP_CACHE: ${{ github.workspace }}/.cache
       CARGO_HOME: ${{ github.workspace }}/.cache/cargo
@@ -20,33 +27,68 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - id: scope
+        name: 按改动选择检查
+        shell: pwsh
+        env:
+          CHECK_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          $changes = 'package.json'
+          if ($env:CHECK_BASE -and $env:CHECK_BASE -notmatch '^0+$') {
+            $diff = git diff --name-only $env:CHECK_BASE HEAD 2>$null
+            if ($LASTEXITCODE -eq 0) { $changes = $diff }
+          }
+          $runtime = $env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -or [bool]($changes -match '^(patches/|upstream\.lock\.json$|vendor/omp-rpc/|src/generated/|scripts/(build-runtime|build-install|prepare-upstream|generate-catalog|package-runtime|smoke-runtime)\.ts$|package\.json$|bun\.lock$)')
+          $hostChanged = $runtime -or [bool]($changes -match '^src-tauri/')
+          "runtime=$($runtime.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "host=$($hostChanged.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+      - id: upstream
+        name: 识别机器人补丁升级
+        if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'github-actions[bot]'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/upstream-pr.mjs check $env:PR_NUMBER
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.scope.outputs.host == 'true'
         with:
           components: rustfmt
       - uses: actions/setup-node@v4
+        if: steps.scope.outputs.runtime == 'true'
         with:
           node-version: 22
       - uses: actions/setup-python@v5
+        if: steps.scope.outputs.runtime == 'true'
         with:
           python-version: "3.12"
       - run: bun install --frozen-lockfile
       - run: bun run check
-      - name: 检查配置、导入界面与动效逻辑
+      - name: 核心行为检查
         shell: pwsh
         run: |
-          foreach ($script in Get-ChildItem -LiteralPath scripts -Filter 'check-*.ts' | Sort-Object Name) {
-            bun $script.FullName
+          foreach ($script in @('check-clean.ts', 'check-provider-config.ts', 'check-questions.ts')) {
+            bun "scripts/$script"
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
           }
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+        if: steps.scope.outputs.host == 'true'
       - name: 构建并检查 Windows 发行输入
-        run: bun run ${{ github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/automation/omp-') && 'build:desktop' || 'build:runtime' }}
+        if: steps.scope.outputs.runtime == 'true'
+        run: bun run ${{ steps.upstream.outputs.eligible == 'true' && 'build:desktop' || 'build:runtime' }}
       - run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+        if: steps.scope.outputs.host == 'true'
+        env:
+          TAURI_CONFIG: '{"bundle":{"resources":[]}}'
       - name: 整理预构建发行包
-        if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/automation/omp-')
+        if: steps.upstream.outputs.eligible == 'true'
         shell: pwsh
         run: |
           git diff --exit-code
@@ -58,14 +100,28 @@ jobs:
           New-Item -ItemType Directory -Force artifacts/prebuilt | Out-Null
           Copy-Item -LiteralPath $installers[0].FullName -Destination "artifacts/prebuilt/Better-OMP-Desktop_${version}_windows-x64-preview.exe"
           Copy-Item LICENSE,THIRD-PARTY-NOTICES.md -Destination artifacts/prebuilt
-          [ordered]@{sourceSha=$env:GITHUB_SHA;desktopVersion=$version;upstreamVersion=$upstream.runtimeVersion;upstreamRevision=$upstream.revision} | ConvertTo-Json | Set-Content artifacts/prebuilt/build-info.json -Encoding utf8
+          [ordered]@{sourceSha=(git rev-parse HEAD);desktopVersion=$version;upstreamVersion=$upstream.runtimeVersion;upstreamRevision=$upstream.revision} | ConvertTo-Json | Set-Content artifacts/prebuilt/build-info.json -Encoding utf8
           $files = @("artifacts/prebuilt/Better-OMP-Desktop_${version}_windows-x64-preview.exe", 'artifacts/prebuilt/LICENSE', 'artifacts/prebuilt/THIRD-PARTY-NOTICES.md', 'artifacts/prebuilt/build-info.json')
           $sums = $files | ForEach-Object { "$( (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant() )  $(Split-Path -Leaf $_)" }
           [IO.File]::WriteAllText((Join-Path $PWD 'artifacts/prebuilt/SHA256SUMS'), ($sums -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
       - uses: actions/upload-artifact@v4
-        if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/automation/omp-')
+        if: steps.upstream.outputs.eligible == 'true'
         with:
           name: omp-windows-${{ github.run_attempt }}
           path: artifacts/prebuilt/*
           if-no-files-found: error
           retention-days: 30
+
+  upstream-release:
+    needs: windows
+    if: needs.windows.outputs.patch == 'true'
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: write
+    uses: ./.github/workflows/upstream-release.yml
+    with:
+      build_run: ${{ github.run_id }}
+      build_attempt: ${{ github.run_attempt }}
+      head_sha: ${{ needs.windows.outputs.head_sha }}
+      head_branch: ${{ github.head_ref }}
