@@ -5,13 +5,13 @@ import type { Copy } from '../lib/i18n';
 import type { Bootstrap, Json } from '../lib/types';
 import { displayPath } from '../lib/display-path';
 import { applyModelSelection } from '../lib/provider-models';
+import modelFields from '../../src-tauri/src/provider-model-fields.json';
 import Select from './Select';
 import './custom-providers.css';
 
 interface Provider { id: string; api: string; baseUrl: string; hasApiKey: boolean; models: (Json & { id: string })[]; options: Json }
-interface Configuration { configPath: string; takeover: { enabled: boolean; active: boolean; unknown?: boolean }; providers: Provider[]; savedProvider?: string }
+interface Configuration { configPath: string; takeover: { enabled: boolean; active: boolean; unknown?: boolean }; providers: Provider[]; savedProvider?: string; refreshErrors?: string[] }
 const protocols = [{ value: 'openai-completions', label: 'OpenAI Chat Completions' }, { value: 'openai-responses', label: 'OpenAI Responses' }, { value: 'anthropic-messages', label: 'Anthropic Messages' }];
-const modelFields = ['name', 'api', 'baseUrl', 'contextWindow', 'maxContextWindow', 'maxTokens', 'reasoning', 'input', 'supportsTools', 'cost', 'headers', 'compat', 'omitMaxOutputTokens', 'preferWebsockets', 'compactionModel'];
 const modelList = (value: string) => [...new Set(value.split(/\r?\n/).map(value => value.trim()).filter(Boolean))];
 const jsonText = (value: unknown) => value == null ? '' : JSON.stringify(value, null, 2);
 function jsonObject(value: string, label: string, invalid: string) {
@@ -136,14 +136,14 @@ export default function CustomProviders({ bootstrap, t, cwd }: { bootstrap: Boot
       setConfiguration(result);
       const saved = result.providers.find(provider => provider.id === result.savedProvider);
       if (saved) loadFields(saved);
-      setNotice(t.providerSaved);
+      setNotice([t.providerSaved, ...(result.refreshErrors ?? [])].join('\n'));
     } catch (error) { if (current === contextRevision.current) setError(error instanceof Error ? error.message : String(error)); }
     finally { if (current === contextRevision.current) setWorking(''); }
   };
   const remove = async () => {
     if (!selected || locked) return;
     const current = contextRevision.current; revision.current++; setWorking('delete'); setError(''); setNotice('');
-    try { const result = await request<Configuration>('providers.config', { operation: 'delete', cwd, provider: { id: selected } }); if (current === contextRevision.current) { setConfiguration(result); loadFields(); setConfirmDelete(false); setNotice(text.removed); } }
+    try { const result = await request<Configuration>('providers.config', { operation: 'delete', cwd, provider: { id: selected } }); if (current === contextRevision.current) { setConfiguration(result); loadFields(); setConfirmDelete(false); setNotice([text.removed, ...(result.refreshErrors ?? [])].join('\n')); } }
     catch (error) { if (current === contextRevision.current) setError(error instanceof Error ? error.message : String(error)); }
     finally { if (current === contextRevision.current) setWorking(''); }
   };

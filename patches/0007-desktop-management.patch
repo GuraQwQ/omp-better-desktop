@@ -159,7 +159,7 @@ diff --git a/packages/coding-agent/src/modes/rpc/desktop-management.ts b/package
 new file mode 100644
 --- /dev/null
 +++ b/packages/coding-agent/src/modes/rpc/desktop-management.ts
-@@ -0,0 +1,955 @@
+@@ -0,0 +1,959 @@
 +import * as fs from "node:fs/promises";
 +import * as path from "node:path";
 +import { isDeepStrictEqual } from "node:util";
@@ -295,7 +295,11 @@ new file mode 100644
 +
 +async function manageModels(session: AgentSession, action: string, args: Record<string, unknown>): Promise<object> {
 +	const settings = session.settings;
++	if (action === "refresh") {
++		return { ...(await session.refreshModelCatalog(true)), message: "模型配置已刷新" };
++	}
 +	if (action === "list") {
++		await session.refreshModelCatalog();
 +		return {
 +			storage: cfgModelRoleStorage.get(settings),
 +			items: getKnownRoleIds(settings).map(id => {
@@ -1365,3 +1369,139 @@ new file mode 100644
 +		expect(await desktopManage(session, { resource: "mcp", action: "list" })).toEqual(before);
 +	}, 20_000);
 +});
+diff --git a/packages/coding-agent/src/config/model-registry.ts b/packages/coding-agent/src/config/model-registry.ts
+--- a/packages/coding-agent/src/config/model-registry.ts
++++ b/packages/coding-agent/src/config/model-registry.ts
+@@ -319,6 +319,7 @@ export class ModelRegistry {
+ 	#internedStaticModels: Map<string, Model<Api>> = new Map();
+ 	#providerLookupSnapshots: Map<string, Model<Api>[]> = new Map();
+ 	#fullKindSnapshots = new WeakMap<Model<Api>[], Partial<Record<ModelKind, Model<Api>[]>>>();
++	#configuredModelIds = new Map<string, Set<string>>();
+ 	#customProviderApiKeys: Map<string, string> = new Map();
+ 	// Every command-backed (`!cmd`) config value a provider carries — apiKey plus
+ 	// provider/model-override header values — keyed by provider. The 401 auth
+@@ -1024,6 +1025,7 @@ export class ModelRegistry {
+ 
+ 	#loadModels() {
+ 		this.#resetStaticComposition();
++		this.#configuredModelIds.clear();
+ 		// Load custom config first (to know which providers to override).
+ 		const {
+ 			models: customModels = [],
+@@ -1082,7 +1084,11 @@ export class ModelRegistry {
+ 	}
+ 
+ 	#internStaticModels(models: Model<Api>[]): Model<Api>[] {
+-		return models.map(model => {
++		// 显式模型清单由原生目录统一投影，未配置的提供商保留原生目录。
++		return models.filter(model => {
++			const ids = this.#configuredModelIds.get(model.provider);
++			return !ids || ids.has(model.id);
++		}).map(model => {
+ 			const key = `${model.provider}\u0000${model.id}`;
+ 			const interned = this.#internedStaticModels.get(key);
+ 			if (interned) return interned;
+@@ -1783,6 +1789,9 @@ export class ModelRegistry {
+ 		const providerEntries = Object.entries(value.providers ?? {});
+ 		const configuredProviders = new Set(Object.keys(value.providers ?? {}));
+ 		for (const [providerName, providerConfig] of providerEntries) {
++			if (providerConfig.models?.length) {
++				this.#configuredModelIds.set(providerName, new Set(providerConfig.models.map(model => model.id)));
++			}
+ 			const commandConfigs = new Set<string>();
+ 			this.#collectCommandConfigValues(commandConfigs, providerConfig.apiKey, providerConfig.headers);
+ 			for (const modelDef of providerConfig.models ?? []) {
+diff --git a/packages/coding-agent/src/session/agent-session.ts b/packages/coding-agent/src/session/agent-session.ts
+--- a/packages/coding-agent/src/session/agent-session.ts
++++ b/packages/coding-agent/src/session/agent-session.ts
+@@ -1122,6 +1122,9 @@ export class AgentSession implements SettingsScope {
+ 	#autolearnCaptureTask: Promise<void> | undefined;
+ 	#isDisposed = false;
+ 	#modelDiscoveryAbortController = new AbortController();
++	#modelCatalogRevision = 0;
++	#boundModelCatalogRevision = 0;
++	#modelCatalogError: string | undefined;
+ 	/** Process-wide by default (double-spend safety across sessions); injectable for tests. */
+ 	#resetCoordinator: CodexAutoRedeemCoordinator;
+ 	/** Each turn stream may adopt a peer's confirmed reset once, not retry on it indefinitely. */
+@@ -2192,6 +2195,8 @@ export class AgentSession implements SettingsScope {
+ 		});
+ 		this.agent.prepareQueuedMessages = this.#prepareQueuedUserMessages;
+ 		this.#detachUsageBeforeModelCall = this.agent.addBeforeModelCallHook(async signal => {
++			await this.#applyPendingModelCatalog();
++			if (this.#modelCatalogError) throw new Error(this.#modelCatalogError);
+ 			if (!cfgRetryUsageAwareFallback.get(this.settings)) return;
+ 			if (this.#usagePreflightReadyForNextModelCall) {
+ 				const checkedModel = this.#usagePreflightReadyModel;
+@@ -6759,6 +6764,9 @@ export class AgentSession implements SettingsScope {
+ 	}
+ 
+ 	async #runUsageAwarePreflightForNextModelCall(signal?: AbortSignal): Promise<boolean> {
++		if (signal?.aborted) return false;
++		await this.#applyPendingModelCatalog();
++		if (this.#modelCatalogError) throw new Error(this.#modelCatalogError);
+ 		const allowed = await this.#runUsageAwarePreflight(signal);
+ 		this.#usagePreflightReadyForNextModelCall = allowed;
+ 		this.#usagePreflightReadyModel = allowed ? this.model : undefined;
+@@ -11658,6 +11666,41 @@ export class AgentSession implements SettingsScope {
+ 		return this.#models.setModel(model, role, options);
+ 	}
+ 
++	/** 离线刷新共享模型配置，运行中的调用在下一次原生预检时接收新能力。 */
++	async refreshModelCatalog(force = false): Promise<{ pending: boolean; error?: string }> {
++		let changed: boolean;
++		if (force) {
++			await this.#modelRegistry.awaitBackgroundRefresh();
++			await this.#modelRegistry.reapplyModelPolicies();
++			changed = true;
++		} else {
++			changed = await this.#modelRegistry.refreshIfStale();
++		}
++		if (changed) this.#modelCatalogRevision++;
++		if (!this.isStreaming && !this.isSessionTransitioning) await this.#applyPendingModelCatalog();
++		return {
++			pending: this.#boundModelCatalogRevision !== this.#modelCatalogRevision,
++			...(this.#modelCatalogError ? { error: this.#modelCatalogError } : {}),
++		};
++	}
++
++	async #applyPendingModelCatalog(): Promise<void> {
++		const revision = this.#modelCatalogRevision;
++		if (revision === this.#boundModelCatalogRevision || this.#isDisposed) return;
++		const current = this.model;
++		const found = current && this.#modelRegistry.find(current.provider, current.id);
++		if (current && (!found || !this.#modelRegistry.hasConfiguredAuth(found))) {
++			this.#modelCatalogError = "Model not found or no API key: " + current.provider + "/" + current.id + ". Please select an available model.";
++		} else {
++			this.#modelCatalogError = undefined;
++			if (found) {
++				await this.#setModelWithProviderSessionReset(this.#modelRegistry.fitContextWindow(found, this.settings));
++				this.#emit({ type: "model_changed" });
++			}
++		}
++		this.#boundModelCatalogRevision = revision;
++	}
++
+ 	/** Selects a model for this session without updating persisted model settings. */
+ 	setModelTemporary(
+ 		model: Model,
+@@ -12290,6 +12333,7 @@ export class AgentSession implements SettingsScope {
+ 			}
+ 		}
+ 		this.agent.setModel(model);
++		this.#modelCatalogError = undefined;
+ 		// Model mutations driven through ModelControls (explicit /model, prewalk
+ 		// hand-offs, retry-fallback, model cycling) funnel through this method,
+ 		// so this is the single point that notifies subscribers (ACP config
+diff --git a/packages/coding-agent/src/modes/rpc/rpc-mode.ts b/packages/coding-agent/src/modes/rpc/rpc-mode.ts
+--- a/packages/coding-agent/src/modes/rpc/rpc-mode.ts
++++ b/packages/coding-agent/src/modes/rpc/rpc-mode.ts
+@@ -2607,7 +2607,7 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions
+ 			}
+ 
+ 			case "get_available_models": {
+-				await session.modelRegistry.awaitBackgroundRefresh();
++				await session.refreshModelCatalog();
+ 				const models = session.getAvailableModels();
+ 				return success(id, "get_available_models", { models });
+ 			}

@@ -1,9 +1,9 @@
 import fs from 'node:fs/promises';
+import modelFields from './provider-model-fields.json' with { type: 'json' };
 
 const protocols = new Set(['openai-completions', 'openai-responses', 'anthropic-messages']);
 const record = value => value && typeof value === 'object' && !Array.isArray(value);
 const providerFields = ['auth', 'authHeader', 'headers', 'discovery', 'disableStrictTools', 'transport', 'compat'];
-const modelFields = ['name', 'api', 'baseUrl', 'contextWindow', 'maxContextWindow', 'maxTokens', 'reasoning', 'input', 'supportsTools', 'cost', 'headers', 'compat', 'omitMaxOutputTokens', 'preferWebsockets', 'compactionModel'];
 const discoveryTypes = new Set(['ollama', 'llama.cpp', 'lm-studio', 'openai-models-list', 'proxy', 'litellm', 'apple-foundation-models']);
 
 function strings(value, label) {

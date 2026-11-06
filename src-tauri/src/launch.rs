@@ -18,6 +18,12 @@ pub struct LaunchProfile {
     pub plan_yolo: bool,
 }
 
+pub struct ResolvedLaunch {
+    pub arguments: Vec<String>,
+    pub agent_dir: PathBuf,
+    pub async_questions: bool,
+}
+
 impl LaunchProfile {
     pub fn arguments(&self) -> Vec<String> {
         let mut args = Vec::new();
@@ -71,6 +77,52 @@ pub fn read(root: &Path, cwd: &Path) -> Result<LaunchProfile, String> {
             .unwrap_or(json!({})),
     )
     .map_err(|e| format!("Read launch settings: {e}"))
+}
+
+pub fn profile_agent(root: &Path, name: &str) -> Result<PathBuf, String> {
+    let name = name.trim();
+    if name.is_empty() || name == "default" {
+        return Ok(root.join("omp/agent"));
+    }
+    let basename = name
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let reserved = matches!(basename.as_str(), "con" | "prn" | "aux" | "nul")
+        || basename.len() == 4
+            && (basename.starts_with("com") || basename.starts_with("lpt"))
+            && basename.as_bytes()[3].is_ascii_digit();
+    if name.len() > 64
+        || !name.as_bytes()[0].is_ascii_lowercase() && !name.as_bytes()[0].is_ascii_digit()
+        || !name
+            .bytes()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || b"._-".contains(&c))
+        || name.ends_with('.')
+        || reserved
+    {
+        return Err("Enter a valid OMP profile name.".into());
+    }
+    Ok(root.join("omp/profiles").join(name).join("agent"))
+}
+
+pub fn resolve(root: &Path, cwd: &Path) -> Result<ResolvedLaunch, String> {
+    let mut profile = read(root, cwd)?;
+    if profile.profile.trim().is_empty() {
+        profile.profile = std::env::var("OMP_PROFILE")
+            .ok()
+            .or_else(|| std::env::var("PI_PROFILE").ok())
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or_else(|| "default".into());
+    }
+    let agent_dir = profile_agent(root, &profile.profile)?;
+    Ok(ResolvedLaunch {
+        arguments: profile.arguments(),
+        agent_dir,
+        async_questions: crate::config(root)?["preferences"]["asyncQuestions"] == true
+            && !profile.no_tools
+            && (profile.tools.is_empty() || profile.tools.iter().any(|name| name == "ask")),
+    })
 }
 
 pub fn write(root: &Path, cwd: &Path, value: Value) -> Result<Value, String> {

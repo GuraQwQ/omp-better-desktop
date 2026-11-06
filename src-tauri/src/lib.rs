@@ -227,7 +227,7 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
         "requests.clear" => request_capture::clear(root),
         "providers.config" => {
             let _access = desktop.data_access.read().unwrap();
-            let result = providers::config(root, &request)?;
+            let result = desktop.sessions.providers_config(root, &request)?;
             if matches!(request["operation"].as_str(), Some("save" | "delete")) {
                 desktop.sessions.activate(app.clone(), None)?;
             }
