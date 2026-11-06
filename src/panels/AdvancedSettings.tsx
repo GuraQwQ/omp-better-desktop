@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { request } from '../lib/bridge';
+import { displayPath } from '../lib/display-path';
 import { localizeError } from '../lib/i18n';
 import type { Language } from '../lib/types';
 import RequestCaptures from '../components/RequestCaptures';
@@ -38,7 +39,7 @@ export default function AdvancedSettings({ language }: { language: Language }) {
     {!status && !error ? <p role="status">{text.loading}</p> : status && <>
       <div className="setting-row"><div><strong id="request-capture-label">{text.capture}</strong><small>{text.description}</small></div><input className="capture-switch" type="checkbox" role="switch" aria-labelledby="request-capture-label" checked={status.enabled} disabled={working || !status.supported} onChange={event => void act('requests.configure', { enabled: event.target.checked })} /></div>
       <p className="advanced-note">{text.local}</p>{!status.supported && <p className="advanced-note">{text.unsupported}</p>}
-      <div className="settings-note"><strong>{text.location}</strong><code>{status.directory}</code><p>{text.usage} {status.count} {text.count} / {mb(status.bytes)} MiB / {text.limit} {mb(status.maxBytes)} MiB</p></div>
+      <div className="settings-note"><strong>{text.location}</strong><code>{displayPath(status.directory)}</code><p>{text.usage} {status.count} {text.count} / {mb(status.bytes)} MiB / {text.limit} {mb(status.maxBytes)} MiB</p></div>
       <div className="settings-actions"><button className="quiet-button" disabled={working} onClick={() => void act('requests.clear')}>{text.clear}</button></div>
       <h3>{text.records}</h3><RequestCaptures language={language} revision={revision} onRefresh={() => setRevision(value => value + 1)} />
     </>}

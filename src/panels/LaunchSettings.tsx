@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, FolderOpen } from 'lucide-react';
 import { pickPath, request } from '../lib/bridge';
+import { displayPath } from '../lib/display-path';
 import type { Json, Language } from '../lib/types';
 import './managed-resources.css';
 
@@ -40,7 +41,7 @@ export default function LaunchSettings({ cwd, language, reconnect }: { cwd: stri
   };
   return <section className="managed-resources">
     <h2>{zh ? '项目启动配置' : 'Project launch settings'}</h2>
-    <p className="settings-hint">{zh ? '仅用于当前项目，应用到新连接的会话和内嵌终端。未填写的选项沿用 OMP 默认值。' : 'Applies to new session connections and the embedded terminal for this project. Empty options use OMP defaults.'}</p><code className="managed-path">{cwd}</code>
+    <p className="settings-hint">{zh ? '仅用于当前项目，应用到新连接的会话和内嵌终端。未填写的选项沿用 OMP 默认值。' : 'Applies to new session connections and the embedded terminal for this project. Empty options use OMP defaults.'}</p><code className="managed-path">{displayPath(cwd)}</code>
     {error && <p className="settings-error" role="alert">{error}</p>}
     {loading ? <p role="status">{zh ? '正在读取…' : 'Loading…'}</p> : <form className="managed-form" onSubmit={event => { event.preventDefault(); void save(false); }}><fieldset disabled={busy}>
       <label className="managed-field"><span>{zh ? '追加系统提示词' : 'Append system prompt'}</span><textarea aria-label={zh ? '追加系统提示词' : 'Append system prompt'} rows={5} value={value.appendSystemPrompt} onChange={event => change('appendSystemPrompt', event.target.value)} /></label>

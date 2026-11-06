@@ -1,0 +1,17 @@
+[
+  "name",
+  "api",
+  "baseUrl",
+  "contextWindow",
+  "maxContextWindow",
+  "maxTokens",
+  "reasoning",
+  "input",
+  "supportsTools",
+  "cost",
+  "headers",
+  "compat",
+  "omitMaxOutputTokens",
+  "preferWebsockets",
+  "compactionModel"
+]

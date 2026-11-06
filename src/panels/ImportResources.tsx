@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Link2, RefreshCw } from 'lucide-react';
 import Select from '../components/Select';
 import AgentSourceIcon from '../components/AgentSourceIcon';
+import { displayPath } from '../lib/display-path';
 import { localizeError } from '../lib/i18n';
 import { lineValues, manage } from '../lib/management';
 import type { Language } from '../lib/types';
@@ -157,5 +158,5 @@ function ImportPage({ language, cwd, ensureSession, reconnect }: Props) {
 
 function Item({ item, language }: { item: Candidate; language: Language }) {
   const t = words(language);
-  return <div className="managed-item-title import-item-title"><div className="agent-source-name"><AgentSourceIcon source={item.source} path={item.path} /><strong>{item.name}</strong></div><div className="managed-meta"><span>{item.kind === 'skill' ? t.skill : t.mcp}</span><span>{sources.find(source => source.id === item.source)?.name ?? item.source}</span></div>{item.description && <p>{item.description}</p>}<code className="managed-path">{item.path}</code>{item.warning && <p className="import-warning">{item.warning}</p>}</div>;
+  return <div className="managed-item-title import-item-title"><div className="agent-source-name"><AgentSourceIcon source={item.source} path={item.path} /><strong>{item.name}</strong></div><div className="managed-meta"><span>{item.kind === 'skill' ? t.skill : t.mcp}</span><span>{sources.find(source => source.id === item.source)?.name ?? item.source}</span></div>{item.description && <p>{item.description}</p>}<code className="managed-path">{displayPath(item.path)}</code>{item.warning && <p className="import-warning">{item.warning}</p>}</div>;
 }

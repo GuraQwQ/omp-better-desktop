@@ -1,7 +1,11 @@
 import { describeCommand } from './command-descriptions';
 import type { CatalogEntry, Language } from './types';
+import { isBuiltinSlashCommand } from './command-routes';
 
 export interface SlashCompletion { entry: CatalogEntry; token: string; description: string; group: 'commands' | 'skills' | 'extensions' }
+
+const commandPriority = ['model', 'new', 'resume', 'plan', 'compact', 'context', 'git', 'tree', 'fork', 'goal', 'settings', 'mcp', 'agents', 'effort', 'todo', 'skills', 'plugins', 'rename', 'branch', 'hub', 'tools', 'usage', 'stats'];
+const groupPriority = { commands: 0, skills: 1, extensions: 2 };
 
 export function slashCommandAt(text: string, caret: number) {
   const match = /^[ \t]*\/([^\s/]*)$/.exec(text.slice(0, caret));
@@ -23,14 +27,17 @@ export function matchingSlashCommands(entries: CatalogEntry[], query: string, la
   for (const [token, entry] of merged) {
     const description = describeCommand(entry, language);
     if (!`${token} ${description} ${entry.description ?? ''} ${(entry.aliases ?? []).join(' ')}`.toLocaleLowerCase().includes(needle)) continue;
-    items.push({ entry, token, description, group: entry.source === 'skill' || entry.kind === 'skill' || token.startsWith('skill:') ? 'skills' : entry.source === 'extension' || entry.kind === 'extension' ? 'extensions' : 'commands' });
+    items.push({ entry, token, description, group: entry.source === 'skill' || entry.kind === 'skill' || token.startsWith('skill:') ? 'skills' : ['extension', 'custom', 'mcp_prompt', 'file'].includes(entry.source ?? entry.kind ?? '') ? 'extensions' : 'commands' });
   }
-  const sorted = items.sort((a, b) => Number(!a.token.toLocaleLowerCase().startsWith(needle)) - Number(!b.token.toLocaleLowerCase().startsWith(needle)) || a.token.localeCompare(b.token));
-  if (needle) return sorted.slice(0, 30);
-  // 空查询给技能和扩展留位置，避免内置命令占满首屏。
-  const initial = [...sorted.filter(item => item.group === 'commands').slice(0, 16), ...sorted.filter(item => item.group === 'skills').slice(0, 10), ...sorted.filter(item => item.group === 'extensions').slice(0, 4)];
-  const selected = new Set(initial.map(item => item.token));
-  return [...initial, ...sorted.filter(item => !selected.has(item.token))].slice(0, 30);
+  const matchRank = (item: SlashCompletion) => {
+    const names = [item.token, ...(item.entry.aliases ?? [])].map((name: string) => name.toLocaleLowerCase());
+    return !needle || names.includes(needle) ? 0 : names.some(name => name.startsWith(needle)) ? 1 : 2;
+  };
+  const priority = (item: SlashCompletion) => {
+    const index = isBuiltinSlashCommand(item.entry) ? commandPriority.indexOf(item.token) : -1;
+    return index < 0 ? commandPriority.length : index;
+  };
+  return items.sort((a, b) => matchRank(a) - matchRank(b) || groupPriority[a.group] - groupPriority[b.group] || priority(a) - priority(b) || a.token.localeCompare(b.token));
 }
 
 export function insertSlashCommand(text: string, range: { start: number; end: number }, token: string) {

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronUp, SlidersHorizontal, X } from 'lucide-react';
 import { onDesktopEvent, request, rpc } from '../lib/bridge';
 import type { SessionStats } from '../generated/rpc-wire';
@@ -6,14 +6,11 @@ import type { Language, SessionView } from '../lib/types';
 import { formatUsageAmount, summarizeSessionUsage } from '../lib/session-usage';
 import { sessionKey } from '../lib/session-identity';
 import './session-usage.css';
-import MotionPresence from './MotionPresence';
 
 export type UsageCache = Map<string, SessionStats>;
-const ContextInspector = lazy(() => import('./ContextInspector'));
 
-export default function SessionUsage({ session, language, cache }: { session?: SessionView; language: Language; cache: UsageCache }) {
+export default function SessionUsage({ session, language, cache, onAdvanced }: { session?: SessionView; language: Language; cache: UsageCache; onAdvanced: () => void }) {
   const [expanded, setExpanded] = useState(false);
-  const [advanced, setAdvanced] = useState(false);
   const disclosure = useRef<HTMLDetailsElement>(null);
   const [result, setResult] = useState<{ key: string; stats: SessionStats | null; stale: boolean } | null>(null);
   const inFlight = useRef<Promise<SessionStats> | null>(null);
@@ -31,7 +28,7 @@ export default function SessionUsage({ session, language, cache }: { session?: S
   const provider = session?.state.model?.provider;
   const modelWindow = session?.state.model?.contextWindow;
   const contextWindow = session?.state.contextUsage?.contextWindow;
-  useEffect(() => { setExpanded(false); setAdvanced(false); }, [key, id, historyOnly]);
+  useEffect(() => { setExpanded(false); }, [key, id, historyOnly]);
   useEffect(() => {
     if (!expanded) return;
     const outside = (event: PointerEvent) => { if (!disclosure.current?.contains(event.target as Node)) setExpanded(false); };
@@ -139,7 +136,7 @@ export default function SessionUsage({ session, language, cache }: { session?: S
       </dl>
       <p>{text.cacheHint}</p>{historyOnly && <p>{usage.window === null ? text.unknownContext : text.recordedContext}</p>}
       {result?.key === key && result.stale && <p>{text.stale}</p>}
-      <footer><button type="button" className="quiet-button" disabled={!session} aria-haspopup="dialog" onClick={() => { setExpanded(false); setAdvanced(true); }}><SlidersHorizontal size={13} />{text.advanced}</button></footer>
+      <footer><button type="button" className="quiet-button" disabled={!session} aria-haspopup="dialog" onClick={() => { setExpanded(false); onAdvanced(); }}><SlidersHorizontal size={13} />{text.advanced}</button></footer>
     </section>}
-  </details>{session && <Suspense fallback={null}><MotionPresence open={advanced}><ContextInspector key={`${key}:${id}:${historyOnly}`} session={session} language={language} close={() => { setAdvanced(false); disclosure.current?.querySelector<HTMLElement>('summary')?.focus(); }} /></MotionPresence></Suspense>}</>;
+  </details></>;
 }

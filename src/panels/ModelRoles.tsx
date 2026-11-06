@@ -22,10 +22,10 @@ export default function ModelRoles({ sessionId, language }: { sessionId: string;
     const current = ++revision.current;
     setLoading(true); setError('');
     try {
-      const [roles, settings] = await Promise.all([manage(sessionId, 'models', 'list'), rpc(sessionId, 'desktop_settings', { operation: 'list' })]);
+      const roles = await manage(sessionId, 'models', 'list');
       if (current === revision.current) {
         setData(roles);
-        setStorage(settings.settings.find((setting: Json) => setting.path === 'modelRoleStorage')?.value ?? 'global');
+        setStorage(roles.storage ?? 'global');
       }
     } catch (error) { if (current === revision.current) setError(String(error)); }
     finally { if (current === revision.current) setLoading(false); }

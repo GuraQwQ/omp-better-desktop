@@ -29,7 +29,7 @@ pub struct Session {
     pub path: Arc<Mutex<Option<PathBuf>>>,
     settled: Arc<AtomicBool>,
     capture_context: PathBuf,
-    launch_args: Vec<String>,
+    launch: crate::launch::ResolvedLaunch,
     questions: Arc<Questions>,
     _job: ProcessJob,
 }
@@ -175,17 +175,13 @@ impl Sessions {
         let id = uuid::Uuid::new_v4().to_string();
         let capture_context = request_capture::context(root, &id);
         let mut process = command(root)?;
-        let launch_profile = crate::launch::read(root, &cwd)?;
-        let launch_args = launch_profile.arguments();
-        let async_questions = crate::config(root)?["preferences"]["asyncQuestions"] == true
-            && !launch_profile.no_tools
-            && (launch_profile.tools.is_empty()
-                || launch_profile.tools.iter().any(|name| name == "ask"));
+        let launch = crate::launch::resolve(root, &cwd)?;
+        let async_questions = launch.async_questions;
         process.env("OMP_DESKTOP_REQUEST_CAPTURE_SESSION_ID", &id);
         process
             .current_dir(&cwd)
             .args(["--mode", "rpc-ui"])
-            .args(&launch_args);
+            .args(&launch.arguments);
         if async_questions {
             let overlay = crate::questions::install_overlay(root)?;
             process.arg(format!("--config={}", overlay.display()));
@@ -241,7 +237,7 @@ impl Sessions {
                 path: path_cell.clone(),
                 settled: settled.clone(),
                 capture_context: capture_context.clone(),
-                launch_args,
+                launch,
                 questions,
                 _job: job,
             },
@@ -397,6 +393,41 @@ impl Sessions {
         result
     }
 
+    pub fn providers_config(&self, root: &Path, request: &Value) -> Result<Value, String> {
+        let cwd = request["cwd"].as_str().ok_or("Choose a project first.")?;
+        let agent_dir = crate::launch::resolve(root, Path::new(cwd))?.agent_dir;
+        let mut result = crate::providers::config(root, request, &agent_dir)?;
+        if matches!(request["operation"].as_str(), Some("save" | "delete")) {
+            let clients: Vec<_> = self
+                .sessions
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|session| session.launch.agent_dir == agent_dir)
+                .map(|session| session.client.clone())
+                .collect();
+            let mut errors = Vec::new();
+            for client in clients {
+                match client.call_raw(
+                    json!({"type":"desktop_manage","resource":"models","action":"refresh"}),
+                ) {
+                    Ok(value) => {
+                        if let Some(error) = value["error"].as_str() {
+                            errors.push(error.to_owned());
+                        }
+                    }
+                    Err(error) => errors.push(error.to_string()),
+                }
+            }
+            if !errors.is_empty() {
+                errors.sort();
+                errors.dedup();
+                result["refreshErrors"] = json!(errors);
+            }
+        }
+        Ok(result)
+    }
+
     pub fn ui(&self, app: AppHandle, id: &str, mut response: Value) -> Result<Value, String> {
         response["type"] = json!("extension_ui_response");
         let (client, questions) = {
@@ -513,7 +544,7 @@ impl Sessions {
                 .lock()
                 .unwrap()
                 .clone());
-            (session.cwd.clone(), path, session.launch_args.clone())
+            (session.cwd.clone(), path, session.launch.arguments.clone())
         };
         let executable = storage::current_runtime(root)?.ok_or("Install OMP first.")?;
         let pair = native_pty_system()

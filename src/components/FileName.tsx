@@ -1,3 +1,4 @@
+import { displayPath } from '../lib/display-path';
 import './file-name.css';
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
@@ -11,6 +12,7 @@ export function splitFileName(value: string): [string, string] {
 }
 
 export default function FileName({ value, className = '' }: { value: string; className?: string }) {
-  const [start, end] = splitFileName(value);
-  return <span className={`file-name ${className}`} title={value}><span className="file-name-start">{start}</span><span className="file-name-end">{end}</span></span>;
+  const label = displayPath(value);
+  const [start, end] = splitFileName(label);
+  return <span className={`file-name ${className}`} title={label}><span className="file-name-start">{start}</span><span className="file-name-end">{end}</span></span>;
 }
