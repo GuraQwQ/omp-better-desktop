@@ -3,6 +3,8 @@ import { ChevronRight, RefreshCw } from 'lucide-react';
 import { request } from '../lib/bridge';
 import type { Copy } from '../lib/i18n';
 import type { Bootstrap, Json } from '../lib/types';
+import { displayPath } from '../lib/display-path';
+import { applyModelSelection } from '../lib/provider-models';
 import Select from './Select';
 import './custom-providers.css';
 
@@ -44,10 +46,14 @@ export default function CustomProviders({ bootstrap, t, cwd }: { bootstrap: Boot
   const [apiKey, setApiKey] = useState('');
   const [modelIds, setModelIds] = useState('');
   const [models, setModels] = useState<{ id: string; name?: string }[]>([]);
+  const [modelPicker, setModelPicker] = useState(false);
+  const [modelQuery, setModelQuery] = useState('');
+  const [checkedModels, setCheckedModels] = useState<Set<string>>(new Set());
+  const modelDialog = useRef<HTMLDialogElement>(null);
+  const fetchButton = useRef<HTMLButtonElement>(null);
   const [working, setWorking] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
-  const [expanded, setExpanded] = useState(false);
   const [options, setOptions] = useState<Json>({ discovery: { type: 'openai-models-list' } });
   const [modelSettings, setModelSettings] = useState<Record<string, Json>>({});
   const [modelSelection, setModelSelection] = useState('');
@@ -58,19 +64,21 @@ export default function CustomProviders({ bootstrap, t, cwd }: { bootstrap: Boot
   const contextRevision = useRef(0);
   const zh = bootstrap.preferences.language === 'zh';
   const text = zh ? {
-    advanced: '高级设置', defaults: '模型参数默认采用供应商目录与 OMP 标准，填写后覆盖。', standard: '采用标准', authentication: '认证方式', noAuth: '无需认证', transport: '传输方式', native: 'OMP 原生网关', authHeader: '发送 Bearer 认证头', strict: '停用严格工具参数', discovery: '模型发现', manual: '手动模型列表', timeout: '发现超时（毫秒）', headers: '请求头', addHeader: '添加请求头', compatibility: '兼容参数（JSON）', model: '模型覆盖', name: '显示名称', context: '上下文长度', extended: '扩展上下文长度', output: '最大输出长度', reasoning: '推理能力', input: '输入类型', tools: '工具调用', text: '文本', textImage: '文本与图片', image: '图片', omitOutput: '省略输出上限参数', websockets: '优先 WebSocket', compression: '压缩模型', cost: '费用 / 百万 token', inputCost: '输入', outputCost: '输出', cacheReadCost: '缓存读取', cacheWriteCost: '缓存写入', costHint: '覆盖费用时填写四项；留空采用标准。', reset: '清除以上覆盖', remove: '删除提供商', removeConfirm: '确认删除此提供商？', removed: '提供商已删除。', required: '请填写提供商名称、地址，以及认证和模型来源。',
+    advanced: '高级设置', defaults: '模型参数默认采用供应商目录与 OMP 标准，填写后覆盖。', standard: '采用标准', authentication: '认证方式', noAuth: '无需认证', transport: '传输方式', native: 'OMP 原生网关', authHeader: '发送 Bearer 认证头', strict: '停用严格工具参数', headers: '请求头', addHeader: '添加请求头', compatibility: '兼容参数（JSON）', model: '模型覆盖', name: '显示名称', context: '上下文长度', extended: '扩展上下文长度', output: '最大输出长度', reasoning: '推理能力', input: '输入类型', tools: '工具调用', text: '文本', textImage: '文本与图片', image: '图片', omitOutput: '省略输出上限参数', websockets: '优先 WebSocket', compression: '压缩模型', cost: '费用 / 百万 token', inputCost: '输入', outputCost: '输出', cacheReadCost: '缓存读取', cacheWriteCost: '缓存写入', costHint: '覆盖费用时填写四项；留空采用标准。', reset: '清除以上覆盖', remove: '删除提供商', removeConfirm: '确认删除此提供商？', removed: '提供商已删除。', required: '请填写提供商名称、地址、认证信息和模型列表。',
   } : {
-    advanced: 'Advanced settings', defaults: 'Models use provider catalog and OMP defaults. Filled fields override them.', standard: 'Use defaults', authentication: 'Authentication', noAuth: 'No authentication', transport: 'Transport', native: 'OMP native gateway', authHeader: 'Send Bearer authorization header', strict: 'Disable strict tool parameters', discovery: 'Model discovery', manual: 'Manual model list', timeout: 'Discovery timeout (ms)', headers: 'Headers', addHeader: 'Add header', compatibility: 'Compatibility (JSON)', model: 'Model overrides', name: 'Display name', context: 'Context length', extended: 'Extended context length', output: 'Maximum output', reasoning: 'Reasoning', input: 'Input', tools: 'Tool calling', text: 'Text', textImage: 'Text and images', image: 'Images', omitOutput: 'Omit output cap parameter', websockets: 'Prefer WebSocket', compression: 'Compaction model', cost: 'Cost / million tokens', inputCost: 'Input', outputCost: 'Output', cacheReadCost: 'Cache read', cacheWriteCost: 'Cache write', costHint: 'Fill all four prices to override costs; leave blank for defaults.', reset: 'Clear these overrides', remove: 'Delete provider', removeConfirm: 'Delete this provider?', removed: 'Provider deleted.', required: 'Enter a provider name, URL, authentication and model source.',
+    advanced: 'Advanced settings', defaults: 'Models use provider catalog and OMP defaults. Filled fields override them.', standard: 'Use defaults', authentication: 'Authentication', noAuth: 'No authentication', transport: 'Transport', native: 'OMP native gateway', authHeader: 'Send Bearer authorization header', strict: 'Disable strict tool parameters', headers: 'Headers', addHeader: 'Add header', compatibility: 'Compatibility (JSON)', model: 'Model overrides', name: 'Display name', context: 'Context length', extended: 'Extended context length', output: 'Maximum output', reasoning: 'Reasoning', input: 'Input', tools: 'Tool calling', text: 'Text', textImage: 'Text and images', image: 'Images', omitOutput: 'Omit output cap parameter', websockets: 'Prefer WebSocket', compression: 'Compaction model', cost: 'Cost / million tokens', inputCost: 'Input', outputCost: 'Output', cacheReadCost: 'Cache read', cacheWriteCost: 'Cache write', costHint: 'Fill all four prices to override costs; leave blank for defaults.', reset: 'Clear these overrides', remove: 'Delete provider', removeConfirm: 'Delete this provider?', removed: 'Provider deleted.', required: 'Enter a provider name, URL, authentication and model list.',
   };
   const stored = configuration?.providers.find(provider => provider.id === id.trim());
   const hasKey = !!apiKey.trim() || !!stored?.hasApiKey;
   const needsKey = !['none', 'oauth'].includes(options.auth);
   const locked = working === 'save' || working === 'delete';
   const ids = modelList(modelIds);
-  const availableIds = [...new Set([...ids, ...models.map(model => model.id)])];
+  const currentIds = useRef(ids);
+  currentIds.current = ids;
+  const visibleModels = models.filter(model => `${model.id} ${model.name ?? ''}`.toLocaleLowerCase().includes(modelQuery.trim().toLocaleLowerCase()));
+  const availableIds = ids;
   const activeModel = availableIds.includes(modelSelection) ? modelSelection : availableIds[0] ?? '';
   const currentModel = modelSettings[activeModel] ?? {};
-  const discoveryOptions = JSON.stringify(options);
   const load = useCallback(async () => {
     const current = ++contextRevision.current;
     revision.current++;
@@ -79,22 +87,25 @@ export default function CustomProviders({ bootstrap, t, cwd }: { bootstrap: Boot
     catch (error) { if (current === contextRevision.current) setError(error instanceof Error ? error.message : String(error)); }
   }, [cwd]);
   useEffect(() => { if (bootstrap.runtime) void load(); return () => { revision.current++; contextRevision.current++; }; }, [bootstrap.dataRoot, !!bootstrap.runtime, load]);
-  const discover = useCallback(async () => {
+  useEffect(() => {
+    const dialog = modelDialog.current;
+    if (modelPicker && dialog && !dialog.open) dialog.showModal();
+    else if (!modelPicker && dialog?.open) { dialog.close(); fetchButton.current?.focus(); }
+  }, [modelPicker]);
+  const discover = async () => {
     if (!baseUrl.trim() || needsKey && !hasKey) return;
     const current = ++revision.current;
-    setWorking('fetch'); setError(''); setModels([]);
+    setWorking('fetch'); setError('');
     try {
-      const result = await request<{ models: { id: string; name?: string }[] }>('providers.discover', { cwd, provider: { id, api, baseUrl, apiKey, options: JSON.parse(discoveryOptions) } });
-      if (revision.current === current) { setModels(result.models); if (!result.models.length) setError(t.providerNoModels); }
+      const result = await request<{ models: { id: string; name?: string }[] }>('providers.discover', { cwd, provider: { id, api, baseUrl, apiKey, options } });
+      if (revision.current === current) {
+        if (result.models.length) { setModels(result.models); setCheckedModels(new Set(currentIds.current)); setModelQuery(''); setModelPicker(true); }
+        else setError(t.providerNoModels);
+      }
     } catch { if (revision.current === current) setError(t.providerDiscoveryFailed); }
     finally { if (revision.current === current) setWorking(''); }
-  }, [cwd, id, api, baseUrl, apiKey, hasKey, needsKey, discoveryOptions, t.providerNoModels, t.providerDiscoveryFailed]);
-  useEffect(() => {
-    if (notice || !baseUrl.trim() || needsKey && !hasKey) return;
-    const timer = setTimeout(() => void discover(), 800);
-    return () => { clearTimeout(timer); revision.current++; };
-  }, [discover, notice]);
-  const edit = (change: () => void) => { revision.current++; setNotice(''); setError(''); setModels([]); setWorking(''); setConfirmDelete(false); change(); };
+  };
+  const edit = (change: () => void) => { revision.current++; setNotice(''); setError(''); setModels([]); setModelPicker(false); setWorking(''); setConfirmDelete(false); change(); };
   function loadFields(provider?: Provider) {
     setSelected(provider?.id ?? ''); setId(provider?.id ?? ''); setApi(provider?.api ?? 'openai-completions');
     setBaseUrl(provider?.baseUrl ?? ''); setApiKey(''); setModelIds(provider?.models.map(model => model.id).join('\n') ?? '');
@@ -102,11 +113,12 @@ export default function CustomProviders({ bootstrap, t, cwd }: { bootstrap: Boot
     setModelSettings(Object.fromEntries((provider?.models ?? []).map(({ id, ...settings }) => [id, settings])));
     setModelCompat(Object.fromEntries((provider?.models ?? []).map(model => [model.id, jsonText(model.compat)])));
     setModelSelection('');
+    setModels([]); setModelPicker(false);
   }
   const choose = (value: string) => edit(() => {
     loadFields(configuration?.providers.find(provider => provider.id === value));
   });
-  const setOption = (key: string, value: unknown) => { setNotice(''); setOptions(previous => ({ ...previous, [key]: value })); };
+  const setOption = (key: string, value: unknown) => edit(() => setOptions(previous => ({ ...previous, [key]: value })));
   const setModelOption = (key: string, value: unknown) => { setNotice(''); if (!ids.includes(activeModel)) setModelIds([...ids, activeModel].join('\n')); setModelSettings(previous => ({ ...previous, [activeModel]: { ...previous[activeModel], [key]: value } })); };
   const optionalBoolean = (label: string, value: boolean | null | undefined, change: (value: boolean | null) => void) => <label>{label}<Select label={label} value={value == null ? '' : String(value)} disabled={locked} onChange={value => change(value === '' ? null : value === 'true')} options={[{ value: '', label: text.standard }, { value: 'true', label: t.on }, { value: 'false', label: t.off }]} /></label>;
   const changeApi = (value: string) => edit(() => {
@@ -115,7 +127,7 @@ export default function CustomProviders({ bootstrap, t, cwd }: { bootstrap: Boot
   });
   const save = async () => {
     if (locked) return;
-    if (!id.trim() || !baseUrl.trim() || needsKey && !hasKey || !ids.length && !options.discovery) { setError(text.required); return; }
+    if (!id.trim() || !baseUrl.trim() || needsKey && !hasKey || !ids.length) { setError(t.providerRequired); return; }
     const current = contextRevision.current; revision.current++; setWorking('save'); setError(''); setNotice('');
     try {
       const settings = Object.fromEntries(ids.map(model => [model, { ...modelSettings[model], compat: jsonObject(modelCompat[model] ?? '', `${model} ${text.compatibility}`, t.invalidJson) }]));
@@ -139,7 +151,7 @@ export default function CustomProviders({ bootstrap, t, cwd }: { bootstrap: Boot
   return <div className="custom-providers"><h3>{t.customProviders}</h3>
     <p className="provider-scope">{configuration?.takeover.enabled ? configuration.takeover.active ? t.providerManagedCli : t.providerCliShadowed : t.providerManagedOnly}</p>
     {configuration?.takeover.unknown && <p className="provider-scope">{t.providerTakeoverUnknown}</p>}
-    {configuration && <code className="provider-config-path">{configuration.configPath}</code>}
+    {configuration && <code className="provider-config-path" title={displayPath(configuration.configPath)}>{displayPath(configuration.configPath)}</code>}
     {!configuration ? <><p role="status">{error || t.loading}</p>{error && <button className="quiet-button" onClick={() => void load()}>{t.refresh}</button>}</> : <>
       <div className="provider-picker"><Select label={t.providerName} value={selected} disabled={locked} onChange={choose} options={[{ value: '', label: t.providerNew }, ...configuration.providers.map(provider => ({ value: provider.id, label: provider.id }))]} />
         <button className="quiet-button" aria-pressed={api.startsWith('openai')} disabled={locked} onClick={() => changeApi('openai-completions')}>{t.openaiTemplate}</button>
@@ -150,13 +162,11 @@ export default function CustomProviders({ bootstrap, t, cwd }: { bootstrap: Boot
           <label>{t.protocol}<Select label={t.protocol} value={api} disabled={locked} onChange={changeApi} options={protocols.some(option => option.value === api) ? protocols : [...protocols, { value: api, label: api }]} /></label></div>
         <label>{t.baseUrl}<input type="url" aria-label={t.baseUrl} value={baseUrl} disabled={locked} required placeholder="https://example.com/v1" onChange={event => edit(() => setBaseUrl(event.target.value))} /></label>
         <label>{t.apiKey}<input type="password" aria-label={t.apiKey} value={apiKey} disabled={locked} autoComplete="off" spellCheck={false} required={needsKey && !stored?.hasApiKey} placeholder={stored?.hasApiKey ? t.keepApiKey : ''} onChange={event => edit(() => setApiKey(event.target.value))} /></label>
-        <div className="provider-model-heading"><span>{t.providerModels}</span><button type="button" className="quiet-button" disabled={!!working || !baseUrl.trim() || needsKey && !hasKey} onClick={() => void discover()}><RefreshCw size={13} className={working === 'fetch' ? 'spin' : ''} />{working === 'fetch' ? t.loading : t.fetchModels}</button></div>
-        {models.length > 0 && <div className="provider-discovery"><details onToggle={event => setExpanded(event.currentTarget.open)}><summary>{models.length} / {t.providerModels}</summary>{expanded && <pre>{models.map(model => model.id).join('\n')}</pre>}</details><button type="button" className="quiet-button" disabled={working === 'save'} onClick={() => setModelIds(previous => [...new Set([...previous.split(/\r?\n/).map(value => value.trim()).filter(Boolean), ...models.map(model => model.id)])].join('\n'))}>{t.applyModels}</button></div>}
-        <textarea aria-label={t.providerModels} value={modelIds} rows={4} required={!options.discovery} disabled={locked} placeholder={t.modelIdsHint} onChange={event => { setModelIds(event.target.value); setNotice(''); }} />
+        <div className="provider-model-heading"><span>{t.providerModels}</span><button ref={fetchButton} type="button" className="quiet-button" disabled={!!working || !baseUrl.trim() || needsKey && !hasKey} onClick={() => void discover()}><RefreshCw size={13} className={working === 'fetch' ? 'spin' : ''} />{working === 'fetch' ? t.loading : t.fetchModels}</button></div>
+        <textarea aria-label={t.providerModels} value={modelIds} rows={4} required disabled={locked} placeholder={t.modelIdsHint} onChange={event => { setModelIds(event.target.value); setNotice(''); }} />
         <details className="provider-advanced"><summary><ChevronRight size={14} />{text.advanced}</summary><div className="provider-advanced-content">
           <div className="provider-fields"><label>{text.authentication}<Select label={text.authentication} value={options.auth ?? ''} disabled={locked} onChange={value => setOption('auth', value || null)} options={[{ value: '', label: text.standard }, { value: 'apiKey', label: t.apiKey }, { value: 'none', label: text.noAuth }, { value: 'oauth', label: 'OAuth' }]} /></label><label>{text.transport}<Select label={text.transport} value={options.transport ?? ''} disabled={locked} onChange={value => setOption('transport', value || null)} options={[{ value: '', label: text.standard }, { value: 'pi-native', label: text.native }]} /></label></div>
           <div className="provider-fields">{optionalBoolean(text.authHeader, options.authHeader, value => setOption('authHeader', value))}{optionalBoolean(text.strict, options.disableStrictTools, value => setOption('disableStrictTools', value))}</div>
-          <div className="provider-fields"><label>{text.discovery}<Select label={text.discovery} value={options.discovery?.type ?? ''} disabled={locked} onChange={value => setOption('discovery', value ? { type: value, ...(options.discovery?.timeoutMs ? { timeoutMs: options.discovery.timeoutMs } : {}) } : null)} options={[{ value: '', label: text.manual }, ...['openai-models-list', 'ollama', 'lm-studio', 'llama.cpp', 'proxy', 'litellm', 'apple-foundation-models'].map(value => ({ value, label: value }))]} /></label>{options.discovery && <label>{text.timeout}<input type="number" min="1" placeholder={text.standard} disabled={locked} value={options.discovery.timeoutMs ?? ''} onChange={event => { const next = { ...options.discovery }; if (event.target.value === '') delete next.timeoutMs; else next.timeoutMs = Number(event.target.value); setOption('discovery', next); }} /></label>}</div>
           <HeadersEditor value={options.headers} onChange={value => setOption('headers', value)} disabled={locked} label={text.headers} add={text.addHeader} remove={t.remove} />
           <label>{text.compatibility}<textarea rows={3} value={compat} disabled={locked} spellCheck={false} placeholder="{}" onChange={event => { setCompat(event.target.value); setNotice(''); }} /></label>
           {activeModel && <section className="provider-model-options"><h4>{text.model}</h4><p className="provider-scope">{text.defaults}</p><Select label={text.model} value={activeModel} disabled={locked} onChange={setModelSelection} options={availableIds.map(value => ({ value, label: value }))} />
@@ -173,6 +183,12 @@ export default function CustomProviders({ bootstrap, t, cwd }: { bootstrap: Boot
         {error && <p className="provider-error" role="alert">{error}</p>}{notice && <p className="provider-notice" role="status">{notice}</p>}
         <div className="provider-form-actions"><button type="submit" className="secondary-button" disabled={locked}>{working === 'save' ? t.loading : t.save}</button>{selected && (confirmDelete ? <span className="provider-delete-confirm"><span>{text.removeConfirm}</span><button type="button" className="quiet-button danger" disabled={locked} onClick={() => void remove()}>{text.remove}</button><button type="button" className="quiet-button" disabled={locked} onClick={() => setConfirmDelete(false)}>{t.cancel}</button></span> : <button type="button" className="quiet-button danger" disabled={locked} onClick={() => setConfirmDelete(true)}>{text.remove}</button>)}</div>
       </form>
+      <dialog className="provider-model-dialog" ref={modelDialog} aria-labelledby="provider-model-dialog-title" onCancel={event => { event.preventDefault(); setModelPicker(false); }} onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setModelPicker(false); } }} onClick={event => { if (event.target === modelDialog.current) setModelPicker(false); }}>
+        <header><h3 id="provider-model-dialog-title">{zh ? '选择要保留的模型' : 'Choose models to keep'}</h3><span role="status">{models.filter(model => checkedModels.has(model.id)).length} / {models.length}</span></header>
+        <div className="provider-model-search"><input type="search" autoFocus aria-label={t.search} placeholder={t.search} value={modelQuery} onChange={event => setModelQuery(event.target.value)} /><div><button type="button" className="quiet-button" onClick={() => setCheckedModels(new Set(models.map(model => model.id)))}>{zh ? '全选' : 'Select all'}</button><button type="button" className="quiet-button" onClick={() => setCheckedModels(new Set())}>{zh ? '取消全选' : 'Clear selection'}</button></div></div>
+        <div className="provider-model-list">{visibleModels.map(model => <label key={model.id}><input type="checkbox" checked={checkedModels.has(model.id)} onChange={event => setCheckedModels(previous => { const next = new Set(previous); if (event.target.checked) next.add(model.id); else next.delete(model.id); return next; })} /><span><strong>{model.name ?? model.id}</strong>{model.name && model.name !== model.id && <small>{model.id}</small>}</span></label>)}{!visibleModels.length && <p role="status">{t.noResults}</p>}</div>
+        <footer><button type="button" className="quiet-button" onClick={() => setModelPicker(false)}>{t.cancel}</button><button type="button" className="secondary-button" onClick={() => { setModelIds(previous => applyModelSelection(modelList(previous), models, checkedModels).join('\n')); setModelPicker(false); setNotice(''); }}>{zh ? '确认保留' : 'Keep selected'}</button></footer>
+      </dialog>
     </>}
   </div>;
 }

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type RefObject } from 'react';
+import { Fragment, useEffect, useId, useRef, useState, type RefObject } from 'react';
 import { Command, File, Puzzle, Sparkles } from 'lucide-react';
 import { request } from '../lib/bridge';
 import { fileMentionAt, insertFileMention, matchingFiles } from '../lib/file-mentions';
@@ -65,7 +65,7 @@ export default function ComposerInput({ value, onChange, onSend, onRecall, disab
       {!files.length && <p role={error ? 'alert' : 'status'}>{error || (listing?.cwd === cwd ? t.noResults : t.loading)}</p>}
     </div></div></MotionPresence>
     <MotionPresence open={slashOpen}><div className="file-mention-menu slash-completion-menu ui-menu"><div className="file-mention-heading">{uiLanguage === 'zh' ? '命令与技能' : 'Commands & skills'}<span>↑ ↓　Tab ↵</span></div><div id={menuId} role="listbox" aria-label={uiLanguage === 'zh' ? '命令与技能' : 'Commands & skills'}>
-      {commandItems.map((item, index) => { const Icon = item.group === 'skills' ? Sparkles : item.group === 'extensions' ? Puzzle : Command; return <button type="button" key={item.token} id={`${menuId}-${index}`} role="option" aria-selected={index === active} ref={index === active ? activeOption : undefined} className={index === active ? 'is-active' : ''} onPointerDown={event => event.preventDefault()} onPointerMove={() => setActive(index)} onClick={() => chooseCommand(item)}><Icon size={14} /><span className="slash-completion-copy"><strong>/{item.token}</strong>{item.description && <small>{item.description}</small>}</span><span className="slash-completion-kind">{groupLabels[item.group]}</span></button>; })}
+      {commandItems.map((item, index) => { const Icon = item.group === 'skills' ? Sparkles : item.group === 'extensions' ? Puzzle : Command; return <Fragment key={item.token}>{commandItems[index - 1]?.group !== item.group && <div className="slash-completion-group" role="presentation">{groupLabels[item.group]}</div>}<button type="button" id={`${menuId}-${index}`} role="option" aria-selected={index === active} ref={index === active ? activeOption : undefined} className={index === active ? 'is-active' : ''} title={item.description} onPointerDown={event => event.preventDefault()} onPointerMove={() => setActive(index)} onClick={() => chooseCommand(item)}><Icon size={14} /><span className="slash-completion-copy"><strong>/{item.token}</strong>{item.description && <small>{item.description}</small>}</span></button></Fragment>; })}
       {!commandItems.length && <p role="status">{t.noResults}</p>}
     </div></div></MotionPresence>
     <textarea ref={textareaRef} disabled={disabled} rows={2} value={value} aria-label={t.prompt} placeholder={t.prompt} title={t.mentionHint} aria-autocomplete="list" aria-controls={open ? menuId : undefined} aria-activedescendant={open && count ? `${menuId}-${Math.min(active, count - 1)}` : undefined}
@@ -75,7 +75,7 @@ export default function ComposerInput({ value, onChange, onSend, onRecall, disab
       onCompositionEnd={event => { composition.current = false; compositionEndedAt.current = performance.now(); setComposing(false); setCaret(event.currentTarget.selectionStart); }}
       onKeyDown={event => {
         if (composingInput(event.nativeEvent, composition.current)) return;
-        if (event.key === 'Enter' && performance.now() - compositionEndedAt.current < 500) { event.preventDefault(); return; }
+        if (event.key === 'Enter' && performance.now() - compositionEndedAt.current < 500) { event.preventDefault(); compositionEndedAt.current = -Infinity; return; }
         const action = open ? completionKey(event, count) : undefined;
         if (action) {
           event.preventDefault(); event.stopPropagation();

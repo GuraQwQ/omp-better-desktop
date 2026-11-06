@@ -1,5 +1,23 @@
 import type { CatalogEntry } from './types';
 
+const dynamicSources = new Set(['skill', 'extension', 'custom', 'mcp_prompt', 'file']);
+
+export function isBuiltinSlashCommand(entry: CatalogEntry): boolean {
+  return entry.kind === 'slash' && !dynamicSources.has(entry.source ?? '');
+}
+
+export function desktopCommandSurface(entry: CatalogEntry, args = ''): string | undefined {
+  if (!isBuiltinSlashCommand(entry) || args.trim()) return;
+  return ({
+    settings: 'settings:omp', setup: 'settings:providers', login: 'settings:providers', logout: 'settings:providers', model: 'models',
+    context: 'context', tools: 'context', todo: 'tasks',
+    git: 'review', hub: 'agents', tree: 'tree', branch: 'tree', fork: 'tree',
+    resume: 'sessions', session: 'sessions',
+    mcp: 'settings:mcp', extensions: 'settings:plugins', plugins: 'settings:plugins', marketplace: 'settings:plugins',
+    skills: 'settings:skills', ssh: 'settings:ssh', agents: 'settings:agents', modelpreset: 'settings:models',
+  } as Record<string, string>)[entry.name];
+}
+
 export function mergeCommandEntries(catalog: CatalogEntry[], dynamic: CatalogEntry[]): CatalogEntry[] {
   const entries = new Map(catalog.map(entry => [`${entry.kind ?? 'slash'}:${entry.name}`, entry]));
   for (const entry of dynamic) {
@@ -13,7 +31,7 @@ export function mergeCommandEntries(catalog: CatalogEntry[], dynamic: CatalogEnt
 }
 
 export function rpcCommand(entry: CatalogEntry): string | undefined {
-  if (entry.kind !== 'slash') return;
+  if (!isBuiltinSlashCommand(entry)) return;
   return ({ btw: 'btw', goal: 'goal', live: 'live_start', queue: 'follow_up' } as Record<string, string>)[entry.name];
 }
 

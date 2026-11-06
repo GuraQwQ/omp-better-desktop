@@ -85,7 +85,7 @@ export function mergeProvider(config, input) {
   const apiKey = input.apiKey?.trim() || previous.apiKey;
   if (!['none', 'oauth'].includes(provider.auth) && (typeof apiKey !== 'string' || !apiKey)) throw Error('Enter an API key.');
   const ids = [...new Set((input.modelIds ?? []).filter(value => typeof value === 'string').map(value => value.trim()).filter(Boolean))];
-  if (!ids.length && !provider.discovery) throw Error('Enter at least one model ID or enable model discovery.');
+  if (!ids.length) throw Error('Enter at least one model ID.');
   const oldModels = Array.isArray(previous.models) ? previous.models : [];
   if (input.modelSettings !== undefined && !record(input.modelSettings)) throw Error('Model settings must be an object.');
   const models = ids.map(id => {
@@ -94,6 +94,7 @@ export function mergeProvider(config, input) {
     return model;
   });
   const value = { ...provider, api: input.api, baseUrl: baseUrl(input.baseUrl, input.api), models };
+  delete value.discovery;
   if (apiKey) value.apiKey = apiKey;
   return { ...config, providers: { ...config.providers, [id]: value } };
 }
