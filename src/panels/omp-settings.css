@@ -7,7 +7,7 @@
 .settings-field-group { margin-bottom: 24px; }
 .settings-field-group > h3 { color: var(--secondary); margin-top: 24px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 .setting-field-heading { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; justify-content: space-between; }
-.setting-source { color: var(--muted); font-size: 11px; }
+.setting-source { color: var(--muted); font-size: 12px; }
 .setting-description { margin: 5px 0 10px; }
 .setting-field-control { margin: 10px 0 0; min-width: 0; }
 .setting-field-control > input, .setting-field-control > textarea, .setting-field-control > .select-control { width: 100%; }
@@ -17,7 +17,7 @@
 .setting-json { font-family: var(--font-code); font-size: 12px; }
 .setting-record { display: grid; grid-template-columns: minmax(80px, 1fr) minmax(80px, 1fr) auto; gap: 7px; }
 .setting-record-add, .setting-record > p { grid-column: 1 / -1; justify-self: start; }
-.setting-key { color: var(--muted); font-size: 11px; margin-top: 6px; }
+.setting-key { color: var(--muted); font-size: 12px; margin-top: 6px; }
 .setting-key code { display: block; padding-top: 5px; overflow-wrap: anywhere; }
 .settings-error { color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
 .settings-import-entry { display: flex; justify-content: flex-end; margin-bottom: 10px; }

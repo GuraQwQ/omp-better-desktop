@@ -6,8 +6,12 @@ export const settingsZh: Record<string, { label: string; description?: string; o
     "description": "共享缓存的会话协同压缩技能描述，减少重复调用；当前会话的描述保持不变。"
   },
   "tokenOptimization.programmatic": {
-    "label": "程序化工具编排",
-    "description": "启用批量读取，并引导代理使用项目原生测试和合并进度更新；保留每项错误与原始结果。"
+    "label": "批量读取",
+    "description": "在 eval 中启用批量读取，保留每项错误与原始结果。"
+  },
+  "tokenOptimization.promptGuidance": {
+    "label": "执行与提示词整理",
+    "description": "说明实际命令解释器、反馈解析后的读取路径，并统一工具、进度和验证规则。"
   },
   "auth.broker.url": {
     "label": "认证代理 URL"
@@ -2379,10 +2383,12 @@ export const settingsZh: Record<string, { label: string; description?: string; o
     }
   },
   "shellPath": {
-    "label": "Shell 路径"
+    "label": "外部 Shell 路径",
+    "description": "PTY 和 ACP 客户端终端使用的命令解释器路径；本地非 PTY 命令使用内嵌 Bash 语法。"
   },
   "shellCommandPrefix": {
-    "label": "Shell 命令前缀"
+    "label": "扩展 Shell 命令前缀",
+    "description": "传递给兼容扩展的命令前缀；OMP 原生命令不使用此值。"
   },
   "bash.enabled": {
     "label": "Bash 命令执行",

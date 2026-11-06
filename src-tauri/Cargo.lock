@@ -2517,8 +2517,9 @@ dependencies = [
 
 [[package]]
 name = "omp-better-desktop"
-version = "0.4.0"
+version = "0.4.5"
 dependencies = [
+ "base64 0.22.1",
  "ignore",
  "omp-rpc",
  "portable-pty",

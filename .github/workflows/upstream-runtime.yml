@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "19 */12 * * *"
   workflow_dispatch:
+    inputs:
+      pull_request:
+        description: 重试现有机器人 PR；留空时检查上游新版本
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -14,6 +19,7 @@ concurrency:
 
 jobs:
   build:
+    if: inputs.pull_request == ''
     runs-on: windows-latest
     outputs:
       changed: ${{ steps.upstream.outputs.changed }}
@@ -107,18 +113,24 @@ jobs:
 
             独立只读任务已构建 OMP 运行时并执行无模型调用的协议烟测。
 
-            此 PR 分支完成 Windows 检查及安装器构建且无冲突时，GitHub 会自动 squash 合并，再将对应预构建包发布为预览 Release；检查失败或存在冲突时保持打开。
+            同一主次版本的补丁升级在来源、锁文件和生成文件范围符合要求时，自动批准必要的 PR 检查；检查与安装器构建通过后 squash 合并并发布预览包。其他升级保留人工确认。
 
   check-pr:
     needs: propose
-    if: needs.propose.outputs.number != '' && needs.propose.outputs.branch != '' && needs.propose.outputs.operation != 'closed'
+    if: always() && (inputs.pull_request != '' || (needs.propose.outputs.number != '' && needs.propose.outputs.operation != 'closed'))
     runs-on: ubuntu-latest
     permissions:
       actions: write
+      contents: write
+      pull-requests: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
-      PR_BRANCH: ${{ needs.propose.outputs.branch }}
+      PR_NUMBER: ${{ inputs.pull_request || needs.propose.outputs.number }}
+      BASE_BRANCH: ${{ github.event.repository.default_branch }}
     steps:
-      - name: 触发 PR 分支的 Windows 云端检查
-        run: gh workflow run check.yml --ref "$PR_BRANCH"
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: 启用补丁升级条件自动合并
+        run: node scripts/upstream-pr.mjs enable "$PR_NUMBER"

@@ -2,7 +2,9 @@ use crate::{
     history,
     platform::{ProcessJob, hidden, runtime_environment},
     questions::Questions,
-    request_capture, storage,
+    request_capture,
+    runtime_diagnostics::RuntimeDiagnostics,
+    storage,
 };
 use omp_rpc::{Client, ClientOptions, Event, RpcInbound};
 use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -200,19 +202,26 @@ impl Sessions {
         if async_questions {
             options.tools.push(questions.tool());
         }
-        let (client, receiver) = Client::spawn(process, options).map_err(|e| e.to_string())?;
-        let job = ProcessJob::attach(client.pid().ok_or("Runtime did not start.")?)?;
+        let diagnostics = RuntimeDiagnostics::attach(&mut process)
+            .map_err(|error| format!("准备 OMP 启动信息：{error}"))?;
+        let (client, receiver) = Client::spawn(process, options)
+            .map_err(|error| diagnostics.error("启动 OMP 并建立 RPC 连接", error))?;
+        let job = ProcessJob::attach(client.pid().ok_or("Runtime did not start.")?)
+            .map_err(|error| diagnostics.error("关联 OMP 进程", error))?;
         let client = Arc::new(client);
         let state = client
             .call_raw(json!({"type":"get_state"}))
-            .map_err(|e| e.to_string())?;
+            .map_err(|error| diagnostics.error("读取 OMP 会话状态", error))?;
         let actual_path = state["sessionFile"].as_str().map(PathBuf::from).or(path);
         for frame in [
             json!({"type":"set_ask_dialog","enabled":true}),
             json!({"type":"set_event_filter","events":null,"messageUpdates":"delta"}),
             json!({"type":"set_subagent_subscription","level":"progress"}),
         ] {
-            client.call_raw(frame).map_err(|e| e.to_string())?;
+            let stage = format!("配置 OMP {}", frame["type"].as_str().unwrap_or("事件订阅"));
+            client
+                .call_raw(frame)
+                .map_err(|error| diagnostics.error(&stage, error))?;
         }
         if let Err(error) =
             request_capture::update_context(&capture_context, actual_path.as_deref())

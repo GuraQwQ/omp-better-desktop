@@ -2,8 +2,9 @@
 .tool-result.tool-structured, .message-body .tool-call { background: transparent; border: 0; border-radius: 0; margin: 0 0 5px; }
 .tool-result.tool-structured > summary { display: flex; align-items: center; min-height: 34px; padding: 7px 2px; gap: 7px; color: var(--secondary); font-size: 12px; border-radius: 4px; }
 .tool-result.tool-structured > summary:hover, .tool-steps > summary:hover, .thinking > summary:hover, .tool-call > summary:hover { background: var(--hover); }
-.tool-result.tool-structured > summary > strong { font-weight: 500; flex-shrink: 0; }
-.tool-structured .tool-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-result.tool-structured > summary > strong { font-weight: var(--weight-medium); flex-shrink: 0; }
+.tool-structured .tool-summary { min-width: 0; }
+.tool-structured .tool-summary:not(.file-name) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-structured .tool-result-status { margin-left: auto; flex-shrink: 0; }
 .tool-result-body { margin: 1px 0 10px 19px; border-left: 1px solid var(--line); background: var(--tool-surface); }
 .tool-steps { margin: 0 0 18px; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
@@ -18,9 +19,9 @@
 .thinking { margin: 3px 0 12px; color: var(--secondary); font-size: 12px; }
 .thinking > summary, .message-body .tool-call > summary { display: flex; align-items: center; gap: 7px; padding: 7px 2px; margin: 0; font-size: 12px; border-radius: 4px; }
 .thinking-body { margin: 3px 0 10px 19px; padding-left: 12px; border-left: 1px solid var(--line); font-size: 13px; }
-.tool-call-state { margin-left: auto; color: var(--muted); font-size: 11px; }
+.tool-call-state { margin-left: auto; color: var(--muted); font-size: 12px; }
 .tool-live-rate { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.tool-live-rate .generation-rate { font-size: 11px; }
+.tool-live-rate .generation-rate { font-size: 12px; }
 .tool-live-rate + .tool-result-status, .tool-live-rate + .tool-steps-status, .tool-live-rate + .tool-call-state { margin-left: 0; }
 .message-body .tool-call > pre { margin: 1px 0 10px 19px; border-left: 1px solid var(--line); border-radius: 0; padding: 10px 12px; font-size: 12px; max-height: 320px; overflow: auto; }
 .tool-result-status { display: inline-flex; color: var(--success); }
@@ -30,7 +31,8 @@
 .tool-command { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; max-height: 120px; overflow: auto; }
 .tool-exit { flex-shrink: 0; color: var(--secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
 .tool-file-heading { display: flex; align-items: baseline; gap: 4px; padding: 9px 12px; min-width: 0; border-top: 1px solid var(--line-soft); font-size: 12px; }
-.tool-file-heading > code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-file-heading > code { min-width: 0; }
+.tool-file-heading > code:not(.file-name) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-file-heading > span { color: var(--secondary); font-variant-numeric: tabular-nums; }
 .tool-result .tool-preview { margin: 0; padding: 8px 0; max-height: 320px; overflow: auto; white-space: pre; line-height: 1.65; font-size: 12px; }
 .tool-output-line { display: block; min-height: 1.65em; padding: 0 12px; }

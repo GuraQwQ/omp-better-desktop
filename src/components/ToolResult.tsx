@@ -3,6 +3,8 @@ import { Check, ChevronRight, FileDiff, FileText, LoaderCircle, Square, Terminal
 import { messageText } from '../lib/session-state';
 import { toolFailed } from '../lib/transcript-items';
 import { ToolGenerationRate } from './GenerationRate';
+import FileName from './FileName';
+import Collapse from './Collapse';
 import type { Copy } from '../lib/i18n';
 import type { Json, Message } from '../lib/types';
 import './tool-result.css';
@@ -23,7 +25,7 @@ function Output({ value, t, diff = false, numberAt }: { value: string; t: Copy; 
 
 function RawOutput({ message, t }: { message: Message; t: Copy }) {
   const [open, setOpen] = useState(false);
-  return <details className="tool-raw" onToggle={event => setOpen(event.currentTarget.open)}><summary><ChevronRight size={12} />{t.toolRawOutput}</summary>{open && <Output value={JSON.stringify({ args: message.args, result: message.result ?? { content: message.content, details: message.details }, partialResult: message.partialResult }, null, 2)} t={t} />}</details>;
+  return <details className="tool-raw" onToggle={event => { if (event.target === event.currentTarget) setOpen(event.currentTarget.open); }}><summary><ChevronRight size={12} />{t.toolRawOutput}</summary><Collapse open={open}><Output value={JSON.stringify({ args: message.args, result: message.result ?? { content: message.content, details: message.details }, partialResult: message.partialResult }, null, 2)} t={t} /></Collapse></details>;
 }
 
 function ToolBody({ message, t, active }: { message: Message; t: Copy; active: boolean }) {
@@ -46,8 +48,8 @@ function ToolBody({ message, t, active }: { message: Message; t: Copy; active: b
   const images = Array.isArray(message.content) ? message.content.filter(block => block.type === 'image' && block.data && block.mimeType) : [];
   return <div className="tool-result-body">
       {kind === 'bash' && <div className="tool-command-row">{command && <code className="tool-command">$ {command.length > 12_000 ? `${command.slice(0, 12_000)}…` : command}</code>}{exitCode !== null && <span className={`tool-exit ${exitCode !== 0 ? 'is-error' : ''}`}>{t.toolExitCode}: {exitCode}</span>}</div>}
-      {kind === 'read' && path && <div className="tool-file-heading"><code title={path}>{path}</code></div>}
-      {hasDiff ? <>{failed && output && <Output value={output} t={t} />}{diffs.map((file, index) => <section className="tool-file-change" key={index}><div className="tool-file-heading"><code>{text(file.path) || path}</code>{typeof file.firstChangedLine === 'number' && <span>:{file.firstChangedLine}</span>}</div>{file.isError && (file.displayErrorText || file.errorText) && <Output value={text(file.displayErrorText) || text(file.errorText)} t={t} />}<Output value={text(file.diff)} t={t} diff /></section>)}</> : <Output value={(kind === 'read' ? readText : output) || (message.running ? active ? t.loading : t.stopped : t.emptyOutput)} t={t} numberAt={kind === 'read' && readText ? numberAt : undefined} />}
+      {kind === 'read' && path && <div className="tool-file-heading"><code><FileName value={path} /></code></div>}
+      {hasDiff ? <>{failed && output && <Output value={output} t={t} />}{diffs.map((file, index) => <section className="tool-file-change" key={index}><div className="tool-file-heading"><code><FileName value={text(file.path) || path} /></code>{typeof file.firstChangedLine === 'number' && <span>:{file.firstChangedLine}</span>}</div>{file.isError && (file.displayErrorText || file.errorText) && <Output value={text(file.displayErrorText) || text(file.errorText)} t={t} />}<Output value={text(file.diff)} t={t} diff /></section>)}</> : <Output value={(kind === 'read' ? readText : output) || (message.running ? active ? t.loading : t.stopped : t.emptyOutput)} t={t} numberAt={kind === 'read' && readText ? numberAt : undefined} />}
       {images.map((image, index) => <img className="message-image tool-result-image" key={index} src={`data:${image.mimeType};base64,${image.data}`} alt={path || t.output} />)}
       <RawOutput message={message} t={t} />
   </div>;
@@ -63,13 +65,14 @@ export default function ToolResult({ message, t, active = true, expanded, onExpa
   const path = text(details.resolvedPath) || text(details.finalUrl) || text(details.url) || text(details.path) || text(args.path);
   const firstText = typeof message.content === 'string' ? message.content : message.content?.find(block => block?.type === 'text')?.text ?? '';
   const summary = (kind === 'bash' ? text(args.command) : path) || firstText.split('\n', 1)[0] || '';
+  const fileSummary = !!path && ['read', 'write', 'edit', 'ast_edit'].includes(kind ?? '');
   const failed = toolFailed(message);
   const running = !!message.running && active && !failed;
   const stopped = !!message.running && !active;
   const status = failed ? t.statusLabels.error : running ? t.running : stopped ? t.stopped : t.done;
   const Icon = kind === 'read' || kind === 'write' ? FileText : kind === 'edit' ? FileDiff : TerminalSquare;
   return <details className={`tool-result tool-structured ${failed ? 'is-error' : ''}`} open={open} onToggle={event => { if (event.target !== event.currentTarget) return; const next = event.currentTarget.open; setOwnOpen(next); onExpandedChange?.(next); }}>
-    <summary><ChevronRight size={12} aria-hidden="true" /><Icon size={14} aria-hidden="true" /><strong>{toolLabel(kind, t)}</strong><span className="tool-summary" title={summary.slice(0, 240)}>{summary.slice(0, 140)}</span>{running && <ToolGenerationRate callId={message.toolCallId} />}<span className="tool-result-status" role="img" aria-label={status} title={status}>{failed ? <X size={13} /> : running ? <LoaderCircle className="spin" size={13} /> : stopped ? <Square size={12} /> : <Check size={13} />}</span></summary>
-    {open && <ToolBody message={message} t={t} active={active} />}
+    <summary><ChevronRight size={12} aria-hidden="true" /><Icon size={14} aria-hidden="true" /><strong>{toolLabel(kind, t)}</strong>{fileSummary ? <FileName className="tool-summary" value={path} /> : <span className="tool-summary" title={summary.slice(0, 240)}>{summary.slice(0, 140)}</span>}{running && <ToolGenerationRate callId={message.toolCallId} />}<span className="tool-result-status" role="img" aria-label={status} title={status}>{failed ? <X size={13} /> : running ? <LoaderCircle className="spin" size={13} /> : stopped ? <Square size={12} /> : <Check size={13} />}</span></summary>
+    <Collapse open={open}><ToolBody message={message} t={t} active={active} /></Collapse>
   </details>;
 }

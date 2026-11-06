@@ -1,0 +1,340 @@
+diff --git a/packages/coding-agent/src/prompts/system/mid-run-todo-nudge.md b/packages/coding-agent/src/prompts/system/mid-run-todo-nudge.md
+index 4851cf7..9c6eec2 100644
+--- a/packages/coding-agent/src/prompts/system/mid-run-todo-nudge.md
++++ b/packages/coding-agent/src/prompts/system/mid-run-todo-nudge.md
+@@ -1,3 +1,7 @@
+ <system-reminder>
++{{#if promptGuidance}}
++{{incompleteCount}} todo item{{#if plural}}s{{else}}{{/if}} still open. Group confirmed updates with the next substantive action; if only final bookkeeping remains, consolidate it before delivery. Otherwise continue the actual work.
++{{else}}
+ {{incompleteCount}} todo item{{#if plural}}s{{else}}{{/if}} still open. If you finished a task since last `{{toolRefs.todo}}` update, mark it done now so progress stays visible; otherwise keep working.
++{{/if}}
+ </system-reminder>
+diff --git a/packages/coding-agent/src/prompts/system/programmatic-tool-use.md b/packages/coding-agent/src/prompts/system/programmatic-tool-use.md
+deleted file mode 100644
+index 737c842..0000000
+--- a/packages/coding-agent/src/prompts/system/programmatic-tool-use.md
++++ /dev/null
+@@ -1,7 +0,0 @@
+-# Programmatic tool use
+-
+-Batch already-known independent reads and checks in one response. In eval, use `readBatch(paths)` when available; retain its results and print the evidence needed for the next decision. Use native JSON/line selectors for large data. Keep source paths, versions and failures; reread only failed or changed items.
+-
+-Use `await tool.<name>(args)` for session tools. Run project tests through `tool.bash` in the project's runtime (e.g. `node --test`); eval's compiled `process.execPath` is OMP, and imported objects can belong to another VM realm. Await writes and todo updates in order. Finish a whole confirmed phase with one `todo done + phase`; otherwise issue the known updates in the same response as substantive work.
+-
+-Simple actions stay direct. Stop a batch at decisions or missing information; preserve the original tests and completion criteria.
+diff --git a/packages/coding-agent/src/prompts/system/project-prompt.md b/packages/coding-agent/src/prompts/system/project-prompt.md
+index 65a7793..d4e49ba 100644
+--- a/packages/coding-agent/src/prompts/system/project-prompt.md
++++ b/packages/coding-agent/src/prompts/system/project-prompt.md
+@@ -57,7 +57,9 @@ Additional workspace directories. This CURRENT workspace state supersedes worksp
+ {{#if subagent}}
+ - Changes complete → yield; verification is main agent's job. NEVER run it yourself unless your assignment explicitly instructs it.
+ {{else}}
++{{#unless promptGuidance}}
+ - Before yielding, MUST verify significant behavioral changes: run the specific test, command, or scenario covering the change.
++{{/unless}}
+ {{/if}}
+ </critical>
+ 
+diff --git a/packages/coding-agent/src/prompts/system/system-prompt.md b/packages/coding-agent/src/prompts/system/system-prompt.md
+index 9561b94..64a4326 100644
+--- a/packages/coding-agent/src/prompts/system/system-prompt.md
++++ b/packages/coding-agent/src/prompts/system/system-prompt.md
+@@ -94,16 +94,32 @@ Write JSON args as `content` to `xd://<tool>` via `{{toolRefs.write}}`. Invalid
+ 
+ § Tool Policy
+ # General
++{{#if promptGuidance}}
++Resolve prerequisites and material uncertainty; batch independent calls. Retry failed or incomplete steps with a changed approach, retaining successful results until their inputs change.
++{{else}}
+ SHOULD resolve prerequisites, parallelize independent calls. Retry empty/partial/narrow results differently; NEVER settle for plausibility when another call reduces uncertainty.
++{{/if}}
+ {{#has tools "task"}}- User says `parallel` or `parallelize` → MUST use `{{toolRefs.task}}` subagents; parallel tool calls insufficient.{{/has}}
+ 
+ # Tool I/O
+ - Prefer relative `path`-like fields.
++{{#if promptGuidance}}
++{{#has tools "read"}}
++- When a read reports a resolved path, use that path in external commands; do not infer filesystem location from a shortened read target.
++{{/has}}
++{{/if}}
+ {{#if intentTracing}}- Most tools take `{{intentField}}`: {{#if intentGuidance}}{{intentGuidance}}{{else}}capitalized 2–6-word present-participle intent (e.g. "Reading model role settings").{{/if}}{{/if}}
+ {{#if secretsEnabled}}- `$$HASH$$`, `$$HASH:CASE$$`, `$$NAME_HASH:CASE$$` output tokens: opaque strings.{{/if}}
+ 
+ # Specialized Tools
++{{#if promptGuidance}}
++Use specialized tools for their operations. Run project tests in the project's own runtime; preserve its assertions. Sequence dependent writes and progress updates.
++{{#has tools "eval"}}
++- `{{toolRefs.eval}}` may compose those tools for deterministic processing. JS eval's compiled `process.execPath` is OMP; imported objects may belong to another VM realm.
++{{/has}}
++{{else}}
+ MUST use specialized tool over shell equivalent:
++{{/if}}
+ {{#has tools "read"}}- File/directory reads: `{{toolRefs.read}}` (directory lists entries).{{/has}}
+ {{#has tools "edit"}}- Surgical edits: `{{toolRefs.edit}}`.{{/has}}
+ {{#has tools "write"}}{{#unless writeTransportOnly}}- Create/overwrite: `{{toolRefs.write}}`.{{/unless}}{{/has}}
+@@ -194,9 +210,14 @@ Inline first. Fan out only when 2+ independent slices each cost more than a hand
+ - Tool failure or intervening file change: re-read before acting.
+ 
+ # 3. Decompose
++{{#if promptGuidance}}
++{{#has tools "todo"}}- Track non-trivial work with concise todos covering the request. Apply the progress rules in `{{toolRefs.todo}}`; never infer semantic completion from a tool's success alone.
++{{/has}}
++{{else}}
+ {{#has tools "todo"}}- Update todos; skip trivial requests.
+ - NEVER make a todo-only turn: send `todo` in the same response as the turn's real call (parallel tool calls); `init` with first work, `done` with next action/verification.
+ {{/has}}
++{{/if}}
+ 
+ # 4. Implement
+ - Prefer existing files; review as user.
+@@ -209,6 +230,13 @@ Main agent verifies once after all subagents land; parallel runs storm the CPU a
+ - Changes complete → yield; name the checks main agent should run.
+ {{else}}
+ # 5. Verify
++{{#if promptGuidance}}
++Verify significant changes against the requested behavior using the project's relevant checks; add a focused smoke run where tests do not exercise the actual path. Combine checks after related edits.
++- Use an observed failure as the baseline; reproduce only when more evidence is needed to identify or verify the fix.
++- Repeat verification only after a relevant change, a failure, or an unresolved requirement. Once current evidence satisfies the request, deliver it; do not add checks merely to accompany progress updates.
++- UI/TUI/CLI changes require observing the affected surface. If no suitable runtime exists, report that limit and validate the reachable behavior.
++- Keep existing regression coverage. Add permanent tests for meaningful behavior and uncertain boundaries; use local probes for incidental implementation details.
++{{else}}
+ Non-trivial work: NEVER yield without a smoke run: run the thing, exercise the changed path, observe the result. Tests alone are not proof.
+ - Investigation: run it; output proves it; no tests.
+ - UI: verify actual surface.
+@@ -228,6 +256,7 @@ Non-trivial work: NEVER yield without a smoke run: run the thing, exercise the c
+ - NEVER test wiring/copies/forwarding/mock echoes/source text/incidental defaults, tautologies, bare not-throw, non-empty/length-grew, duplicate same-path rows. Use throwaway scripts.
+ - Existing wording/implementation/incidental-behavior tests: MUST delete, NEVER re-pin regardless of author.
+ {{/if}}
++{{/if}}
+ 
+ # 6. Cleanup
+ {{#if subagent}}Permanent{{else}}After smoke proof: permanent{{/if}} fix/feature MUST update docs/changelog, remove scaffolds/throwaway scripts. Investigation: no tests/docs. NEVER pre-plan cleanup todos.
+diff --git a/packages/coding-agent/src/prompts/tools/todo.md b/packages/coding-agent/src/prompts/tools/todo.md
+index 638e9ae..0801df1 100644
+--- a/packages/coding-agent/src/prompts/tools/todo.md
++++ b/packages/coding-agent/src/prompts/tools/todo.md
+@@ -1,4 +1,8 @@
++{{#if promptGuidance}}
++Group confirmed progress changes with the next substantive tool response. Follow explicit forced initialization when requested. If only final bookkeeping remains, make one consolidated update and deliver; do not invent work or verification to accompany it. Use `done` with `phase` only when every task in that phase is confirmed complete; otherwise submit the required individual updates together.
++{{else}}
+ `todo` NEVER takes a turn of its own: emit it in the same response as your next real tool call (parallel tool calls), `init` beside the first read or action, `done`/`start` beside the next action or check. A response whose only call is `todo` wastes a full model round trip.
++{{/if}}
+ Tasks identified by verbatim content, NEVER generated IDs (task-1). Unique, stable task/phase names; lost text: view, NEVER guess.
+ Before work, init for 3+ steps, requested task sets, or new instructions. MUST list EVERY user item separately (phased/numbered/bulleted/N); NEVER omit or remember leftovers.
+ After successful mutation: no active means earliest pending starts (phase order); multiple active means only earliest stays. Blocked NEVER starts automatically; unblock returns pending. Done out of order may rewind pointer but NEVER reopen completed. Mark done immediately; follow phase order.
+diff --git a/packages/coding-agent/src/sdk.ts b/packages/coding-agent/src/sdk.ts
+index 7bd2edc..0888cb0 100644
+--- a/packages/coding-agent/src/sdk.ts
++++ b/packages/coding-agent/src/sdk.ts
+@@ -208,6 +208,7 @@ import {
+ 	USER_INTERRUPT_LABEL,
+ 	wrapSteeringForModel,
+ } from "./session/messages";
++import { withReadPathFeedback } from "./session/read-path-feedback";
+ import {
+ 	capArchiveFrameBytes,
+ 	clampProviderContextImageBytes,
+@@ -404,6 +405,7 @@ import {
+ 	cfgSnapcompactSystemPrompt,
+ 	cfgSnapcompactToolResults,
+ 	cfgTokenOptimizationProgrammatic,
++	cfgTokenOptimizationPromptGuidance,
+ 	cfgTokenOptimizationSkillCacheReuse,
+ 	cfgWorkspaceAdditionalDirectories,
+ } from "./session/context-settings";
+@@ -1357,8 +1359,8 @@ export interface BuildSystemPromptOptions {
+ 	systemPromptTemplate?: string;
+ 	appendPrompt?: string;
+ 	inlineToolDescriptors?: boolean;
+-	/** 显式启用程序化工具编排指导。 */
+-	programmatic?: boolean;
++	/** 显式启用原生提示整理。 */
++	promptGuidance?: boolean;
+ 	includeWorkspaceTree?: boolean;
+ 	/** Include the read-only security:// resource inventory entry. Default: false. */
+ 	securityEnabled?: boolean;
+@@ -1389,7 +1391,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
+ 		contextFiles: options.contextFiles,
+ 		appendSystemPrompt: options.appendPrompt,
+ 		inlineToolDescriptors: options.inlineToolDescriptors,
+-		programmatic: options.programmatic,
++		promptGuidance: options.promptGuidance,
+ 		includeWorkspaceTree: options.includeWorkspaceTree,
+ 		securityEnabled: options.securityEnabled,
+ 		evalPreludes: options.evalPreludes,
+@@ -4232,7 +4234,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+ 				skillsSettings: cfgSkills.get(settings),
+ 				inlineToolDescriptors,
+ 				nativeTools,
+-				programmatic: cfgTokenOptimizationProgrammatic.get(settings),
++				promptGuidance: cfgTokenOptimizationPromptGuidance.get(settings),
+ 				intentField: cfgToolsIntentTracing.get(settings) ? INTENT_FIELD : undefined,
+ 				eagerTasks: cfgTaskEager.get(settings) !== "default",
+ 				eagerTasksAlways: cfgTaskEager.get(settings) === "always",
+@@ -4459,7 +4461,10 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+ 		// Final convertToLlm: live provider replay drops API-level refusal errors,
+ 		// then applies secret obfuscation to the remaining outbound context.
+ 		const convertToLlmFinal = (messages: AgentMessage[]): Message[] => {
+-			const converted = filterProviderReplayMessages(convertToLlmWithBlockImages(messages));
++			const converted = withReadPathFeedback(
++				filterProviderReplayMessages(convertToLlmWithBlockImages(messages)),
++				cfgTokenOptimizationPromptGuidance.get(settings),
++			);
+ 			if (!obfuscator?.hasSecrets()) return converted;
+ 			return obfuscateMessages(obfuscator, converted);
+ 		};
+diff --git a/packages/coding-agent/src/session/context-settings.ts b/packages/coding-agent/src/session/context-settings.ts
+index 51f19ed..0e58955 100644
+--- a/packages/coding-agent/src/session/context-settings.ts
++++ b/packages/coding-agent/src/session/context-settings.ts
+@@ -29,9 +29,21 @@ export const cfgTokenOptimizationProgrammatic = register({
+ 	ui: {
+ 		tab: "context",
+ 		group: "Token optimization",
+-		label: "Programmatic tool use",
++		label: "Read batches",
++		description: "Enable bounded read batches in eval, preserving per-item errors and original results.",
++	},
++});
++
++export const cfgTokenOptimizationPromptGuidance = register({
++	id: "tokenOptimization.promptGuidance",
++	type: "boolean",
++	default: false,
++	ui: {
++		tab: "context",
++		group: "Token optimization",
++		label: "Execution and prompt guidance",
+ 		description:
+-			"Enable bounded read batches and guidance for project-native tests and combined progress updates. Preserve per-item errors, original results and simple direct calls.",
++			"Describe the actual command interpreter, expose resolved read paths and consolidate tool, progress and verification instructions.",
+ 	},
+ });
+ 
+diff --git a/packages/coding-agent/src/session/todo-tracker.ts b/packages/coding-agent/src/session/todo-tracker.ts
+index e1d85b4..a72df74 100644
+--- a/packages/coding-agent/src/session/todo-tracker.ts
++++ b/packages/coding-agent/src/session/todo-tracker.ts
+@@ -2,6 +2,7 @@ import type { Agent, AgentMessage, AgentTool } from "@oh-my-pi/pi-agent-core";
+ import type { AssistantMessage, Message, Model, TextContent, ToolChoice } from "@oh-my-pi/pi-ai";
+ import { isRecord, logger, prompt, stringProperty } from "@oh-my-pi/pi-utils";
+ import type { Settings } from "../config/settings";
++import { cfgTokenOptimizationPromptGuidance } from "./context-settings";
+ import eagerTaskPrompt from "../prompts/system/eager-task.md" with { type: "text" };
+ import eagerTodoPrompt from "../prompts/system/eager-todo.md" with { type: "text" };
+ import midRunTodoNudgePrompt from "../prompts/system/mid-run-todo-nudge.md" with { type: "text" };
+@@ -339,6 +340,7 @@ export class TodoTracker {
+ 		this.#midRunNudgeCount++;
+ 		const { toolRefs } = this.#buildEagerPreludeContext();
+ 		const reminder = prompt.render(midRunTodoNudgePrompt, {
++			promptGuidance: cfgTokenOptimizationPromptGuidance.get(this.#host.settings),
+ 			toolRefs,
+ 			incompleteCount: incomplete.length,
+ 			plural: incomplete.length !== 1,
+diff --git a/packages/coding-agent/src/system-prompt.ts b/packages/coding-agent/src/system-prompt.ts
+index 31a0560..3e43a7e 100644
+--- a/packages/coding-agent/src/system-prompt.ts
++++ b/packages/coding-agent/src/system-prompt.ts
+@@ -38,7 +38,6 @@ import pragmaticPersonality from "./prompts/system/personalities/pragmatic.md" w
+ import projectPromptTemplate from "./prompts/system/project-prompt.md" with { type: "text" };
+ import systemPromptTemplate from "./prompts/system/system-prompt.md" with { type: "text" };
+ import userAppendPromptTemplate from "./prompts/system/user-append.md" with { type: "text" };
+-import programmaticToolPrompt from "./prompts/system/programmatic-tool-use.md" with { type: "text" };
+ import { normalizeConcurrencyLimit } from "./task/parallel";
+ import type { ActiveRepoContext } from "@oh-my-pi/pi-tui/status-line/host";
+ import { XD_URL_PREFIX } from "@oh-my-pi/pi-tui/tools/xd-url";
+@@ -46,12 +45,16 @@ import { resolveActiveRepoContext } from "./utils/active-repo-context";
+ import { normalizePromptPath } from "./utils/prompt-path";
+ import { AGENTS_MD_LIMIT, buildWorkspaceTree, type WorkspaceTree } from "./workspace-tree";
+ import { combine } from "./config/registry";
+-import { cfgBashAutoBackgroundEnabled } from "./exec/settings";
++import { cfgBashAutoBackgroundEnabled, cfgShellPath } from "./exec/settings";
+ import { cfgEvalAutoBackgroundEnabled } from "./eval/settings";
+ import { cfgTtsrBuiltinRules, cfgTtsrDisabledRules, cfgTtsrEnabled } from "./export/ttsr-settings";
+ import { cfgTuiAutoGraph, cfgTuiReactions, cfgTuiRenderMermaid, cfgTuiRenderSvg } from "./modes/settings";
+ import { cfgSecretsEnabled } from "./secrets/settings";
+-import { cfgTokenOptimizationProgrammatic, cfgToolsFormat } from "./session/context-settings";
++import {
++	cfgTokenOptimizationProgrammatic,
++	cfgTokenOptimizationPromptGuidance,
++	cfgToolsFormat,
++} from "./session/context-settings";
+ import {
+ 	cfgIncludeModelInPrompt,
+ 	cfgIncludeWorkspaceTree,
+@@ -81,6 +84,8 @@ export const cfgSystemPromptInputs = combine({
+ 	inlineToolDescriptors: cfgInlineToolDescriptors,
+ 	toolsFormat: cfgToolsFormat,
+ 	programmatic: cfgTokenOptimizationProgrammatic,
++	promptGuidance: cfgTokenOptimizationPromptGuidance,
++	shellPath: cfgShellPath,
+ 	intentTracing: cfgToolsIntentTracing,
+ 	xdevDocs: cfgToolsXdevDocs,
+ 	xdevInlineDevices: cfgToolsXdevInlineDevices,
+@@ -529,8 +534,8 @@ export interface BuildSystemPromptOptions {
+ 	 * `namespace functions { … }` catalog. Default: true
+ 	 */
+ 	nativeTools?: boolean;
+-	/** 显式启用程序化工具编排指导，默认沿用原生提示词。 */
+-	programmatic?: boolean;
++	/** 显式启用原生提示整理，默认沿用上游文本。 */
++	promptGuidance?: boolean;
+ 	/** Skills settings for discovery. */
+ 	skillsSettings?: SkillsSettings;
+ 	/** Working directory. Default: getProjectDir() */
+@@ -992,6 +997,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
+ 
+ 	const environment = getEnvironmentInfo();
+ 	const data = {
++		promptGuidance: options.promptGuidance === true,
+ 		systemPromptCustomization: effectiveSystemPromptCustomization,
+ 		customPrompt: resolvedCustomPrompt,
+ 		appendPrompt: resolvedAppendPrompt ?? "",
+@@ -1060,9 +1066,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
+ 		rendered = prompt.render(systemPromptTemplate, data);
+ 	}
+ 	const systemPrompt = [rendered];
+-	if (options.programmatic && data.tools.includes("eval")) {
+-		systemPrompt.push(prompt.render(programmaticToolPrompt, data).trim());
+-	}
+ 	for (const prelude of evalPreludes) {
+ 		const guidance = prelude.guidance?.trim();
+ 		if (guidance) systemPrompt.push(guidance);
+diff --git a/packages/coding-agent/src/tools/todo.ts b/packages/coding-agent/src/tools/todo.ts
+index 17acdf6..b49e82c 100644
+--- a/packages/coding-agent/src/tools/todo.ts
++++ b/packages/coding-agent/src/tools/todo.ts
+@@ -12,6 +12,7 @@ import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallb
+ import { isRecord, prompt } from "@oh-my-pi/pi-utils";
+ 
+ import todoDescription from "../prompts/tools/todo.md" with { type: "text" };
++import { cfgTokenOptimizationPromptGuidance } from "../session/context-settings";
+ import type { ToolSession } from "../sdk";
+ import type { SessionEntry } from "../session/session-entries";
+ 
+@@ -715,7 +716,11 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
+ 	readonly approval = "read" as const;
+ 	readonly label = "Todo";
+ 	readonly summary = "Write a structured todo list to track progress within a session";
+-	readonly description: string;
++	get description(): string {
++		return prompt.render(todoDescription, {
++			promptGuidance: cfgTokenOptimizationPromptGuidance.get(this.session.settings),
++		});
++	}
+ 	readonly parameters = todoSchema;
+ 	readonly concurrency = "exclusive";
+ 	readonly strict = true;
+@@ -724,9 +729,7 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
+ 	readonly lenientArgValidation = true;
+ 
+ 	readonly loadMode = "discoverable";
+-	constructor(private readonly session: ToolSession) {
+-		this.description = prompt.render(todoDescription);
+-	}
++	constructor(private readonly session: ToolSession) {}
+ 
+ 	async execute(
+ 		_toolCallId: string,

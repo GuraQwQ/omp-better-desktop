@@ -1,0 +1,158 @@
+diff --git a/packages/coding-agent/src/exec/bash-executor.ts b/packages/coding-agent/src/exec/bash-executor.ts
+index 5977e2f..b4fc226 100644
+--- a/packages/coding-agent/src/exec/bash-executor.ts
++++ b/packages/coding-agent/src/exec/bash-executor.ts
+@@ -13,7 +13,7 @@ import {
+ 	type ShellRunResult,
+ } from "@oh-my-pi/pi-natives";
+ import { $env } from "@oh-my-pi/pi-utils/env";
+-import { isCmdShell, isExecutable, type ShellConfig } from "@oh-my-pi/pi-utils/procmgr";
++import { isCmdShell, isExecutable, isPosixShell, isPowerShell, type ShellConfig } from "@oh-my-pi/pi-utils/procmgr";
+ import { Settings } from "../config/settings";
+ import { type OutputArtifactError, OutputSink, type OutputSummary } from "@oh-my-pi/pi-tui/tools/streaming-output";
+ import {
+@@ -460,6 +460,39 @@ function resolveUserShellConfig(settings: Settings, baseConfig: ShellConfig): Sh
+ 	};
+ }
+ 
++/** 执行与工具说明共用同一配置解析，不根据操作系统推测命令语言。 */
++export function resolveBashShellRouting(settings: Settings, useUserShell = false) {
++	const baseShellConfig = settings.getShellConfig();
++	const shellConfig = useUserShell ? resolveUserShellConfig(settings, baseShellConfig) : baseShellConfig;
++	const bashShell = isBashShell(shellConfig.shell);
++	return {
++		shellConfig,
++		bashShell,
++		wrapUserCommand: useUserShell && !bashShell && !isCmdShell(shellConfig.shell),
++	};
++}
++
++/** 描述解析失败不影响纯读取会话；真正执行时仍沿用原配置错误。 */
++export function describeBashShellRouting(settings: Settings): string {
++	const ordinary = "Local non-PTY commands use embedded brush-core with Bash syntax.";
++	try {
++		const { shellConfig } = resolveBashShellRouting(settings);
++		const shell = shellConfig.shell;
++		const syntax = isPowerShell(shell)
++			? "PowerShell"
++			: isCmdShell(shell)
++				? "cmd"
++				: isPosixShell(shell)
++					? "POSIX"
++					: shellBasename(shell).includes("fish")
++						? "fish"
++						: "shell-specific";
++		return `${ordinary} PTY and ACP client terminals use ${JSON.stringify(shell)} (${syntax} syntax).`;
++	} catch {
++		return `${ordinary} External PTY/ACP shell: unresolved; check shellPath.`;
++	}
++}
++
+ /**
+  * Env for the user-shell PTY path: keep the non-interactive guards (pagers,
+  * editors, credential prompts) but restore color — the PTY makes stdout a
+@@ -554,11 +587,11 @@ async function executeUserShellPty(run: {
+ 
+ export async function executeBash(command: string, options?: BashExecutorOptions): Promise<BashResult> {
+ 	const settings = await Settings.init();
+-	const baseShellConfig = settings.getShellConfig();
+-	const shellConfig =
+-		options?.useUserShell === true ? resolveUserShellConfig(settings, baseShellConfig) : baseShellConfig;
++	const { shellConfig, bashShell, wrapUserCommand } = resolveBashShellRouting(
++		settings,
++		options?.useUserShell === true,
++	);
+ 	const { shell, args, env: shellEnv, prefix } = shellConfig;
+-	const bashShell = isBashShell(shell);
+ 	// `!` hotkey commands on zsh/fish run in a real PTY: interactive shell
+ 	// startup (zle, job control, gitstatus) needs a TTY, and tools only emit
+ 	// color when stdout is one. bash keeps the snapshot + embedded-shell path;
+@@ -601,7 +634,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
+ 	// Never wrap in cmd.exe: it is only the Windows no-bash fallback for spawn
+ 	// paths, and the embedded brush shell runs the POSIX line better directly.
+ 	const finalCommand =
+-		options?.useUserShell === true && !bashShell && !isCmdShell(shell) && !runCdInPersistentShell
++		wrapUserCommand && !runCdInPersistentShell
+ 			? buildUserShellCommand(shell, args, preflight.command)
+ 			: preflight.command;
+ 
+diff --git a/packages/coding-agent/src/exec/settings.ts b/packages/coding-agent/src/exec/settings.ts
+index f2da183..2f93e13 100644
+--- a/packages/coding-agent/src/exec/settings.ts
++++ b/packages/coding-agent/src/exec/settings.ts
+@@ -97,10 +97,31 @@ export const DEFAULT_BASH_INTERCEPTOR_RULES: BashInterceptorRule[] = [
+ 	},
+ ];
+ 
+-export const cfgShellPath = register({ id: "shellPath", type: "string", default: undefined });
++export const cfgShellPath = register({
++	id: "shellPath",
++	type: "string",
++	default: undefined,
++	ui: {
++		tab: "shell",
++		group: "Execution",
++		label: "External Shell Path",
++		description:
++			"External shell executable for PTY and ACP client terminals. Local non-PTY bash tool commands use embedded Bash syntax.",
++	},
++});
+ 
+ /** Pi shell command prefix forwarded to legacy extensions; OMP's native shell does not apply it. */
+-export const cfgLegacyShellCommandPrefix = register({ id: "shellCommandPrefix", type: "string", default: undefined });
++export const cfgLegacyShellCommandPrefix = register({
++	id: "shellCommandPrefix",
++	type: "string",
++	default: undefined,
++	ui: {
++		tab: "shell",
++		group: "Execution",
++		label: "Extension Shell Command Prefix",
++		description: "Forwarded to compatible extensions; OMP-native commands do not apply this value.",
++	},
++});
+ 
+ export const cfgBashEnabled = register({
+ 	id: "bash.enabled",
+diff --git a/packages/coding-agent/src/tools/bash.ts b/packages/coding-agent/src/tools/bash.ts
+index 550b71e..925a558 100644
+--- a/packages/coding-agent/src/tools/bash.ts
++++ b/packages/coding-agent/src/tools/bash.ts
+@@ -21,7 +21,7 @@ import { isEnoent, logger, prompt } from "@oh-my-pi/pi-utils";
+ import { isPosixShell } from "@oh-my-pi/pi-utils/procmgr";
+ import { raceJobSettlement, resolveAutoBackgroundWaitMs } from "../async";
+ import type { Settings } from "../config/settings";
+-import { applyDirenvPreflight, type BashResult, executeBash } from "../exec/bash-executor";
++import { applyDirenvPreflight, type BashResult, describeBashShellRouting, executeBash } from "../exec/bash-executor";
+ import { InternalUrlRouter } from "../internal-urls";
+ import { sessionResolveContext } from "../internal-urls/context";
+ import { InternalUrlFilesystem, UrlFsError } from "../internal-urls/url-filesystem";
+@@ -76,6 +76,7 @@ import {
+ 	cfgBashPatterns,
+ } from "../exec/settings";
+ import { cfgSkillful } from "../session/settings";
++import { cfgTokenOptimizationPromptGuidance } from "../session/context-settings";
+ import { cfgWorktreeClone } from "../task/settings";
+ 
+ const BASH_APPROVAL_SHELL_CONTROL_CHARS: Record<string, true> = {
+@@ -610,6 +611,9 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
+ 		const evalBackends = resolveEvalBackends(this.session);
+ 		const isToolActive = (name: string, fallback: boolean): boolean => this.session.isToolActive?.(name) ?? fallback;
+ 		return prompt.render(bashDescription, {
++			shellContract: cfgTokenOptimizationPromptGuidance.get(this.session.settings)
++				? describeBashShellRouting(this.session.settings)
++				: undefined,
+ 			asyncEnabled: cfgAsyncEnabled.get(this.session.settings),
+ 			// The deadline an omitted `timeout` resolves to, after the `tools.maxTimeout` cap.
+ 			defaultTimeoutSec: clampTimeout("bash", undefined, cfgToolsMaxTimeout.get(this.session.settings)),
+diff --git a/packages/coding-agent/src/prompts/tools/bash.md b/packages/coding-agent/src/prompts/tools/bash.md
+index 2319d2b..6a2a404 100644
+--- a/packages/coding-agent/src/prompts/tools/bash.md
++++ b/packages/coding-agent/src/prompts/tools/bash.md
+@@ -1,4 +1,5 @@
+-Persistent shell: one fact command/pipeline; dependencies use `&&`.
++{{#if shellContract}}{{shellContract}}
++{{/if}}Persistent shell: one fact command/pipeline; dependencies use `&&`.
+ {{#if hasEval}}Scripts/heredocs/`$(…)`/complex pipelines → `eval`.{{else}}Scripts/heredocs/`$(…)`/complex flow → dedicated tool or checked-in script.{{/if}}
+ `cwd`, not `cd`; `pty` only interactive.
+ Internal URIs work as paths for builtins/coreutils, redirects, globs.

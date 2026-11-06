@@ -1,8 +1,9 @@
-import { useMemo, useRef, type ComponentPropsWithoutRef } from 'react';
+import { useLayoutEffect, useMemo, useRef, type ComponentPropsWithoutRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import CopyButton from './CopyButton';
 import type { Copy } from '../lib/i18n';
+import { revealStreamText } from '../lib/stream-reveal';
 
 type WithNode<T extends 'a' | 'pre'> = ComponentPropsWithoutRef<T> & { node?: unknown };
 
@@ -13,10 +14,14 @@ function CodeBlock({ t, children, ...props }: ComponentPropsWithoutRef<'pre'> & 
 }
 
 // 独立成块以便按需加载：react-markdown 与 remark-gfm 不进入主包。
-export default function MarkdownBody({ text, t }: { text: string; t: Copy }) {
+export default function MarkdownBody({ text, t, live = false }: { text: string; t: Copy; live?: boolean }) {
+  const previous = useRef(text);
+  const from = previous.current.length;
+  const reveal = live && text.startsWith(previous.current) && from < text.length && document.documentElement.dataset.motion === 'rich' && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  useLayoutEffect(() => { previous.current = text; }, [text]);
   const components = useMemo(() => ({
     a: ({ node: _node, ...props }: WithNode<'a'>) => <a {...props} target="_blank" rel="noreferrer" />,
     pre: ({ node: _node, ...props }: WithNode<'pre'>) => <CodeBlock t={t} {...props} />,
   }), [t]);
-  return <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>{text}</ReactMarkdown>;
+  return <ReactMarkdown remarkPlugins={reveal ? [remarkGfm, () => tree => revealStreamText(tree, from, text)] : [remarkGfm]} components={components}>{text}</ReactMarkdown>;
 }

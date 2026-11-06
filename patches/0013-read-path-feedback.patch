@@ -1,0 +1,82 @@
+diff --git a/packages/coding-agent/src/session/read-path-feedback.ts b/packages/coding-agent/src/session/read-path-feedback.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/coding-agent/src/session/read-path-feedback.ts
+@@ -0,0 +1,52 @@
++import type { DeveloperMessage, Message } from "@oh-my-pi/pi-ai";
++import { markPerCallContextMessage } from "@oh-my-pi/pi-ai/utils/block-symbols";
++
++interface ReadPathResolution {
++	requested: string;
++	resolved: string;
++}
++
++/** 只在发给模型的上下文补充路径；原始工具结果和程序化读取保持原样。 */
++export function withReadPathFeedback(messages: Message[], enabled: boolean): Message[] {
++	if (!enabled) return messages;
++	const latestPaths = new Map<string, string>();
++	let output: Message[] | undefined;
++	let batch: ReadPathResolution[] = [];
++	for (let index = 0; index < messages.length; index++) {
++		const message = messages[index];
++		output?.push(message);
++		if (message.role !== "toolResult") continue;
++		if (message.toolName === "read" && !message.isError) {
++			const details = message.details as
++				| { raw?: unknown; suffixResolution?: { from?: unknown; to?: unknown; raw?: unknown } }
++				| undefined;
++			const resolution = details?.suffixResolution;
++			if (
++				typeof resolution?.from === "string" &&
++				typeof resolution.to === "string" &&
++				resolution.from.length > 0 &&
++				resolution.to.length > 0 &&
++				resolution.from !== resolution.to
++			) {
++				const changed = latestPaths.get(resolution.from) !== resolution.to;
++				latestPaths.set(resolution.from, resolution.to);
++				if (changed && (details?.raw === true || resolution.raw === true)) {
++					batch.push({ requested: resolution.from, resolved: resolution.to });
++				}
++			}
++		}
++		// 整批工具结果保持相邻，避免在并行调用的配对中间插入消息。
++		if (messages[index + 1]?.role === "toolResult" || batch.length === 0) continue;
++		const notice: DeveloperMessage = {
++			role: "developer",
++			content: `Read path resolutions (use resolved paths in commands):\n${JSON.stringify(batch)}`,
++			attribution: "agent",
++			timestamp: message.timestamp,
++		};
++		markPerCallContextMessage(notice);
++		output ??= messages.slice(0, index + 1);
++		output.push(notice);
++		batch = [];
++	}
++	return output ?? messages;
++}
+diff --git a/packages/coding-agent/src/session/session-provider-boundary.ts b/packages/coding-agent/src/session/session-provider-boundary.ts
+index 4c6d9b3..aa10e66 100644
+--- a/packages/coding-agent/src/session/session-provider-boundary.ts
++++ b/packages/coding-agent/src/session/session-provider-boundary.ts
+@@ -17,6 +17,8 @@ import { imageAttachmentSource } from "@oh-my-pi/pi-tui/prompt/image-source";
+ import { describeAttachedImagesForTextModel, shouldDescribeImagesForTextModel } from "../utils/image-vision-fallback";
+ import { blobExtensionForImageMimeType } from "@oh-my-pi/pi-tui/prompt/image-format";
+ import { type CustomMessage, convertToLlm } from "./messages";
++import { cfgTokenOptimizationPromptGuidance } from "./context-settings";
++import { withReadPathFeedback } from "./read-path-feedback";
+ import { IMAGE_ATTACHMENT_DESCRIPTION_TYPE } from "./queued-messages";
+ import type { SessionContext, TranscriptSessionContextOptions } from "./session-context";
+ import type { CostGate } from "./cost-gate";
+@@ -203,7 +205,10 @@ export class SessionProviderBoundary {
+ 
+ 	/** Converts side-request messages through the session's secret boundary. */
+ 	convertToLlmForSideRequest(messages: AgentMessage[]): Message[] {
+-		const converted = convertToLlm(messages);
++		const converted = withReadPathFeedback(
++			convertToLlm(messages),
++			cfgTokenOptimizationPromptGuidance.get(this.#host.settings),
++		);
+ 		const obfuscator = this.#host.obfuscator();
+ 		return obfuscator ? obfuscateMessages(obfuscator, converted) : converted;
+ 	}

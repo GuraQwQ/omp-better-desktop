@@ -11,12 +11,12 @@ import './imports.css';
 interface Props { language: Language; cwd: string; ensureSession: () => Promise<string>; reconnect?: () => Promise<void> }
 interface Candidate { id: string; name: string; kind: 'skill' | 'mcp'; source: string; path: string; description?: string; adapter?: string; key?: string; enabled?: boolean; linkedPath?: string; warning?: string }
 const sources = [
-  { id: 'agents', name: '.agent / .agents', paths: 'C:/.agent · ~/.agent/skills · ~/.agents/skills' },
-  { id: 'gemini', name: 'Gemini / Antigravity', paths: '~/.gemini · .gemini' },
-  { id: 'claude', name: 'Claude', paths: '~/.claude/skills · ~/.claude.json · .mcp.json' },
-  { id: 'codex', name: 'Codex', paths: '~/.agents/skills · ~/.codex/config.toml · .codex/config.toml' },
-  { id: 'trae', name: 'Trae', paths: '~/.trae/skills · Trae/User/mcp.json · .trae/mcp.json' },
-  { id: 'zcode', name: 'ZCode', paths: '~/.zcode/skills · ~/.zcode/cli/config.json · .zcode/config.json' },
+  { id: 'agents', name: '.agent / .agents', paths: 'C:/.agent / ~/.agent/skills / ~/.agents/skills' },
+  { id: 'gemini', name: 'Gemini / Antigravity', paths: '~/.gemini / .gemini' },
+  { id: 'claude', name: 'Claude', paths: '~/.claude/skills / ~/.claude.json / .mcp.json' },
+  { id: 'codex', name: 'Codex', paths: '~/.agents/skills / ~/.codex/config.toml / .codex/config.toml' },
+  { id: 'trae', name: 'Trae', paths: '~/.trae/skills / Trae/User/mcp.json / .trae/mcp.json' },
+  { id: 'zcode', name: 'ZCode', paths: '~/.zcode/skills / ~/.zcode/cli/config.json / .zcode/config.json' },
   { id: 'ccswitch', name: 'CC Switch', paths: '~/.cc-switch' },
 ];
 const words = (language: Language) => language === 'zh' ? {

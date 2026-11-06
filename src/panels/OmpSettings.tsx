@@ -107,7 +107,7 @@ export function SettingField({ setting, language, save }: { setting: Json; langu
   const form = list || members || record;
   const editable = structured ? raw || setting.ui?.editor === 'json' || !form ? 'json' : list || members ? 'list' : 'record' : 'scalar';
   return <div className="setting-editor" aria-busy={busy}>
-    <div className="setting-field-heading"><label htmlFor={id}><strong>{label}</strong></label><span className="setting-source">{sources[setting.provenance]?.[zh ? 0 : 1] ?? setting.provenance}{setting.credential && setting.configured ? zh ? ' · 已配置' : ' · Configured' : ''}</span></div>
+    <div className="setting-field-heading"><label htmlFor={id}><strong>{label}</strong></label><span className="setting-source">{sources[setting.provenance]?.[zh ? 0 : 1] ?? setting.provenance}{setting.credential && setting.configured ? zh ? ' / 已配置' : ' / Configured' : ''}</span></div>
     {description && <p className="settings-hint setting-description" id={`${id}-description`}>{description}</p>}
     <fieldset disabled={busy} className="setting-field-control">
       {editable === 'list' && options.length ? <div className="setting-members">{options.map((option, index) => <label key={index}><input type="checkbox" checked={(parsed as unknown[]).some(item => Object.is(item, optionValues[index]))} onChange={event => change(JSON.stringify(event.target.checked ? [...parsed as unknown[], optionValues[index]] : (parsed as unknown[]).filter(item => !Object.is(item, optionValues[index]))))} />{option.label}</label>)}</div>
