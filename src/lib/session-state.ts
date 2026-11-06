@@ -47,13 +47,13 @@ export function returnFromTerminal(session: SessionView, runtimeReleased: boolea
 
 function reduceEvent(session: SessionView, event: Json): SessionView {
   if (event.type === 'desktop_status') {
-    if (event.status === 'released' || event.status === 'disconnected') return { ...clearQuestions(session), path: event.path === null && !session.messages.length ? undefined : event.path ?? session.path, historyOnly: true, status: 'ready', state: { ...session.state, isStreaming: false, isSettled: true, activity: undefined } };
+    if (event.status === 'released' || event.status === 'disconnected') return { ...clearQuestions(session), path: event.path === null && !session.messages.length ? undefined : event.path ?? session.path, historyOnly: true, status: 'ready', state: { ...session.state, isStreaming: false, isSettled: true, activity: undefined, desktopRunStartedAt: undefined } };
     return { ...session, status: event.status };
   }
-  if (event.type === 'agent_start') return { ...session, status: 'running', state: { ...session.state, isStreaming: true, isSettled: false, desktopRunAnchor: session.messages.at(-1)?.id ?? null } };
+  if (event.type === 'agent_start') return { ...session, status: 'running', state: { ...session.state, isStreaming: true, isSettled: false, desktopRunAnchor: session.messages.at(-1)?.id ?? null, desktopRunStartedAt: isSessionRunning(session) ? session.state.desktopRunStartedAt ?? Date.now() : Date.now() } };
   if (event.type === 'agent_end') return { ...session, status: event.awaitingAsyncWork ? 'background' : 'ready', state: { ...session.state, isStreaming: false, isSettled: false } };
-  if (event.type === 'session_settled') return { ...session, status: 'ready', state: { ...session.state, isStreaming: false, isSettled: true, activity: undefined } };
-  if (event.type === 'prompt_result') return { ...session, status: event.sessionSettled ? 'ready' : session.status, state: { ...session.state, ...(event.sessionSettled ? { isStreaming: false, isSettled: true, activity: undefined } : {}) } };
+  if (event.type === 'session_settled') return { ...session, status: 'ready', state: { ...session.state, isStreaming: false, isSettled: true, activity: undefined, desktopRunStartedAt: undefined } };
+  if (event.type === 'prompt_result') return { ...session, status: event.sessionSettled ? 'ready' : session.status, state: { ...session.state, ...(event.sessionSettled ? { isStreaming: false, isSettled: true, activity: undefined, desktopRunStartedAt: undefined } : {}) } };
   if (event.type === 'auto_compaction_start') return { ...session, state: { ...session.state, activity: { kind: 'compaction', since: Date.now() } } };
   if (event.type === 'auto_retry_start') return { ...session, state: { ...session.state, activity: { kind: 'retry', since: Date.now(), attempt: event.attempt, maxAttempts: event.maxAttempts } } };
   if (event.type === 'auto_compaction_end' || event.type === 'auto_retry_end') return { ...session, state: { ...session.state, activity: undefined } };

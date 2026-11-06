@@ -4,6 +4,7 @@ use std::{
 };
 
 pub fn runtime_environment(root: &Path) -> [(&'static str, PathBuf); 4] {
+    let root = external_path(root);
     [
         ("OMP_USER_ROOT", root.join("omp")),
         // 原生加载器早于 OMP 配置初始化，必须显式传入缓存目录。
@@ -11,6 +12,30 @@ pub fn runtime_environment(root: &Path) -> [(&'static str, PathBuf); 4] {
         ("TEMP", root.join("cache/tmp")),
         ("TMP", root.join("cache/tmp")),
     ]
+}
+
+pub fn external_path(path: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        use std::path::{Component, Prefix};
+        let mut components = path.components();
+        if let Some(Component::Prefix(prefix)) = components.next() {
+            let mut normal = match prefix.kind() {
+                Prefix::VerbatimDisk(drive) => PathBuf::from(format!("{}:", char::from(drive))),
+                Prefix::VerbatimUNC(server, share) => {
+                    let mut unc = PathBuf::from(r"\\");
+                    unc.push(server);
+                    unc.push(share);
+                    unc
+                }
+                _ => return path.to_owned(),
+            };
+            // Bun 的原生模块 require 不识别 Win32 扩展前缀；仅在外部进程边界转换。
+            normal.push(components.as_path());
+            return normal;
+        }
+    }
+    path.to_owned()
 }
 
 pub fn hidden(command: &mut Command) -> &mut Command {

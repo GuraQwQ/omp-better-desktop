@@ -4,6 +4,7 @@ import ToolResult from './ToolResult';
 import { ToolGenerationRate } from './GenerationRate';
 import type { Copy } from '../lib/i18n';
 import type { Message } from '../lib/types';
+import Collapse from './Collapse';
 
 export default function ToolSteps({ messages, t, active }: { messages: Message[]; t: Copy; active: boolean }) {
   const [open, setOpen] = useState<boolean | null>(null);
@@ -22,7 +23,7 @@ export default function ToolSteps({ messages, t, active }: { messages: Message[]
   const status = pending ? active ? t.running : t.stopped : t.done;
   const groupOpen = open ?? expanded.size > 0;
   return <details className="tool-steps" open={groupOpen} onToggle={event => { if (event.target === event.currentTarget) setOpen(event.currentTarget.open); }}>
-    <summary><ChevronRight size={12} aria-hidden="true" /><span>{t.toolSteps.replace('{count}', String(messages.length))}</span><span className="tool-step-counts">{[...counts].map(([name, count]) => `${name} ${count}`).join(' · ')}</span>{pending && active && <ToolGenerationRate callId={messages.find(message => message.running)?.toolCallId} />}<span className="tool-steps-status" role="img" aria-label={status} title={status}>{pending ? active ? <LoaderCircle className="spin" size={13} /> : <Square size={12} /> : <Check size={13} />}</span></summary>
-    {groupOpen && <div className="tool-steps-body">{messages.map(renderTool)}</div>}
+    <summary><ChevronRight size={12} aria-hidden="true" /><span>{t.toolSteps.replace('{count}', String(messages.length))}</span><span className="tool-step-counts">{[...counts].map(([name, count]) => <span key={name}>{name} {count}</span>)}</span>{pending && active && <ToolGenerationRate callId={messages.find(message => message.running)?.toolCallId} />}<span className="tool-steps-status" role="img" aria-label={status} title={status}>{pending ? active ? <LoaderCircle className="spin" size={13} /> : <Square size={12} /> : <Check size={13} />}</span></summary>
+    <Collapse open={groupOpen}><div className="tool-steps-body">{messages.map(renderTool)}</div></Collapse>
   </details>;
 }

@@ -837,7 +837,9 @@ pub fn takeover_status(_root: &Path) -> Result<Value> {
 fn install_cli_launchers(root: &Path) -> Result<()> {
     let bin = root.join("bin");
     fs::create_dir_all(&bin).map_err(|e| context("Create", &bin, e))?;
-    let root_literal = root.to_string_lossy().replace('\'', "''");
+    let root_literal = crate::platform::external_path(root)
+        .to_string_lossy()
+        .replace('\'', "''");
     let environment = crate::platform::runtime_environment(root)
         .into_iter()
         .map(|(name, value)| {
@@ -1104,7 +1106,8 @@ mod tests {
     #[test]
     #[cfg(windows)]
     fn launcher_refresh_recovers_partial_updates_without_enabling_takeover() {
-        let root = fixture("launcher-'中文");
+        let root = fs::canonicalize(fixture("launcher-'中文")).unwrap();
+        let external_root = crate::platform::external_path(&root);
         refresh_cli_launchers(&root).unwrap();
         assert!(!root.join("bin").exists());
         write_json(&root.join("takeover.json"), &json!({"enabled":false})).unwrap();
@@ -1150,7 +1153,7 @@ mod tests {
                     "Bypass",
                     "-File",
                 ])
-                .arg(&script)
+                .arg(crate::platform::external_path(&script))
                 .arg("参数 with spaces")
                 .env("OMP_TEST_OUTPUT", &output)
                 .env("PI_NATIVES_DIR", root.join("unmanaged"))
@@ -1166,9 +1169,15 @@ mod tests {
         );
         let text = fs::read_to_string(output).unwrap();
         let observed: Value = serde_json::from_str(text.trim_start_matches('\u{feff}')).unwrap();
-        assert_eq!(observed["natives"], json!(root.join("cache/natives")));
-        assert_eq!(observed["userRoot"], json!(root.join("omp")));
-        assert_eq!(observed["temporary"], json!(root.join("cache/tmp")));
+        assert_eq!(
+            observed["natives"],
+            json!(external_root.join("cache/natives"))
+        );
+        assert_eq!(observed["userRoot"], json!(external_root.join("omp")));
+        assert_eq!(
+            observed["temporary"],
+            json!(external_root.join("cache/tmp"))
+        );
         assert_eq!(observed["arguments"], json!(["参数 with spaces"]));
         assert_eq!(
             fs::read_to_string(root.join("bin/other.txt")).unwrap(),

@@ -12,7 +12,7 @@ export default class ConversationLayout extends Component<Props, {}, LayoutSnaps
     const workspace = this.workspace.current;
     const scroller = workspace?.querySelector<HTMLElement>('.transcript');
     const top = scroller?.getBoundingClientRect().top ?? 0;
-    const row = scroller && scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > 80 ? Array.from(scroller.querySelectorAll<HTMLElement>('[data-index]')).find(element => element.getBoundingClientRect().bottom > top + 4) : undefined;
+    const row = scroller && scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > 40 ? Array.from(scroller.querySelectorAll<HTMLElement>('[data-index]')).find(element => element.getBoundingClientRect().bottom > top + 4) : undefined;
     const body = row?.querySelector<HTMLElement>('.message-body') ?? row;
     const caret = body && document.caretRangeFromPoint(body.getBoundingClientRect().left + 8, top + 8);
     const range = caret && row?.contains(caret.startContainer) ? caret : undefined;

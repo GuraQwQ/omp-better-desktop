@@ -1,0 +1,11 @@
+.split-workspace { display: flex; flex: 1; min-width: 0; min-height: 0; position: relative; }
+.split-workspace.has-preview { display: grid; grid-template-columns: minmax(0, calc(var(--split-left, calc(100% - 360px)) - 4px)) 8px minmax(0, 1fr); }
+.workspace-preview { position: relative; min-width: 0; min-height: 0; display: flex; }
+.workspace-preview > .inspector { position: static; width: 100%; min-width: 0; max-width: none; border: 0; box-shadow: none; }
+.workspace-divider { position: relative; cursor: col-resize; touch-action: none; outline-offset: -2px; }
+.workspace-divider::after { content: ''; position: absolute; inset: 0 3px; background: var(--line-soft); border-radius: 2px; transition: background var(--motion-feedback) ease; }
+.workspace-divider:hover::after, .workspace-divider:focus-visible::after, .is-dragging > .workspace-divider::after { background: var(--focus); }
+.split-workspace.is-dragging { cursor: col-resize; user-select: none; }
+.preview-drag-shield { position: absolute; inset: 0; z-index: 50; cursor: col-resize; touch-action: none; }
+::view-transition-group(*) { animation-duration: var(--motion-panel); animation-timing-function: var(--ease-enter); }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; }

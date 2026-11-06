@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useState } from 'react';
-import type { MouseEvent, ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Copy, Minus, Square, X } from 'lucide-react';
@@ -14,6 +14,7 @@ export function WindowSlot({ inert, children }: { inert?: boolean; children: Rea
 }
 
 export default function WindowChrome({ language }: { language: 'zh' | 'en' }) {
+  const header = useRef<HTMLElement>(null);
   const [maximized, setMaximized] = useState(false);
   const [failed, setFailed] = useState(false);
   const zh = language === 'zh';
@@ -41,14 +42,21 @@ export default function WindowChrome({ language }: { language: 'zh' | 'en' }) {
     void current.onResized(refresh).then(stop => { if (disposed) stop(); else unlisten = stop; }).catch(error => { if (!disposed) failure(error); });
     return () => { disposed = true; unlisten?.(); };
   }, []);
-  // 整条标题栏都是拖拽区；按钮、菜单等可交互元素除外。
-  const drag = (event: MouseEvent<HTMLElement>) => {
-    if (!native || event.button !== 0 || (event.target as Element).closest('button, summary, input, a, .ui-menu')) return;
-    if (event.detail === 2) void toggle();
-    else void act(() => getCurrentWindow().startDragging());
-  };
+  useEffect(() => {
+    if (!native) return;
+    // Portal 中的工作区标题不经过 React 的标题栏事件树，按真实 DOM 统一接收拖动。
+    const element = header.current!;
+    const drag = (event: MouseEvent) => {
+      if (event.button !== 0 || (event.target as Element).closest('button, summary, input, textarea, select, a, .ui-menu, [role="button"], [contenteditable="true"]')) return;
+      event.preventDefault();
+      if (event.detail === 2) void toggle();
+      else void act(() => getCurrentWindow().startDragging());
+    };
+    element.addEventListener('mousedown', drag);
+    return () => element.removeEventListener('mousedown', drag);
+  }, [language]);
   const maximizeLabel = maximized ? labels.restore : labels.maximize;
-  return <header className="window-chrome" aria-label={labels.bar} onMouseDown={drag}>
+  return <header ref={header} className="window-chrome" aria-label={labels.bar}>
     <div className="window-drag-region"><span>Better OMP Desktop</span>{failed && <span className="window-action-error" role="status">{labels.error}</span>}</div>
     <div id="window-slot" className="window-slot" />
     <div className="window-controls">

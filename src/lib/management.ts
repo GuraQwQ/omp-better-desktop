@@ -7,7 +7,7 @@ export const manage = <T = Json>(sessionId: string, resource: string, action: st
 export const lineValues = (text: string): string[] => text.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
 
 export function agentModelOptions(models: Json[], selected: string, query: string): { value: string; label: string }[] {
-  const options = models.filter(model => model.kind === 'chat').map(model => ({ value: String(model.value), label: `${model.name ?? model.id} · ${model.provider}` }));
+  const options = models.filter(model => model.kind === 'chat').map(model => ({ value: String(model.value), label: `${model.name ?? model.id} / ${model.provider}` }));
   if (selected && !options.some(option => option.value === selected)) options.unshift({ value: selected, label: selected });
   const search = query.toLocaleLowerCase();
   return options.filter(option => option.value === selected || `${option.value} ${option.label}`.toLocaleLowerCase().includes(search));

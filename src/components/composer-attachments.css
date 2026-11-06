@@ -1,0 +1,17 @@
+.attachment-drop-zone { position: relative; min-width: 0; border-radius: var(--radius-surface); }
+.attachment-drop-zone .composer { transition: background-color var(--motion-fast) ease, box-shadow var(--motion-fast) var(--ease-enter); }
+.attachment-drop-zone.is-drag-over .composer { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--focus); }
+.attachment-drop-hint { position: absolute; inset: 8px; z-index: 20; pointer-events: none; display: grid; place-content: center; background: color-mix(in srgb, var(--accent-soft) 94%, transparent); color: var(--accent); border-radius: var(--radius-control); font-weight: var(--weight-medium); }
+.attachment-preparing { color: var(--secondary); font-size: 12px; padding: 5px 10px 0; }
+.composer-attachments { display: flex; flex-wrap: wrap; gap: 8px; max-height: min(280px, 30vh); overflow: auto; overscroll-behavior: contain; padding: 3px 3px 9px; scrollbar-gutter: stable; }
+.composer-attachment { position: relative; display: flex; align-items: flex-start; gap: 8px; width: min(250px, 100%); min-width: 0; padding: 10px 30px 10px 10px; border-radius: var(--radius-control); background: var(--hover); }
+.composer-attachment > svg { color: var(--secondary); margin-top: 2px; }
+.composer-attachment.is-image { flex-direction: column; width: min(156px, 100%); padding: 6px; }
+.attachment-image { width: 100%; height: 100px; display: grid; place-items: center; border-radius: 2px; background: var(--surface); }
+.attachment-image img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.attachment-caption { min-width: 0; font-size: 12px; overflow-wrap: anywhere; white-space: normal; }
+.attachment-caption > span { display: block; color: var(--text); }
+.attachment-caption > small { display: block; margin-top: 3px; font-size: 12px; line-height: 1.5; color: var(--secondary); }
+.attachment-remove { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; padding: 0; display: grid; place-items: center; border-radius: 7px; background: var(--surface-raised); color: var(--secondary); box-shadow: 0 1px 5px color-mix(in srgb, var(--text) 12%, transparent); }
+.attachment-remove:hover:not(:disabled) { background: var(--selected); color: var(--text); }
+@media (forced-colors: active) { .attachment-drop-zone.is-drag-over .composer { outline: 2px solid Highlight; } .attachment-remove { border: 1px solid ButtonText; } }

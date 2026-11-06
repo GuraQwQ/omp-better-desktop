@@ -8,3 +8,4 @@ try {
   var motion = localStorage.getItem('omp-motion');
   if (motion === 'normal' || motion === 'reduced') document.documentElement.dataset.motion = motion;
 } catch (error) {}
+if (matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.dataset.motion = 'reduced';

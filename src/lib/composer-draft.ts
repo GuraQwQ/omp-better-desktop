@@ -1,18 +1,18 @@
-export interface ComposerDraft<Image> { id: string; text: string; images: Image[]; revision: number }
+export interface ComposerDraft<Attachment> { id: string; text: string; attachments: Attachment[]; revision: number }
 
-export const createDraft = <Image,>(text = '', images: Image[] = []): ComposerDraft<Image> => ({ id: crypto.randomUUID(), text, images, revision: 0 });
+export const createDraft = <Attachment,>(text = '', attachments: Attachment[] = []): ComposerDraft<Attachment> => ({ id: crypto.randomUUID(), text, attachments, revision: 0 });
 
-export function updateDraft<Image>(draft: ComposerDraft<Image>, text: string, images = draft.images) {
+export function updateDraft<Attachment>(draft: ComposerDraft<Attachment>, text: string, attachments = draft.attachments) {
   draft.text = text;
-  draft.images = images;
+  draft.attachments = attachments;
   draft.revision++;
 }
 
-export function captureDraft<Image>(draft: ComposerDraft<Image>) {
-  return { draft, revision: draft.revision, text: draft.text, images: draft.images.slice() };
+export function captureDraft<Attachment>(draft: ComposerDraft<Attachment>) {
+  return { draft, revision: draft.revision, text: draft.text, attachments: draft.attachments.slice() };
 }
 
-export function acknowledgeDraft<Image>(submission: ReturnType<typeof captureDraft<Image>>): boolean {
+export function acknowledgeDraft<Attachment>(submission: ReturnType<typeof captureDraft<Attachment>>): boolean {
   if (submission.draft.revision !== submission.revision) return false;
   updateDraft(submission.draft, '', []);
   return true;

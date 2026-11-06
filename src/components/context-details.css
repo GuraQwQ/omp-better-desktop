@@ -2,7 +2,7 @@
 .context-fold > summary { display: flex; align-items: center; gap: 8px; padding: 12px 2px; border-radius: 4px; }
 .context-fold > summary:hover { background: var(--hover); }
 .context-fold > summary > span { overflow-wrap: anywhere; min-width: 0; }
-.context-fold > summary > small { margin-left: auto; padding-left: 10px; color: var(--secondary); font-size: 11px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.context-fold > summary > small { margin-left: auto; padding-left: 10px; color: var(--secondary); font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .context-fold[open] > summary > svg { transform: rotate(90deg); }
 .context-fold-body { min-width: 0; padding: 0 2px 12px 22px; }
 .context-fold-body > p { color: var(--secondary); font-size: 12px; }

@@ -1,3 +1,4 @@
+mod attachments;
 mod bootstrap;
 mod browser_login;
 mod history;
@@ -6,6 +7,7 @@ mod platform;
 mod providers;
 mod questions;
 mod request_capture;
+mod runtime_diagnostics;
 mod sessions;
 mod storage;
 mod workspace;
@@ -250,6 +252,9 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
             }
             save(&root.join("desktop.json"), &cfg)?;
             Ok(cfg["projects"].clone())
+        }
+        "attachment.paths" | "attachment.store" | "attachment.clipboard" | "attachment.discard" => {
+            attachments::execute(root, &request)
         }
         "session.list" => history::list(root, request["cwd"].as_str()),
         "session.history" => history::page(

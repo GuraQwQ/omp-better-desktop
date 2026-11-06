@@ -7,6 +7,7 @@ import { completionKey, composingInput, insertSlashCommand, matchingSlashCommand
 import type { CatalogEntry, Language } from '../lib/types';
 import './composer-input.css';
 import MotionPresence from './MotionPresence';
+import FileName from './FileName';
 
 export default function ComposerInput({ value, onChange, onSend, onRecall, disabled, cwd, t, textareaRef, commands = [], language, onCommandsOpen }: {
   value: string; onChange: (text: string) => void; onSend: () => void; onRecall?: () => void; disabled: boolean; cwd: string; t: Copy; textareaRef: RefObject<HTMLTextAreaElement | null>;
@@ -19,6 +20,7 @@ export default function ComposerInput({ value, onChange, onSend, onRecall, disab
   const [error, setError] = useState('');
   const [composing, setComposing] = useState(false);
   const composition = useRef(false);
+  const compositionEndedAt = useRef(-Infinity);
   const onOpen = useRef(onCommandsOpen);
   onOpen.current = onCommandsOpen;
   const activeOption = useRef<HTMLButtonElement>(null);
@@ -59,10 +61,10 @@ export default function ComposerInput({ value, onChange, onSend, onRecall, disab
   };
   return <div className="composer-input" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setDismissed(true); }}>
     <MotionPresence open={mentionOpen}><div className="file-mention-menu ui-menu"><div className="file-mention-heading">{t.mentionFiles}</div><div id={menuId} role="listbox" aria-label={t.mentionFiles}>
-      {files.map((path, index) => <button type="button" key={path} id={`${menuId}-${index}`} role="option" aria-selected={index === active} ref={index === active ? activeOption : undefined} className={index === active ? 'is-active' : ''} onPointerDown={event => event.preventDefault()} onPointerMove={() => setActive(index)} onClick={() => choose(path)}><File size={14} /><span>{path}</span></button>)}
+      {files.map((path, index) => <button type="button" key={path} id={`${menuId}-${index}`} role="option" aria-selected={index === active} ref={index === active ? activeOption : undefined} className={index === active ? 'is-active' : ''} onPointerDown={event => event.preventDefault()} onPointerMove={() => setActive(index)} onClick={() => choose(path)}><File size={14} /><FileName value={path} /></button>)}
       {!files.length && <p role={error ? 'alert' : 'status'}>{error || (listing?.cwd === cwd ? t.noResults : t.loading)}</p>}
     </div></div></MotionPresence>
-    <MotionPresence open={slashOpen}><div className="file-mention-menu slash-completion-menu ui-menu"><div className="file-mention-heading">{uiLanguage === 'zh' ? '命令与技能' : 'Commands & skills'}<span>↑ ↓ · Tab ↵</span></div><div id={menuId} role="listbox" aria-label={uiLanguage === 'zh' ? '命令与技能' : 'Commands & skills'}>
+    <MotionPresence open={slashOpen}><div className="file-mention-menu slash-completion-menu ui-menu"><div className="file-mention-heading">{uiLanguage === 'zh' ? '命令与技能' : 'Commands & skills'}<span>↑ ↓　Tab ↵</span></div><div id={menuId} role="listbox" aria-label={uiLanguage === 'zh' ? '命令与技能' : 'Commands & skills'}>
       {commandItems.map((item, index) => { const Icon = item.group === 'skills' ? Sparkles : item.group === 'extensions' ? Puzzle : Command; return <button type="button" key={item.token} id={`${menuId}-${index}`} role="option" aria-selected={index === active} ref={index === active ? activeOption : undefined} className={index === active ? 'is-active' : ''} onPointerDown={event => event.preventDefault()} onPointerMove={() => setActive(index)} onClick={() => chooseCommand(item)}><Icon size={14} /><span className="slash-completion-copy"><strong>/{item.token}</strong>{item.description && <small>{item.description}</small>}</span><span className="slash-completion-kind">{groupLabels[item.group]}</span></button>; })}
       {!commandItems.length && <p role="status">{t.noResults}</p>}
     </div></div></MotionPresence>
@@ -70,9 +72,10 @@ export default function ComposerInput({ value, onChange, onSend, onRecall, disab
       onChange={event => { onChange(event.target.value); setCaret(event.target.selectionStart); setDismissed(false); }}
       onSelect={event => setCaret(event.currentTarget.selectionStart)} onFocus={event => { setCaret(event.currentTarget.selectionStart); setDismissed(false); }}
       onCompositionStart={() => { composition.current = true; setComposing(true); }}
-      onCompositionEnd={event => { composition.current = false; setComposing(false); setCaret(event.currentTarget.selectionStart); }}
+      onCompositionEnd={event => { composition.current = false; compositionEndedAt.current = performance.now(); setComposing(false); setCaret(event.currentTarget.selectionStart); }}
       onKeyDown={event => {
         if (composingInput(event.nativeEvent, composition.current)) return;
+        if (event.key === 'Enter' && performance.now() - compositionEndedAt.current < 500) { event.preventDefault(); return; }
         const action = open ? completionKey(event, count) : undefined;
         if (action) {
           event.preventDefault(); event.stopPropagation();
