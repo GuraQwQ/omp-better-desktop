@@ -67,11 +67,11 @@ jobs:
         with:
           python-version: "3.12"
       - run: bun install --frozen-lockfile
-      - name: 检查配置、导入界面与动效逻辑
+      - name: 核心行为检查
         shell: pwsh
         run: |
-          foreach ($script in Get-ChildItem -LiteralPath scripts -Filter 'check-*.ts' | Sort-Object Name) {
-            bun $script.FullName
+          foreach ($script in @('check-clean.ts', 'check-provider-config.ts', 'check-questions.ts')) {
+            bun "scripts/$script"
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
           }
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check

@@ -4,4 +4,4 @@
 .review-scope .select-button { width: 100%; justify-content: space-between; }
 .review-scope .select-button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .turn-review-caption { margin: 0 0 10px; color: var(--secondary); font-size: 12px; }
-.turn-review .turn-record-note { color: var(--muted); font-size: 11px; margin: 8px 0 3px; }
+.turn-review .turn-record-note { color: var(--muted); font-size: 12px; margin: 8px 0 3px; }

@@ -84,10 +84,14 @@ MCP 与 SSH 使用资源自身的用户/项目作用域；第三方只读来源�
 
 输入框的 `/` 补全合并构建时的 CLI/TUI 能力目录与当前会话的 `get_available_commands`。菜单只列出斜杠命令、已加载技能和扩展；选择候选只填写草稿，发送后按原生 RPC、配置页或内置终端执行。CLI、RPC 和工具仍在独立命令面板中使用各自入口。命令名称及参数保留原文，内置描述随界面语言切换；技能与扩展可提供 `descriptions.zh/en`，其余动态描述沿用来源原文。`available_commands_update` 更新当前会话的候选。TUI 命令的公开别名同样识别。
 
-对话区域左侧使用独立的深色小板显示当前 Todo，默认摘要和进度，可展开分阶段列表；展开区域内部滚动，整板任务完成后自动隐藏。“上下文 → 进阶 → Todo 历史”按时间列出成功更新的完整快照。`get_state.todoPhases` 为权威快照，成功的原生 `todo` 工具结果实时更新它，`todo_auto_clear` 清空，`todo_reminder` 触发完整状态刷新。历史会话从最近一次成功工具结果恢复，已完成的任务不展示小板，切换会话不会混用任务。
+当前 Todo 使用可拖动的悬浮面板，默认收起为任务图标，悬停显示当前任务和进度；展开后分阶段显示清单，面板位置限制在工作区内，拖动或收起均不改变聊天与预览分栏的宽度。Alt + 方向键可微调位置，拖动时按 Esc 恢复原位；任务全部完成后自动隐藏。“上下文 → 进阶 → Todo 历史”按时间列出成功更新的完整快照。`get_state.todoPhases` 为权威快照，成功的原生 `todo` 工具结果实时更新它，`todo_auto_clear` 清空，`todo_reminder` 触发完整状态刷新。历史会话从最近一次成功工具结果恢复，已完成的任务不展示小板，切换会话不会混用任务。
 
 界面动效使用原生 CSS 与 Web Animations。外观中的动画档位即时生效并持久化：默认“丰富”，菜单入场 180ms、弹窗 260ms、退场 120ms，增加局部渐变、轻微错峰与完成反馈；“正常”保留菜单 140ms、弹窗 220ms、退场 100ms；“减少”采用 80ms 淡入、60ms 退场及静态状态。档位同时应用于 CSS 和原生动画，不受系统偏好覆盖。首帧通过 `omp-motion` 缓存恢复，保存的应用配置为最终来源。排版变化的平移过渡在丰富/正常档分别为 220/180ms，减少档直接重排；三档均在重新换行后短暂校正当前可见文字的阅读位置，用户操作会取消校正。退出立即恢复交互焦点，保留的视觉层不可交互。
 
 Host module ownership: `storage.rs` implements runtime/data functions taking `root: &Path`; `sessions.rs` owns RPC/PTY; `lib.rs` owns routing and application lifecycle. `storage.rs` exports `current_runtime`, `install_runtime`, `rollback_runtime`, `discover_omp`, `import_omp`, `takeover`, and `clean_cache`, returning `Result<serde_json::Value,String>` except `current_runtime` returns `Result<Option<PathBuf>,String>`.
 
 OMP 的 RPC、CLI 和内置终端统一设置 `PI_NATIVES_DIR=<dataRoot>/cache/natives`，原生模块在此按版本解压和复用；临时目录统一为 `<dataRoot>/cache/tmp`。`runtime.clean` 沿用现有受管缓存清理规则，后续启动从内嵌资源重建。应用启动时按已保存的接管状态幂等刷新 CLI 入口，保留接管选择；单文件原子替换支持中断后重试。原有全局 OMP 缓存保持其原有归属。
+
+输入框支持粘贴图片、Windows 剪贴板中的本地文件，以及拖入文件或文件夹。图片保留完整预览并以原始图片内容发送；文件卡片显示完整名称与路径，发送时追加路径引用。浏览器提供但没有本地路径的文件保存到数据目录的 `omp/agent/attachments/`，供后续会话读取；明确移除尚未发送的托管附件时同步移除该副本，外部原始文件保持原样。
+
+运行耗时以观察到的 `agent_start` 为起点保存在会话状态，切换会话或重挂载界面保留；任务结束后清除。没有起点的中途恢复会话显示运行状态，收到下一次真实起点后再显示耗时。OMP 连接失败时设置页保留具体阶段和内核标准错误的尾部，支持原地重试。

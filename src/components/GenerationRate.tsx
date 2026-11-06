@@ -52,5 +52,5 @@ export default function GenerationRate() {
 export function ToolGenerationRate({ callId }: { callId?: string }) {
   const view = useContext(RateContext);
   if (!view?.running || view.historyOnly || !callId || !view.calls.has(callId)) return null;
-  return <span className="tool-live-rate"><span aria-hidden="true">·</span><RateReadout view={view} /></span>;
+  return <span className="tool-live-rate"><RateReadout view={view} /></span>;
 }

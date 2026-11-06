@@ -1,0 +1,5 @@
+.file-name { display: inline-flex; align-items: baseline; min-inline-size: 0; max-inline-size: 100%; vertical-align: -.125em; white-space: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.file-name > .file-name-start { flex: 0 1 auto; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+.file-name > .file-name-end { flex: 0 0 auto; overflow: visible; white-space: pre; }
+.file-name.file-title { display: flex; }
+.file-list .file-name { overflow-x: auto; overflow-y: hidden; }
