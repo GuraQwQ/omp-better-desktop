@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { composingInput, insertSlashCommand, matchingSlashCommands, slashCommandAt } from '../src/lib/slash-completions';
-import { desktopCommandSurface, mergeCommandEntries, rpcCommand, terminalCommand } from '../src/lib/command-routes';
+import { mergeCommandEntries, resolveCommand } from '../src/lib/command-routes';
 import catalogEntries from '../src/generated/catalog.json';
 import { acknowledgeDraft, captureDraft, createDraft, updateDraft } from '../src/lib/composer-draft';
 
@@ -10,18 +10,19 @@ assert.equal(slashCommandAt('路径 /src', 7), null);
 assert.deepEqual(insertSlashCommand('/plan existing args', slashCommandAt('/plan existing args', 3)!, 'plan'), { text: '/plan existing args', caret: 6 });
 assert.equal(composingInput({ isComposing: true }), true);
 const catalog = [{ name: 'plan', kind: 'slash', rpc: false, surface: 'terminal' }];
-assert.equal(terminalCommand(catalog[0], '审查'), '/plan 审查');
+assert.deepEqual(resolveCommand(catalog[0], '审查'), { kind: 'terminal', input: '/plan 审查' });
 const extension = mergeCommandEntries(catalog, [{ name: 'plan', source: 'extension' }])[0];
-assert.equal(terminalCommand(extension), undefined);
-assert.equal(desktopCommandSurface(extension), undefined);
-assert.equal(rpcCommand({ name: 'goal', kind: 'slash', source: 'extension' }), undefined);
+assert.deepEqual(resolveCommand(extension), { kind: 'prompt', message: '/plan' });
+assert.deepEqual(resolveCommand({ name: 'goal', kind: 'slash', source: 'extension' }), { kind: 'prompt', message: '/goal' });
 for (const [name, surface] of Object.entries({ context: 'context', tools: 'context', model: 'models', settings: 'settings:omp', todo: 'tasks', tree: 'tree', login: 'settings:providers', git: 'review' })) {
   const command = catalogEntries.find(entry => entry.kind === 'slash' && entry.name === name)!;
-  assert.equal(desktopCommandSurface(command), surface, name);
-  assert.equal(desktopCommandSurface(command, '参数'), undefined, `${name} 参数`);
-  assert.equal(desktopCommandSurface({ ...command, source: 'extension' }), undefined, `${name} 扩展`);
+  assert.deepEqual(resolveCommand(command), { kind: 'desktop', surface }, name);
+  assert.notEqual(resolveCommand(command, '参数').kind, 'desktop', `${name} 参数`);
+  assert.equal(resolveCommand({ ...command, source: 'extension' }).kind, 'prompt', `${name} 扩展`);
 }
-for (const name of ['usage', 'stats', 'jobs']) assert.equal(desktopCommandSurface({ name, kind: 'slash', rpc: true }), undefined, name);
+for (const name of ['usage', 'stats', 'jobs']) assert.equal(resolveCommand({ name, kind: 'slash', rpc: true }).kind, 'prompt', name);
+assert.deepEqual(resolveCommand({ name: 'queue', kind: 'slash' }, '下一步'), { kind: 'rpc', command: 'follow_up', params: { message: '下一步' } });
+assert.deepEqual(resolveCommand({ name: 'queue', kind: 'slash', source: 'extension' }, '下一步'), { kind: 'prompt', message: '/queue 下一步' });
 const menu = matchingSlashCommands(catalogEntries, '', 'zh');
 assert.deepEqual(menu.slice(0, 7).map(item => item.token), ['model', 'new', 'resume', 'plan', 'compact', 'context', 'git']);
 assert.ok(menu.length > 30);

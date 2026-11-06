@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Command, Play, Search } from 'lucide-react';
 import { onDesktopEvent, request, rpc } from '../lib/bridge';
-import { mergeCommandEntries, rpcCommand } from '../lib/command-routes';
+import { mergeCommandEntries, resolveCommand } from '../lib/command-routes';
 import { describeCommand } from '../lib/command-descriptions';
 import type { Copy } from '../lib/i18n';
 import type { CatalogEntry, Json, Language } from '../lib/types';
@@ -47,7 +47,9 @@ export default function CommandPalette({ t, language, sessionId, cwd, close, sen
     if (selected.kind !== 'cli' && selected.kind !== 'rpc') {
       if (navigate(selected, args)) { close(); return; }
       if (selected.kind === 'tool') { send(`Use the ${selected.name} tool to `); close(); return; }
-      send(`/${selected.name.replace(/^\//, '')}${args ? ` ${args}` : ''}`); close(); return;
+      const route = resolveCommand(selected, args);
+      if (route.kind === 'prompt') send(route.message);
+      close(); return;
     }
     setBusy(true);
     try {
@@ -79,8 +81,7 @@ export default function CommandPalette({ t, language, sessionId, cwd, close, sen
   const current = Math.min(active, Math.max(filtered.length - 1, 0));
   useEffect(() => { dialog.current?.querySelector('.is-active')?.scrollIntoView({ block: 'nearest' }); }, [current, filtered.length]);
   const selectEntry = (entry: CatalogEntry) => {
-    const target = rpcCommand(entry);
-    setSelected(target ? { ...entry, name: target, kind: 'rpc', surface: 'rpc' } : entry);
+    setSelected(entry);
     setArgs(''); setFields({}); setOutput('');
   };
   return <dialog className="command-dialog" ref={dialog} data-exiting={exiting || undefined} inert={exiting} aria-hidden={exiting || undefined} onCancel={event => { event.preventDefault(); close(); }} onClick={e => { if (e.target === dialog.current) close(); }}>
