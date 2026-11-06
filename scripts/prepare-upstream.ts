@@ -29,7 +29,7 @@ export async function prepareUpstream(root = upstreamRoot, sourceRoot = root ===
   try { await fs.access(path.join(root, '.git')); }
   catch {
     await fs.mkdir(path.dirname(root), { recursive: true });
-    await run(['git', 'clone', ...(/^(https?|ssh):|^git@/.test(sourceRoot) ? [] : ['--shared']), '--filter=blob:none', '--no-checkout', sourceRoot, root], projectRoot);
+    await run(['git', 'clone', '--config', 'core.autocrlf=false', ...(/^(https?|ssh):|^git@/.test(sourceRoot) ? [] : ['--shared']), '--filter=blob:none', '--no-checkout', sourceRoot, root], projectRoot);
     await run(['git', 'checkout', '--detach', lock.revision], root);
   }
   const revision = (await run(['git', 'rev-parse', 'HEAD'], root)).trim();

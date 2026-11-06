@@ -50,7 +50,7 @@ await fs.mkdir(scratchRoot, { recursive: true });
 const generatedRoot = path.join(stageRoot, 'generated');
 const buildTemp = path.join(scratchRoot, 'temp');
 await fs.mkdir(buildTemp, { recursive: true });
-const env = {
+const env: NodeJS.ProcessEnv = {
   ...process.env,
   BUN_EXECUTABLE: bunExecutable,
   CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR ?? path.join(projectRoot, 'build/desktop-msvc'),
@@ -71,6 +71,8 @@ const env = {
   TEMP: buildTemp,
   TMP: buildTemp,
 };
+// Windows 的旧 Path 会覆盖指定的 PATH，使嵌套构建误用另一份 Bun。
+if (process.platform === 'win32') delete env.Path;
 const { install, rollback, commit } = buildInstall(projectRoot, stageRoot);
 let cleanStage = false;
 const lockPath = path.join(projectRoot, 'upstream.lock.json');

@@ -51,6 +51,7 @@ The webview calls `invoke('desktop_command', { request })`. Requests have a stri
 - `desktop_settings {operation:'list'|'set'|'unset',key?,value?}` 返回 `{settings}`。设置按 `ui.tab/group` 分类，包含实际生效的 `provenance`；凭据只返回 `configured`。保存与恢复继承操作作用于当前配置档案的全局层，项目、覆盖文件和环境变量仍可提供更高优先级的值。
 - `desktop_manage {resource,action,args?}` 返回列表 `{items}`、详情 `{item}`，或操作结果 `{message,restartRequired?}`。资源为 `models`、`mcp`、`skills`、`plugins`、`marketplaces`、`agents`、`ssh` 和 `resources`。各资源保留 OMP 原生的校验、作用域与持久化语义。
 - 模型角色按照 `modelRoleStorage` 保存到全局或当前项目；模型预设通过 `preset_save/preset_apply/preset_delete` 管理。候选模型及可用思考程度来自运行时。
+- 模型目录、能力和逐模型参数统一来自原生模型注册表中的提供商配置。显式配置的提供商采用用户选择的模型清单，其余已登录提供商沿用原生目录；模型选择器和角色页读取同一目录。保存或删除配置后刷新同一配置档案的已连接会话，进行中的调用使用原参数，下一次调用绑定更新后的能力。各会话保留当前选模和思考程度；当前模型被删除时需要重新选模。保存结果中的 `refreshErrors` 展示已保存配置对应的刷新问题。
 - 自定义提供商使用 `providers.config {operation:'list'|'save'|'delete',cwd,provider?}`，模型发现使用 `providers.discover {cwd,provider}`。提供商配置保存到当前数据根的 `omp/agent/models.yml`，命名配置档案使用 `omp/profiles/<profile>/agent/models.yml`（已有 `models.yaml` 时沿用）；只写入用户显式填写的逐模型覆盖，空值清除相应覆盖，其余字段采用供应商目录和 OMP 标准。
 - `launch.get {cwd}` 与 `launch.set {cwd,profile}` 读取或保存当前项目的启动参数。支持追加/替换系统提示词、附加目录、工具集合、配置档案、覆盖文件和会话目录，以及规则、LSP、工具和计划开关。启动配置随 `desktop.json` 保存，新连接的 RPC 会话使用它；接管该会话的终端沿用相同参数。变更会话目录后保留旧目录的历史发现入口。
 
@@ -89,6 +90,10 @@ MCP 与 SSH 使用资源自身的用户/项目作用域；第三方只读来源�
 界面动效使用原生 CSS 与 Web Animations。外观中的动画档位即时生效并持久化：默认“丰富”，菜单入场 180ms、弹窗 260ms、退场 120ms，增加局部渐变、轻微错峰与完成反馈；“正常”保留菜单 140ms、弹窗 220ms、退场 100ms；“减少”采用 80ms 淡入、60ms 退场及静态状态。档位同时应用于 CSS 和原生动画，不受系统偏好覆盖。首帧通过 `omp-motion` 缓存恢复，保存的应用配置为最终来源。排版变化的平移过渡在丰富/正常档分别为 220/180ms，减少档直接重排；三档均在重新换行后短暂校正当前可见文字的阅读位置，用户操作会取消校正。退出立即恢复交互焦点，保留的视觉层不可交互。
 
 Host module ownership: `storage.rs` implements runtime/data functions taking `root: &Path`; `sessions.rs` owns RPC/PTY; `lib.rs` owns routing and application lifecycle. `storage.rs` exports `current_runtime`, `install_runtime`, `rollback_runtime`, `discover_omp`, `import_omp`, `takeover`, and `clean_cache`, returning `Result<serde_json::Value,String>` except `current_runtime` returns `Result<Option<PathBuf>,String>`.
+
+前端 `SessionLifecycle` 集中管理会话身份、事件合并、状态快照、历史分页及请求顺序。本地操作即时发布，运行时事件按帧发布；后到的旧快照保留请求期间已经更新的字段。轻量刷新继承未完成的完整历史刷新，切换底层会话时合并新历史和期间到达的消息，并保持工具调用与结果配对。草稿与页面选择由界面管理，连接等待期间用户的新输入优先保留。
+
+桌面斜杠命令由 `resolveCommand` 统一解释来源、参数和执行去向，输入框与命令面板共用这份规则。原生 RPC 与 CLI 表单继续直接使用生成协议；扩展同名命令由其原生来源处理。MCP 的发现与运行时读取共用来源格式 Module，各来源 Adapter 集中处理原配置读取、停用状态和格式映射，导入登记继续负责链接与启停。
 
 OMP 的 RPC、CLI 和内置终端统一设置 `PI_NATIVES_DIR=<dataRoot>/cache/natives`，原生模块在此按版本解压和复用；临时目录统一为 `<dataRoot>/cache/tmp`。`runtime.clean` 沿用现有受管缓存清理规则，后续启动从内嵌资源重建。应用启动时按已保存的接管状态幂等刷新 CLI 入口，保留接管选择；单文件原子替换支持中断后重试。原有全局 OMP 缓存保持其原有归属。
 
