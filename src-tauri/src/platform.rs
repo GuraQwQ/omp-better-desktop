@@ -47,6 +47,100 @@ pub fn hidden(command: &mut Command) -> &mut Command {
     command
 }
 
+pub struct ManagedPty {
+    pub pair: Option<portable_pty::PtyPair>,
+    pub host_job: Option<ProcessJob>,
+}
+
+impl Drop for ManagedPty {
+    fn drop(&mut self) {
+        // 待光标回复的 ConPTY 必须先结束主机，再关闭控制句柄。
+        drop(self.host_job.take());
+        drop(self.pair.take());
+    }
+}
+
+#[cfg(windows)]
+fn console_hosts(parent: u32) -> Result<std::collections::HashSet<u32>, String> {
+    use windows_sys::Win32::{
+        Foundation::{CloseHandle, INVALID_HANDLE_VALUE},
+        System::Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
+            TH32CS_SNAPPROCESS,
+        },
+    };
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snapshot == INVALID_HANDLE_VALUE {
+            return Err(std::io::Error::last_os_error().to_string());
+        }
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut hosts = std::collections::HashSet::new();
+        let mut available = Process32FirstW(snapshot, &mut entry);
+        while available != 0 {
+            let length = entry
+                .szExeFile
+                .iter()
+                .position(|value| *value == 0)
+                .unwrap_or(entry.szExeFile.len());
+            let name = String::from_utf16_lossy(&entry.szExeFile[..length]);
+            if entry.th32ParentProcessID == parent
+                && (name.eq_ignore_ascii_case("conhost.exe")
+                    || name.eq_ignore_ascii_case("OpenConsole.exe"))
+            {
+                hosts.insert(entry.th32ProcessID);
+            }
+            available = Process32NextW(snapshot, &mut entry);
+        }
+        CloseHandle(snapshot);
+        Ok(hosts)
+    }
+}
+
+pub fn open_pty(size: portable_pty::PtySize) -> Result<ManagedPty, String> {
+    // 两种内嵌终端共用这个短临界区，准确归属本次创建的主机。
+    static OPENING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _opening = OPENING.lock().unwrap();
+    #[cfg(windows)]
+    let before = console_hosts(std::process::id())?;
+    let pair = portable_pty::native_pty_system()
+        .openpty(size)
+        .map_err(|error| error.to_string())?;
+    let mut managed = ManagedPty {
+        pair: Some(pair),
+        host_job: None,
+    };
+    #[cfg(windows)]
+    {
+        let after = console_hosts(std::process::id())?;
+        let created: Vec<_> = after.difference(&before).copied().collect();
+        if created.len() != 1 {
+            return Err("未能识别本次终端主机，请重试。".into());
+        }
+        let host = created[0];
+        managed.host_job = match ProcessJob::attach(host) {
+            Ok(job) => Some(job),
+            Err(error) => {
+                // 此 PID 来自当前进程创建前后的主机差集，仅收回本次资源。
+                use windows_sys::Win32::{
+                    Foundation::CloseHandle,
+                    System::Threading::{OpenProcess, PROCESS_TERMINATE, TerminateProcess},
+                };
+                unsafe {
+                    let process = OpenProcess(PROCESS_TERMINATE, 0, host);
+                    if !process.is_null() {
+                        TerminateProcess(process, 1);
+                        CloseHandle(process);
+                    }
+                }
+                return Err(error);
+            }
+        };
+    }
+    Ok(managed)
+}
+
 #[cfg(windows)]
 pub struct ProcessJob(windows_sys::Win32::Foundation::HANDLE);
 #[cfg(windows)]
@@ -105,5 +199,123 @@ pub struct ProcessJob;
 impl ProcessJob {
     pub fn attach(_: u32) -> Result<Self, String> {
         Ok(Self)
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+    use std::{
+        io::{BufRead, BufReader, Write},
+        process::{Child, Stdio},
+        sync::mpsc,
+        thread,
+        time::{Duration, Instant},
+    };
+
+    struct Owner {
+        child: Child,
+        _job: ProcessJob,
+    }
+
+    impl Drop for Owner {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    #[test]
+    #[ignore = "由父测试通过隔离子进程调用"]
+    fn pty_owner_fixture() {
+        println!("OMP_PTY_WAITING");
+        std::io::stdout().flush().unwrap();
+        let mut start = String::new();
+        std::io::stdin().read_line(&mut start).unwrap();
+        if start.trim() != "go" {
+            return;
+        }
+        let _managed = open_pty(portable_pty::PtySize::default()).unwrap();
+        println!("OMP_PTY_READY");
+        std::io::stdout().flush().unwrap();
+        loop {
+            thread::sleep(Duration::from_secs(1));
+        }
+    }
+
+    #[test]
+    fn killing_pty_owner_releases_its_console_host() {
+        let executable = std::env::current_exe().unwrap();
+        let mut command = Command::new(executable);
+        command
+            .args([
+                "--ignored",
+                "--exact",
+                "platform::tests::pty_owner_fixture",
+                "--nocapture",
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = hidden(&mut command).spawn().unwrap();
+        let job = match ProcessJob::attach(child.id()) {
+            Ok(job) => job,
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("无法托管测试进程：{error}");
+            }
+        };
+        let mut owner = Owner { child, _job: job };
+        let (send, receive) = mpsc::channel();
+        let output = owner.child.stdout.take().unwrap();
+        thread::spawn(move || {
+            for line in BufReader::new(output)
+                .lines()
+                .map_while(std::result::Result::ok)
+            {
+                if line.contains("OMP_PTY_WAITING") {
+                    let _ = send.send(());
+                } else if line.contains("OMP_PTY_READY") {
+                    let _ = send.send(());
+                    return;
+                }
+            }
+        });
+        receive
+            .recv_timeout(Duration::from_secs(10))
+            .expect("测试进程启动未就绪，父 Job 会回收测试进程与主机");
+        // 子进程启动时的普通控制台不属于本次 ConPTY。
+        let before = console_hosts(owner.child.id()).unwrap();
+        owner
+            .child
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(b"go\n")
+            .unwrap();
+        receive
+            .recv_timeout(Duration::from_secs(10))
+            .expect("终端创建未就绪，父 Job 会回收测试进程与主机");
+        let hosts: std::collections::HashSet<_> = console_hosts(owner.child.id())
+            .unwrap()
+            .difference(&before)
+            .copied()
+            .collect();
+        assert_eq!(hosts.len(), 1, "测试进程应仅创建一个终端主机");
+        owner.child.kill().unwrap();
+        owner.child.wait().unwrap();
+        // 父 Job 仍存活；主机应由被强制结束的持有者自己的 Job 回收。
+        let started = Instant::now();
+        loop {
+            if hosts.is_disjoint(&console_hosts(owner.child.id()).unwrap()) {
+                break;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(5),
+                "强制取消后终端主机仍存活"
+            );
+            thread::sleep(Duration::from_millis(20));
+        }
     }
 }

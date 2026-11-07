@@ -7,7 +7,7 @@ use crate::{
     storage,
 };
 use omp_rpc::{Client, ClientOptions, Event, RpcInbound};
-use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
+use portable_pty::{CommandBuilder, MasterPty, PtySize};
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
@@ -28,6 +28,7 @@ pub struct Session {
     pub cwd: PathBuf,
     pub path: Arc<Mutex<Option<PathBuf>>>,
     settled: Arc<AtomicBool>,
+    side_running: Arc<AtomicBool>,
     capture_context: PathBuf,
     launch: crate::launch::ResolvedLaunch,
     questions: Arc<Questions>,
@@ -49,6 +50,15 @@ struct Terminal {
     writer: Box<dyn Write + Send>,
     child: Box<dyn portable_pty::Child + Send + Sync>,
     _job: ProcessJob,
+    host_job: Option<ProcessJob>,
+}
+
+impl Drop for Terminal {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        drop(self.host_job.take());
+    }
 }
 
 #[derive(Default)]
@@ -72,6 +82,31 @@ fn event_value(event: Event) -> Value {
     }
 }
 
+fn btw_running(record: &Value) -> bool {
+    record["followUps"]
+        .as_array()
+        .and_then(|turns| turns.last())
+        .unwrap_or(record)["status"]
+        == "running"
+}
+
+#[cfg(test)]
+mod side_turn_tests {
+    use super::*;
+
+    #[test]
+    fn latest_side_turn_controls_idle_release_independently_of_main_turn() {
+        assert!(btw_running(&json!({"status":"running"})));
+        assert!(btw_running(
+            &json!({"status":"complete","followUps":[{"status":"running"}]})
+        ));
+        assert!(!btw_running(
+            &json!({"status":"running","followUps":[{"status":"cancelled"}]})
+        ));
+        assert!(!btw_running(&json!({"status":"complete"})));
+    }
+}
+
 pub fn command(root: &Path) -> Result<Command, String> {
     let executable = storage::current_runtime(root)?
         .ok_or("Install a matching OMP runtime in Settings first.")?;
@@ -92,6 +127,7 @@ impl Sessions {
             .filter(|(id, session)| {
                 active.as_deref() != Some(id.as_str())
                     && session.settled.load(Ordering::Acquire)
+                    && !session.side_running.load(Ordering::Acquire)
                     && !session.questions.has_pending()
                     && Arc::strong_count(&session.client) == 1
             })
@@ -227,6 +263,7 @@ impl Sessions {
         let settled = Arc::new(AtomicBool::new(
             state["isSettled"].as_bool().unwrap_or(false),
         ));
+        let side_running = Arc::new(AtomicBool::new(false));
         let path_cell = Arc::new(Mutex::new(actual_path.clone()));
         let result = json!({"id":id,"cwd":cwd,"path":actual_path,"state":state});
         self.sessions.lock().unwrap().insert(
@@ -236,6 +273,7 @@ impl Sessions {
                 cwd,
                 path: path_cell.clone(),
                 settled: settled.clone(),
+                side_running: side_running.clone(),
                 capture_context: capture_context.clone(),
                 launch,
                 questions,
@@ -270,6 +308,9 @@ impl Sessions {
                     }
                 }
                 match event["type"].as_str().unwrap_or("") {
+                    "btw_record" => {
+                        side_running.store(btw_running(&event["record"]), Ordering::Release)
+                    }
                     "agent_start" => {
                         settled.store(false, Ordering::Release);
                     }
@@ -293,7 +334,8 @@ impl Sessions {
                     _ => {}
                 }
                 let finished = event["type"] == "session_settled"
-                    || event["type"] == "prompt_result" && event["sessionSettled"] == true;
+                    || event["type"] == "prompt_result" && event["sessionSettled"] == true
+                    || event["type"] == "btw_record" && !side_running.load(Ordering::Acquire);
                 emit(&app, &id, event);
                 if finished {
                     app.state::<crate::Desktop>().sessions.release_idle(&app);
@@ -320,7 +362,7 @@ impl Sessions {
     }
 
     pub fn rpc(&self, app: AppHandle, id: &str, frame: Value) -> Result<Value, String> {
-        let (client, settled, path_cell, capture_context, questions) = {
+        let (client, settled, side_running, path_cell, capture_context, questions) = {
             let sessions = self.sessions.lock().unwrap();
             let session = sessions
                 .get(id)
@@ -328,6 +370,7 @@ impl Sessions {
             (
                 session.client.clone(),
                 session.settled.clone(),
+                session.side_running.clone(),
                 session.path.clone(),
                 session.capture_context.clone(),
                 session.questions.clone(),
@@ -347,6 +390,7 @@ impl Sessions {
             }
         }
         let command_type = frame["type"].as_str().unwrap_or("").to_owned();
+        let starting_side = command_type == "btw" && !side_running.swap(true, Ordering::AcqRel);
         let clears_questions = matches!(
             command_type.as_str(),
             "abort"
@@ -362,6 +406,9 @@ impl Sessions {
         } else {
             send()
         };
+        if starting_side && result.is_err() {
+            side_running.store(false, Ordering::Release);
+        }
         if let Ok(value) = &result {
             if value["agentInvoked"] == false {
                 settled.store(true, Ordering::Release);
@@ -547,14 +594,13 @@ impl Sessions {
             (session.cwd.clone(), path, session.launch.arguments.clone())
         };
         let executable = storage::current_runtime(root)?.ok_or("Install OMP first.")?;
-        let pair = native_pty_system()
-            .openpty(PtySize {
-                rows,
-                cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .map_err(|e| e.to_string())?;
+        let mut managed = crate::platform::open_pty(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        })?;
+        let pair = managed.pair.as_ref().unwrap();
         let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
         let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
         let mut cmd = CommandBuilder::new(executable);
@@ -571,7 +617,6 @@ impl Sessions {
         // 先准备终端资源，再释放 RPC 写者，避免预检失败打断会话。
         self.close(id)?;
         let mut child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
-        drop(pair.slave);
         let job = child
             .process_id()
             .ok_or_else(|| "Terminal did not start.".to_owned())
@@ -581,6 +626,9 @@ impl Sessions {
                 let _ = child.wait();
                 error
             })?;
+        let pair = managed.pair.take().unwrap();
+        let host_job = managed.host_job.take();
+        drop(pair.slave);
         self.terminals.lock().unwrap().insert(
             id.to_owned(),
             Terminal {
@@ -588,6 +636,7 @@ impl Sessions {
                 writer,
                 child,
                 _job: job,
+                host_job,
             },
         );
         let session_id = id.to_owned();

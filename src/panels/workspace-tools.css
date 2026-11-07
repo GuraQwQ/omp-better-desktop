@@ -1,0 +1,52 @@
+.workspace-tools { min-width: 0; display: flex; flex-direction: column; gap: 12px; height: 100%; font-size: 12px; }
+.workspace-tool-tabs { display: flex; gap: 2px; overflow-x: auto; flex-shrink: 0; border-bottom: 1px solid var(--line-soft); padding-bottom: 8px; }
+.workspace-tool-tabs .quiet-button { gap: 5px; padding: 7px; }
+.workspace-tool-path { display: block; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-tool-content { min-height: 0; min-width: 0; flex: 1; }
+.workspace-tool-content[hidden] { display: none; }
+.workspace-tool-form, .workspace-tool-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.workspace-tool-form > input { flex: 1; min-width: 100px; }
+.workspace-tool-check { display: flex; align-items: center; gap: 7px; color: var(--secondary); }
+.workspace-tool-check input { width: auto; }
+.workspace-tool-hint { color: var(--muted); font-size: 11px; line-height: 1.6; white-space: pre-wrap; }
+.workspace-tool-error { color: var(--danger); background: var(--error-surface); border-radius: var(--radius-control); padding: 9px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.workspace-search-result { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 5px; border-bottom: 1px solid var(--line-soft); text-align: left; }
+.workspace-search-result:hover, .workspace-editor-files > button:hover, .workspace-git-file > button:first-child:hover { background: var(--hover); }
+.workspace-search-result strong { width: 100%; overflow-wrap: anywhere; font-weight: var(--weight-medium); }
+.workspace-search-result small { color: var(--accent); }
+.workspace-search-result code { color: var(--secondary); width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
+.workspace-git-group { margin: 8px 0 16px; }
+.workspace-git-group > header, .workspace-git-preview > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.workspace-git-group strong, .workspace-git-preview strong { font-weight: var(--weight-medium); overflow-wrap: anywhere; }
+.workspace-git-group small { color: var(--muted); }
+.workspace-git-file { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.workspace-git-file > button:first-child { flex: 1; min-width: 0; display: flex; gap: 8px; padding: 7px 5px; text-align: left; }
+.workspace-git-file code { color: var(--accent); }
+.workspace-git-file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-commit { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line-soft); padding-top: 12px; }
+.workspace-commit label, .workspace-worktree-form label { display: flex; flex-direction: column; gap: 6px; }
+.workspace-commit textarea { resize: vertical; width: 100%; min-height: 65px; }
+.workspace-tool-pre { background: var(--code-surface); border: 1px solid var(--line-soft); padding: 10px; border-radius: var(--radius-control); max-height: 480px; overflow: auto; white-space: pre; font: 11px/1.7 var(--font-code); }
+.workspace-git-preview { margin-top: 16px; }
+.workspace-worktrees article { padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
+.workspace-worktrees article > strong { display: block; margin-bottom: 5px; font-weight: var(--weight-medium); }
+.workspace-worktrees article > code { display: block; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; margin-bottom: 7px; }
+.workspace-worktree-form { display: flex; flex-direction: column; gap: 12px; padding-top: 20px; }
+.workspace-tool-confirm { padding: 10px; background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: var(--radius-control); margin: 10px 0; }
+.workspace-tool-confirm p { margin: 0 0 8px; overflow-wrap: anywhere; }
+.workspace-tool-confirm button { white-space: normal; }
+.workspace-editor { display: flex; flex-direction: column; min-height: 360px; height: 100%; }
+.workspace-editor-files { overflow: auto; max-height: 230px; padding-bottom: 8px; }
+.workspace-editor-files > button { display: flex; align-items: center; gap: 7px; padding: 6px; width: 100%; text-align: left; }
+.workspace-editor-files > button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-document-tabs { display: flex; gap: 3px; flex-shrink: 0; overflow-x: auto; padding-bottom: 6px; margin-bottom: 7px; border-bottom: 1px solid var(--line-soft); }
+.workspace-document-tabs > div { display: flex; align-items: center; border-radius: var(--radius-item); background: var(--sidebar); }
+.workspace-document-tabs > div.active { color: var(--accent); background: var(--accent-soft); }
+.workspace-document-tabs > div > button:first-child { display: flex; align-items: center; gap: 5px; padding: 6px 7px; font-size: 11px; white-space: nowrap; }
+.workspace-document-tabs small { color: var(--muted); font-size: 10px; }
+.workspace-editor-toolbar { display: flex; align-items: center; gap: 3px; margin-bottom: 8px; }
+.workspace-editor-toolbar code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.workspace-editor-text { flex: 1; width: 100%; min-height: 260px; resize: vertical; tab-size: 2; font: 12px/20px var(--font-code); padding: 10px; background: var(--code-surface); border: 1px solid var(--line); border-radius: var(--radius-control); }
+.workspace-terminals { display: flex; flex-direction: column; min-height: 360px; }
+.workspace-shell { min-height: 300px; flex: 1; overflow: hidden; background: var(--surface); }
+.workspace-shell .xterm { height: 100%; }

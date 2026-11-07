@@ -22,6 +22,12 @@ import SessionTodos from './components/SessionTodos';
 import ConversationLayout from './components/ConversationLayout';
 import SplitWorkspace from './components/SplitWorkspace';
 import ComposerAttachments from './components/ComposerAttachments';
+import ComposerReferences from './components/ComposerReferences';
+import { appendReferences, createMessageReference, encodeReferencedPrompt, parseReferencedPrompt, type ConversationReference, type SelectionContext } from './lib/references';
+import { mergeSideQuestionHistory, sideQuestionThreadSummaries, type SideQuestionSource, type SideQuestionThreadSummary } from './lib/side-questions';
+import { sideQuestionStorage } from './lib/side-question-storage';
+import type { BtwHistoryRecord } from './generated/rpc-wire';
+import { taskCardSummary } from './lib/task-card';
 import AttachmentDropZone from './components/AttachmentDropZone';
 import { attachmentPayload, fileData, type ComposerAttachment } from './lib/attachments';
 import MotionPresence from './components/MotionPresence';
@@ -37,9 +43,14 @@ import { getCurrentWindow, UserAttentionType } from '@tauri-apps/api/window';
 import { version } from '../package.json';
 import { applyMotion, normalizeMotion } from './lib/motion';
 import { answerableQuestion, clearQuestions, completeQuestion, questionDraft, updateQuestionDraft } from './lib/question-draft';
+import { matchesShortcut, shortcutValue } from './lib/desktop-preferences';
+import { useDesktopSchedules } from './lib/use-desktop-schedules';
+import { useWorkspaceLayout } from './lib/use-workspace-layout';
+import type { DesktopTab } from './panels/DesktopTools';
 
 const Settings = lazy(() => import('./panels/Settings'));
 const Inspector = lazy(() => import('./panels/Inspector'));
+const DesktopTools = lazy(() => import('./panels/DesktopTools'));
 const TerminalPanel = lazy(() => import('./panels/Terminal'));
 const CommandPalette = lazy(() => import('./components/CommandPalette'));
 const ContextInspector = lazy(() => import('./components/ContextInspector'));
@@ -49,7 +60,7 @@ const cachedTheme: Bootstrap['preferences']['theme'] = (() => { try { const valu
 const cachedMotion = (() => { try { return normalizeMotion(localStorage.getItem('omp-motion')); } catch { return 'rich'; } })();
 const initial: Bootstrap = { dataRoot: '', runtime: null, projects: [], preferences: { language: navigator.language.startsWith('zh') ? 'zh' : 'en', theme: cachedTheme, motion: cachedMotion } };
 const PageSkeleton = ({ label }: { label: string }) => <div className="page-loading" data-skeleton="wave" role="status" aria-label={label}><span className="skeleton" style={{ width: '42%' }} /><span className="skeleton" style={{ width: '88%' }} /><span className="skeleton" style={{ width: '64%' }} /></div>;
-type SessionTarget = { source?: SessionView; cwd: string; draftKey: string; revision: number };
+type SessionTarget = { source?: SessionView; cwd: string; draftKey: string; revision: number; background?: boolean };
 
 export default function App() {
   const [bootstrap, setBootstrap] = useState(initial);
@@ -72,6 +83,13 @@ export default function App() {
   const [commandCatalog, setCommandCatalog] = useState<CatalogEntry[]>([]);
   const [sidebar, setSidebar] = useState(true);
   const [inspector, setInspector] = useState<InspectorTab | null>(null);
+  const [desktopTab, setDesktopTab] = useState<DesktopTab | null>(null);
+  const [selectionNonce, setSelectionNonce] = useState(0);
+  const [selectedText, setSelectedText] = useState('');
+  const [sideQuestionSource, setSideQuestionSource] = useState<SideQuestionSource>();
+  const [sideQuestionThreadId, setSideQuestionThreadId] = useState<string>();
+  const [sideQuestionMetadata, setSideQuestionMetadata] = useState<{ key: string; threads: SideQuestionThreadSummary[] }>({ key: '', threads: [] });
+  const [targetMessageId, setTargetMessageId] = useState('');
   const [contextTarget, setContextTarget] = useState<string | null>(null);
   const [terminalId, setTerminalId] = useState('');
   const [terminalInput, setTerminalInput] = useState('');
@@ -84,6 +102,7 @@ export default function App() {
   const [preparingAttachments, setPreparingAttachments] = useState(0);
   const [delivery, setDelivery] = useState('steer');
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+  const [references, setReferences] = useState<ConversationReference[]>([]);
   const [booting, setBooting] = useState(true);
   const [pinNonce, setPinNonce] = useState(0);
   const [unread, setUnread] = useState<Record<string, boolean>>({});
@@ -119,14 +138,31 @@ export default function App() {
   const contextKey = session ? sessionKey(session) : '';
   useEffect(() => { setContextTarget(target => target === contextKey ? target : null); }, [contextKey]);
   const cwd = session?.cwd ?? project?.path ?? '';
+  const sideQuestionsKey = `side-questions:${session?.path ?? session?.id ?? `scratch:${cwd}`}`;
+  const sideQuestionThreads = sideQuestionMetadata.key === sideQuestionsKey ? sideQuestionMetadata.threads : [];
+  useEffect(() => {
+    setSelectedText(''); setSideQuestionSource(undefined); setSideQuestionThreadId(undefined);
+    let disposed = false;
+    const update = () => { const value = sideQuestionStorage.peek(sideQuestionsKey); if (!disposed && value) setSideQuestionMetadata({ key: sideQuestionsKey, threads: sideQuestionThreadSummaries(value) }); };
+    const unsubscribe = sideQuestionStorage.subscribe(sideQuestionsKey, update);
+    if (native) void sideQuestionStorage.load(sideQuestionsKey).then(update).catch(error => { if (!disposed) setError(String(error)); });
+    return () => { disposed = true; unsubscribe(); };
+  }, [sideQuestionsKey]);
+  useEffect(() => {
+    if (!native || !session?.state.btwRecords?.length) return;
+    let disposed = false;
+    void sideQuestionStorage.change(sideQuestionsKey, state => disposed ? state : mergeSideQuestionHistory(state, session.state.btwRecords as BtwHistoryRecord[], session.historyOnly ? undefined : session.id)).catch(error => { if (!disposed) setError(String(error)); });
+    return () => { disposed = true; };
+  }, [sideQuestionsKey, session?.state.btwRecords, session?.id, session?.historyOnly]);
+  const configurationSession = session && !session.historyOnly && !lifecycle.isReleased(session.id) ? session : allSessions.find(value => value.hidden && !value.historyOnly && !lifecycle.isReleased(value.id) && !value.messages.length && sessionPathKey(value.cwd) === sessionPathKey(cwd));
   const draftKey = activeId || `new:${sessionPathKey(cwd)}`;
   const getDraft = (key: string) => drafts.current[key] ??= createDraft<ComposerAttachment>();
   const composerDraft = getDraft(draftKey);
   visibleDraft.current = composerDraft;
-  const showDraft = (value: ComposerDraft<ComposerAttachment>) => { if (visibleDraft.current === value) { setDraft(value.text); setAttachments(value.attachments); } };
-  const changeDraft = (value: ComposerDraft<ComposerAttachment>, text: string, attachments = value.attachments) => {
-    const changed = attachments !== value.attachments && visibleDraft.current === value;
-    updateDraft(value, text, attachments);
+  const showDraft = (value: ComposerDraft<ComposerAttachment>) => { if (visibleDraft.current === value) { setDraft(value.text); setAttachments(value.attachments); setReferences(value.references); } };
+  const changeDraft = (value: ComposerDraft<ComposerAttachment>, text: string, attachments = value.attachments, references = value.references) => {
+    const changed = (attachments !== value.attachments || references !== value.references) && visibleDraft.current === value;
+    updateDraft(value, text, attachments, references);
     const update = () => showDraft(value);
     if (changed && document.documentElement.dataset.motion === 'rich' && document.startViewTransition) {
       const transition = document.startViewTransition(() => flushSync(update));
@@ -138,19 +174,27 @@ export default function App() {
     return attachmentNames.current.get(image)!;
   };
   const busy = isSessionRunning(session);
-  const layoutKey = `${sidebar}:${inspector}`;
+  const layoutKey = `${sidebar}:${inspector}:${desktopTab}`;
   const slashCommands = mergeCommandEntries(commandCatalog, session?.state.availableCommands ?? []);
   const pending = Object.values(sessions).flatMap(s => s.pending.map(question => ({ sessionId: s.id, title: s.title, question })));
   const showError = useCallback((value: unknown) => { if (value instanceof DOMException && value.name === 'AbortError') return; setError(value instanceof Error ? value.message : String(value)); }, []);
+  const openDesktop = (tab: DesktopTab) => { setInspector(null); setDesktopTab(tab); setSettingsOpen(false); };
+  const closePreview = () => { setInspector(null); setDesktopTab(null); };
+  useEffect(() => { if (inspector) setDesktopTab(null); }, [inspector]);
+  useDesktopSchedules({ enabled: !!bootstrap.runtime, onSession: value => lifecycle.put(value), onError: showError });
+  useWorkspaceLayout(`workspace:${contextKey || sessionPathKey(cwd)}`, { sidebar, inspector, desktopTab }, value => { setSidebar(value.sidebar !== false); setInspector(['review', 'files', 'agents', 'tasks', 'tree'].includes(value.inspector) ? value.inspector : null); const allowed = ['search', 'git', 'worktrees', 'editor', 'terminals', 'library', 'artifacts', 'notes', 'side-questions', 'schedules', ...(bootstrap.preferences.features?.reviews ? ['structured-review'] : []), ...(bootstrap.preferences.features?.browser ? ['browser'] : [])]; setDesktopTab(allowed.includes(value.desktopTab) ? value.desktopTab : null); }, showError);
+  useEffect(() => { if (!bootstrap.preferences.features?.cards || !native) return; const timer = setTimeout(() => { for (const value of uniqueSessions(Object.values(sessions)).filter(value => !value.hidden)) void request('card.sync', { id: value.id, value: { sessionId: value.id, title: value.title, cwd: value.cwd, status: value.status, pending: value.pending.length, language: bootstrap.preferences.language, summary: taskCardSummary(messageText(value.messages.filter(message => message.role === 'assistant').at(-1) ?? { id: '', role: '', content: '' })) } }).catch(showError); }, 500); return () => clearTimeout(timer); }, [sessions, bootstrap.preferences.features?.cards, bootstrap.preferences.language]);
+  useEffect(() => { if (!native) return; let stop: (() => void) | undefined; let disposed = false; void import('@tauri-apps/api/event').then(({ listen }) => listen<string>('desktop-card-focus', ({ payload }) => { if (lifecycle.current[payload]) { setActiveId(payload); setSettingsOpen(false); } })).then(value => { if (disposed) value(); else stop = value; }); return () => { disposed = true; stop?.(); }; }, []);
+  useEffect(() => { if (desktopTab === 'browser' && !bootstrap.preferences.features?.browser || desktopTab === 'structured-review' && !bootstrap.preferences.features?.reviews) setDesktopTab(null); }, [bootstrap.preferences.features, desktopTab]);
   abortRef.current = busy && session && !settingsOpen && !commandsOpen ? () => { void rpc(session.id, 'abort').catch(showError); } : undefined;
   const replaceActiveId = (id: string) => { activeIdRef.current = id; commitActiveId(id); };
-  const setActiveId = (id: string) => { selectionRevision.current++; replaceActiveId(id); };
+  const setActiveId = (id: string) => { selectionRevision.current++; setTargetMessageId(''); replaceActiveId(id); };
   const activateRuntime = () => {
     if (!native) return;
     const revision = ++activationRevision.current;
     void lifecycle.run(async () => {
       if (revision !== activationRevision.current) return;
-      const current = lifecycle.current[activeIdRef.current];
+      const current = settingsOpen && configurationSession ? lifecycle.current[configurationSession.id] : lifecycle.current[activeIdRef.current];
       await request('session.activate', { id: current && !current.historyOnly ? current.id : null });
     }).catch(showError);
   };
@@ -172,7 +216,7 @@ export default function App() {
     return () => window.removeEventListener('focus', clear);
   }, [activeId]);
   useEffect(() => { activeIdRef.current = activeId; showDraft(composerDraft); }, [activeId, draftKey]);
-  useEffect(activateRuntime, [session?.id, session?.historyOnly]);
+  useEffect(activateRuntime, [session?.id, session?.historyOnly, settingsOpen, configurationSession?.id]);
   useEffect(() => {
     void request<CatalogEntry[]>('command.catalog').then(setCommandCatalog).catch(showError);
     request<Bootstrap>('bootstrap').then(value => { setBootstrap(value); if (value.projects.length) { setProject(value.projects[0]); setExpandedProjects(previous => ({ ...previous, [value.projects[0].path]: true })); } }).catch(showError).finally(() => setBooting(false));
@@ -225,12 +269,15 @@ export default function App() {
   }, [!!sessionQuery.trim(), bootstrap.projects]);
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
-      if (terminalId) return;
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') { event.preventDefault(); setSidebar(true); requestAnimationFrame(() => searchInput.current?.focus()); }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setCommandsOpen(value => !value); }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') { event.preventDefault(); newConversation(); }
-      if ((event.ctrlKey || event.metaKey) && event.key === ',') { event.preventDefault(); setSettingsTab('general'); setSettingsOpen(value => !value); }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b') { event.preventDefault(); setSidebar(value => !value); }
+      if (terminalId || event.defaultPrevented) return;
+      const match = (id: Parameters<typeof shortcutValue>[0]) => matchesShortcut(event, shortcutValue(id, bootstrap.preferences.shortcuts));
+      if (match('search')) { event.preventDefault(); setSidebar(true); requestAnimationFrame(() => searchInput.current?.focus()); }
+      if (match('library')) { event.preventDefault(); openDesktop('library'); }
+      if (match('workspace')) { event.preventDefault(); openDesktop('search'); }
+      if (match('commands')) { event.preventDefault(); setCommandsOpen(value => !value); }
+      if (match('new')) { event.preventDefault(); newConversation(); }
+      if (match('settings')) { event.preventDefault(); setSettingsTab('general'); setSettingsOpen(value => !value); }
+      if (match('sidebar')) { event.preventDefault(); setSidebar(value => !value); }
       if (event.key === 'Escape') {
         if (event.isComposing) return;
         if (!attachmentMenu && !modelPicker && !moreMenu.current?.open && !event.defaultPrevented && !document.querySelector('dialog[open]')) abortRef.current?.();
@@ -242,7 +289,7 @@ export default function App() {
       }
     };
     window.addEventListener('keydown', keydown); return () => window.removeEventListener('keydown', keydown);
-  }, [terminalId, modelPicker, attachmentMenu, project?.path, bootstrap.preferences.language]);
+  }, [terminalId, modelPicker, attachmentMenu, project?.path, bootstrap.preferences.language, bootstrap.preferences.shortcuts]);
   useEffect(() => {
     const outside = (event: PointerEvent) => {
       const target = event.target as Node;
@@ -346,8 +393,8 @@ export default function App() {
       drafts.current[value.id] = sourceDraft;
       if (sourceDraftKey !== value.id && drafts.current[sourceDraftKey] === sourceDraft) delete drafts.current[sourceDraftKey];
       lifecycle.put(value, source?.id);
-      if (selectionRevision.current === revision) replaceActiveId(value.id);
-      else if (!forPrompt) activateRuntime();
+      if (!requested?.background && selectionRevision.current === revision) replaceActiveId(value.id);
+      else if (!forPrompt && !requested?.background) activateRuntime();
       return lifecycle.current[value.id] ?? value;
     })();
     openingSessions.current.set(target, { promise, promote: () => { forPrompt = true; } });
@@ -357,8 +404,9 @@ export default function App() {
     const revision = selectionRevision.current;
     return lifecycle.run(() => prepareSession(false, { source: lifecycle.current[activeIdRef.current], cwd, draftKey: activeIdRef.current || `new:${sessionPathKey(cwd)}`, revision }));
   };
-  const reconnectSettingsSession = () => {
-    const target: SessionTarget = { source: lifecycle.current[activeIdRef.current], cwd, draftKey: activeIdRef.current || `new:${sessionPathKey(cwd)}`, revision: selectionRevision.current };
+  const openConfigurationSession = () => lifecycle.run(() => prepareSession(false, { source: configurationSession, cwd, draftKey: `configuration:${sessionPathKey(cwd)}`, revision: selectionRevision.current, background: true }));
+  const reconnectSettingsSession = (forConfiguration = false) => {
+    const target: SessionTarget = { source: forConfiguration ? configurationSession : lifecycle.current[activeIdRef.current], cwd, draftKey: forConfiguration ? `configuration:${sessionPathKey(cwd)}` : activeIdRef.current || `new:${sessionPathKey(cwd)}`, revision: selectionRevision.current, background: forConfiguration };
     return lifecycle.run(async () => {
       if (target.revision !== selectionRevision.current) return;
       const current = target.source;
@@ -398,31 +446,35 @@ export default function App() {
     lifecycle.update(id, current => returnFromTerminal(current, runtimeReleased));
     if (runtimeReleased && project) void refreshHistory(project.path);
   };
-  const loadHistory = async (summary: SessionSummary) => {
+  const loadHistory = async (summary: SessionSummary, messageId?: string) => {
     setModelPicker(false); setAttachmentMenu(false);
     const revision = ++selectionRevision.current;
     const existing = uniqueSessions(Object.values(lifecycle.current)).find(value => sessionKey(value) === sessionKey(summary));
-    if (existing) { setActiveId(existing.id); setSettingsOpen(false); return; }
+    if (existing && (!messageId || existing.messages.some(message => message.id === messageId))) { setActiveId(existing.id); setTargetMessageId(messageId ?? ''); setSettingsOpen(false); return; }
+    if (existing && !existing.historyOnly && messageId) {
+      try { let current = existing; while (current.nextCursor && !current.messages.some(message => message.id === messageId)) { if (selectionRevision.current !== revision) return; const cursor = current.nextCursor; await lifecycle.loadEarlier(current.id); current = lifecycle.current[current.id] ?? current; if (current.nextCursor === cursor) break; } if (!current.messages.some(message => message.id === messageId)) throw Error('目标消息已变化，请重新搜索。'); setActiveId(current.id); setTargetMessageId(messageId); setSettingsOpen(false); } catch (error) { showError(error); } return;
+    }
     try {
-      const result = await request<Json>('session.history', { path: summary.path, limit: 100 });
+      const result = await request<Json>(messageId ? 'session.locate' : 'session.history', { path: summary.path, messageId, limit: 100 });
       if (selectionRevision.current !== revision) return;
       const current = uniqueSessions(Object.values(lifecycle.current)).find(value => sessionKey(value) === sessionKey(summary));
-      if (current) { setActiveId(current.id); setSettingsOpen(false); return; }
+      if (current) { lifecycle.update(current.id, value => ({ ...value, messages: normalizeHistoryMessages(result.messages, 'history'), nextCursor: result.nextCursor, afterCursor: result.afterCursor })); setActiveId(current.id); setTargetMessageId(messageId ?? ''); setSettingsOpen(false); return; }
       const id = `history:${sessionPathKey(summary.path)}`;
-      lifecycle.put({ id, cwd: summary.cwd, path: summary.path, title: summary.title ?? t.newTitle, messages: normalizeHistoryMessages(result.messages, 'history'), state: {}, pending: [], status: 'ready', historyOnly: true, nextCursor: result.nextCursor });
+      lifecycle.put({ id, cwd: summary.cwd, path: summary.path, title: summary.title ?? t.newTitle, messages: normalizeHistoryMessages(result.messages, 'history'), state: {}, pending: [], status: 'ready', historyOnly: true, nextCursor: result.nextCursor, afterCursor: result.afterCursor });
       setActiveId(id); setSettingsOpen(false);
+      setTargetMessageId(messageId ?? '');
     } catch (e) { showError(e); }
   };
-  const send = async (text = draft) => {
-    if ((!text.trim() && !attachments.length) || sending || preparingAttachments || actionPending.current) return;
+  const send = async (text = draft, preserveDraft = false) => {
+    if ((!text.trim() && !attachments.length && !references.length) || sending || preparingAttachments || actionPending.current) return;
     actionPending.current = 'send';
-    const submission = captureDraft(composerDraft);
+    const submission = captureDraft(preserveDraft ? createDraft<ComposerAttachment>(text) : composerDraft);
     const target: SessionTarget = { source: session, cwd, draftKey, revision: selectionRevision.current };
     const pending = openingSessions.current.get(session?.path ? sessionKey(session) : `new:${session?.id ?? sessionPathKey(cwd)}`)?.promise;
     setSending(true); setError(''); setPinNonce(value => value + 1);
     try {
       const slash = /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
-      if (slash && !submission.attachments.length) {
+      if (slash && !submission.attachments.length && !submission.references.length) {
         const entry = slashCommands.find(item => item.kind === 'slash' && (item.name === slash[1] || item.aliases?.includes(slash[1])));
         if (entry && navigateCommand(entry, slash[2] ?? '')) { if (acknowledgeDraft(submission)) showDraft(submission.draft); return; }
       }
@@ -431,10 +483,11 @@ export default function App() {
         if (current.historyOnly) throw Error(t.launchError);
         lifecycle.update(current.id, current => ({ ...current, hidden: false }));
         const command = isSessionRunning(current) ? delivery === 'follow_up' ? 'follow_up' : 'steer' : 'prompt';
-        await rpc(current.id, command, attachmentPayload(text, submission.attachments));
+        const body = encodeReferencedPrompt(text, submission.references);
+        await rpc(current.id, command, attachmentPayload(body, submission.attachments));
         for (const item of submission.attachments) if (item.type === 'file') item.managed = false;
         if (acknowledgeDraft(submission)) showDraft(submission.draft);
-        if (current.title === t.newTitle && !text.startsWith('/')) { const title = (text || submission.attachments.map(item => item.name).join(', ')).replace(/\s+/g, ' ').slice(0, 70); lifecycle.update(current.id, current => ({ ...current, title })); await rpc(current.id, 'set_session_name', { name: title }); }
+        if (current.title === t.newTitle && !body.startsWith('/')) { const title = (text || submission.attachments.map(item => item.name).join(', ') || submission.references[0]?.content || t.newTitle).replace(/\s+/g, ' ').slice(0, 70); lifecycle.update(current.id, current => ({ ...current, title })); await rpc(current.id, 'set_session_name', { name: title }); }
       });
     } catch (e) { showError(e); } finally { actionPending.current = false; setSending(false); activateRuntime(); }
   };
@@ -458,11 +511,19 @@ export default function App() {
       lifecycle.update(id, current => current.pending.includes(question) ? updateQuestionDraft(current, question.id, draft => ({ ...draft, submitting: false, error: error instanceof Error ? error.message : String(error) })) : current);
     }
   };
-  const recallLast = () => { const list = session?.messages ?? []; for (let i = list.length - 1; i >= 0; i--) if (list[i].role === 'user') { changeDraft(composerDraft, messageText(list[i])); return; } };
+  const recallLast = () => { const list = session?.messages ?? []; for (let i = list.length - 1; i >= 0; i--) if (list[i].role === 'user') { const prompt = parseReferencedPrompt(messageText(list[i])); changeDraft(composerDraft, prompt.body, composerDraft.attachments, prompt.references); return; } };
   const prepareCommand = (text: string) => { changeDraft(composerDraft, text); setSettingsOpen(false); textarea.current?.focus(); };
+  const reference = (value: string | ConversationReference[]) => { const additions = typeof value === 'string' ? [createMessageReference({ sessionId: session?.id, sessionPath: session?.path, sessionTitle: session?.title }, { id: `material:${crypto.randomUUID()}`, role: 'message', content: value })] : value; changeDraft(composerDraft, composerDraft.text, composerDraft.attachments, appendReferences(composerDraft.references, additions)); setSettingsOpen(false); requestAnimationFrame(() => textarea.current?.focus()); };
+  const openSideQuestionThread = (id: string) => { setSelectedText(''); setSideQuestionSource(undefined); setSideQuestionThreadId(id); setSelectionNonce(value => value + 1); openDesktop('side-questions'); };
+  const selectionAction = (text: string, action: 'quote' | 'note' | 'btw', context?: SelectionContext) => { if (action === 'quote') reference(context?.references ?? text); else { setSelectedText(text); setSideQuestionSource(context?.source); setSideQuestionThreadId(undefined); setSelectionNonce(value => value + 1); openDesktop(action === 'note' ? 'notes' : 'side-questions'); } };
+  const askSideQuestion = async (question: string, recordId?: string, images?: { type: 'image'; data: string; mimeType: string }[]) => { const current = await openSession(); return { ...await rpc<Json>(current.id, 'btw', { question, recordId, images }), desktopSessionId: current.id }; };
+  const cancelSideQuestion = async (recordId?: string, desktopSessionId?: string) => { const current = desktopSessionId ? lifecycle.current[desktopSessionId] : undefined; return current && !current.historyOnly && !lifecycle.isReleased(current.id) ? rpc<Json>(current.id, 'btw_cancel', { recordId }) : { cancelled: false }; };
+  const exportMarkdown = async (mode: 'full' | 'results') => { if (!session) return; try { const directory = await pickPath(true); if (!directory) return; const path = `${directory}/${session.title.replace(/[<>:"/\\|?*]/g, '_').slice(0, 80) || '会话'}-${mode === 'full' ? '记录' : '结果'}.md`; const fields = { path, title: session.title, mode, ...(session.path ? { sessionPath: session.path } : { messages: session.messages }) }; const result = await request<Json>('export.markdown', fields); if (result.existing && window.confirm(`覆盖已有文件？\n${path}`)) await request('export.markdown', { ...fields, overwrite: true, baseRevision: result.revision }); } catch (error) { showError(error); } };
+  const exportSideQuestions = async (content: string, filename: string) => { const directory = await pickPath(true); if (!directory) return; const path = `${directory}/${filename.replace(/[<>:"/\\|?*]/g, '_').slice(0, 160)}`; const fields = { path, content }; const result = await request<Json>('export.markdown', fields); if (result.existing && window.confirm(`覆盖已有文件？\n${path}`)) await request('export.markdown', { ...fields, overwrite: true, baseRevision: result.revision }); };
   const restoreQueuedDraft = (id: string, text: string, restoredImages: ReturnType<typeof messageImages>) => {
     const value = getDraft(id);
-    changeDraft(value, value.text ? `${value.text}\n\n${text}` : text, [...value.attachments, ...restoredImages]);
+    const prompt = parseReferencedPrompt(text);
+    changeDraft(value, value.text ? `${value.text}\n\n${prompt.body}` : prompt.body, [...value.attachments, ...restoredImages], appendReferences(value.references, prompt.references));
     if (activeIdRef.current === id) textarea.current?.focus();
   };
   const beginQueueAction = () => {
@@ -475,6 +536,7 @@ export default function App() {
     const target: SessionTarget = { source: session, cwd, draftKey, revision: selectionRevision.current };
     const previousDraft = draft;
     const previousImages = attachments;
+    const previousReferences = references;
     actionPending.current = 'edit'; setMessageAction(true); setError('');
     try {
       await lifecycle.run(async () => {
@@ -489,11 +551,12 @@ export default function App() {
         const page = await lifecycle.readMessages(current.id, state.sessionFile);
         const previous = current.path ? { ...current, id: `history:${sessionPathKey(current.path)}`, historyOnly: true, status: 'ready', pending: [] } : undefined;
         if (previous) {
-          drafts.current[previous.id] = createDraft(previousDraft, previousImages);
+          drafts.current[previous.id] = createDraft(previousDraft, previousImages, previousReferences);
         }
         lifecycle.put({ ...clearQuestions(current), state, path: state.sessionFile, messages: normalizeHistoryMessages(page.messages, 'branch'), nextCursor: page.nextCursor, hidden: false, status: 'ready' });
         if (previous) lifecycle.put(previous);
-        changeDraft(getDraft(current.id), result.text ?? '', messageImages(entry.message));
+        const prompt = parseReferencedPrompt(result.text ?? '');
+        changeDraft(getDraft(current.id), prompt.body, messageImages(entry.message), prompt.references);
         if (activeIdRef.current === current.id || selectionRevision.current === target.revision) {
           setActiveId(current.id); showDraft(getDraft(current.id)); textarea.current?.focus();
         }
@@ -551,11 +614,14 @@ export default function App() {
     catch (error) { if (revision === selectionRevision.current) showError(error); }
     finally { setHistoryPageLoading(current => current?.id === id && current.revision === revision ? null : current); }
   };
+  const later = async () => { if (!session?.path || !session.afterCursor) return; const id = session.id; const cursor = session.afterCursor; const revision = selectionRevision.current; setHistoryPageLoading({ id, revision }); try { const result = await request<Json>('session.after', { path: session.path, cursor, limit: 100 }); if (selectionRevision.current === revision) lifecycle.update(id, value => ({ ...value, messages: [...value.messages, ...normalizeHistoryMessages(result.messages, 'history').filter(message => !value.messages.some(existing => existing.id === message.id))], afterCursor: result.afterCursor })); } catch (error) { if (revision === selectionRevision.current) showError(error); } finally { setHistoryPageLoading(value => value?.id === id && value.revision === revision ? null : value); } };
   const activeQuestion = session?.pending[0];
   return <div className="window-frame"><WindowChrome language={bootstrap.preferences.language} /><div className={`app-shell ${sidebar ? '' : 'sidebar-hidden'}`}>
     {sidebar && <aside className="sidebar" inert={!!terminalId}><div className="brand-row"><div className="brand-mark">o<span>m</span>p</div><span>{t.desktop}</span><button className="icon-button" title={t.collapse} onClick={() => setSidebar(false)}><PanelLeftClose size={17} /></button></div>
-      <button className="new-conversation" onClick={newConversation}><Plus size={17} /><span>{t.newSession}</span><kbd>Ctrl N</kbd></button>
-      <button className="nav-item" onClick={() => setCommandsOpen(true)}><Command size={16} /><span>{t.commands}</span><kbd>Ctrl K</kbd></button>
+      <button className="new-conversation" onClick={newConversation}><Plus size={17} /><span>{t.newSession}</span><kbd>{shortcutValue('new', bootstrap.preferences.shortcuts).replaceAll('+', ' ')}</kbd></button>
+      <button className="nav-item" onClick={() => setCommandsOpen(true)}><Command size={16} /><span>{t.commands}</span><kbd>{shortcutValue('commands', bootstrap.preferences.shortcuts).replaceAll('+', ' ')}</kbd></button>
+      <button className="nav-item" onClick={() => openDesktop('library')}><Search size={16} /><span>会话库</span></button>
+      <button className="nav-item" disabled={!cwd} onClick={() => openDesktop('search')}><FolderOpen size={16} /><span>工作区工具</span></button>
       {pending.length > 0 && <button className="nav-item pending-nav" onClick={() => { setActiveId(pending[0].sessionId); setSettingsOpen(false); }}><Bell size={16} /><span>{t.pending}</span><b>{pending.length}</b></button>}
       <div className="section-label"><span>{t.projects}</span><button className="icon-button" title={t.addProject} onClick={addProject}><Plus size={15} /></button></div>
       <div className="session-search"><Search size={14} /><input ref={searchInput} type="search" aria-label={t.searchSessions} placeholder={t.searchSessions} value={sessionQuery} onChange={event => setSessionQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); setSessionQuery(''); } }} />{sessionQuery && <button className="icon-button" title={t.clearSearch} onClick={() => { setSessionQuery(''); searchInput.current?.focus(); }}><X size={13} /></button>}</div>
@@ -576,18 +642,18 @@ export default function App() {
       <div className="sidebar-bottom"><button className={`nav-item ${settingsOpen ? 'selected' : ''}`} onClick={() => settingsOpen ? setSettingsOpen(false) : openSettings('general')}><Settings2 size={16} /><span>{t.settings}</span></button><div className="runtime-pill"><span className={`status-dot ${bootstrap.runtime ? 'connected' : ''}`} /><span>{bootstrap.runtime ? `OMP ${bootstrap.runtime.version}` : t.notInstalled}</span><span className="version">v{version}</span></div></div>
     </aside>}
     <main className="main-area">
-      {settingsOpen ? <Suspense fallback={<PageSkeleton label={t.loading} />}><Settings key={`${settingsTab}:${settingsQuery}`} initialQuery={settingsQuery} initialTab={settingsTab} cwd={cwd} reconnectSession={cwd && bootstrap.runtime ? reconnectSettingsSession : undefined} bootstrap={bootstrap} t={t} sessionId={session && !session.historyOnly ? session.id : undefined} ensureSession={cwd && bootstrap.runtime ? () => openSession().then(current => current.id) : undefined} update={setBootstrap} onError={showError} close={() => setSettingsOpen(false)} /></Suspense> : <>
-        <WindowSlot inert={!!terminalId}><div className="header-location">{!sidebar && <button className="icon-button" title={t.expand} onClick={() => setSidebar(true)}><PanelLeftOpen size={18} /></button>}<Folder size={15} /><button onClick={addProject}>{project?.name ?? t.openProject}</button>{session && <><span className="breadcrumb-divider">/</span><span className="header-title">{session.title}</span></>}</div><div className="workspace-actions"><button className={`quiet-button ${inspector === 'review' ? 'active' : ''}`} disabled={!cwd} onClick={() => setInspector(value => value === 'review' ? null : 'review')}><FileDiff size={15} /><span>{t.review}</span></button><button className="icon-button" title={t.context} aria-haspopup="dialog" disabled={!cwd} onClick={() => navigateCommand({ name: 'context', kind: 'slash' })}><Layers size={17} /></button><details ref={moreMenu} className="more-menu" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false; }} onClick={event => { if ((event.target as Element).closest("button")) { event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); } }}><summary className="icon-button" title={t.more}><ChevronDown size={16} /></summary><div className="ui-menu">{(['files', 'agents', 'tasks', 'tree'] as InspectorTab[]).map(tab => <button disabled={!cwd} key={tab} onClick={() => setInspector(tab)}>{t[tab]}</button>)}<div className="menu-separator" /><button disabled={!session || session.historyOnly || !session.state.isSettled} onClick={() => { setTerminalInput(''); setTerminalId(session!.id); }}>{t.terminal}</button><button disabled={!session || session.historyOnly} onClick={() => { if (session) rpc(session.id, 'export_html').then(result => prepareCommand(String(result.path ?? result))).catch(showError); }}>{t.export}</button><button disabled={!session || busy} onClick={() => prepareCommand('/fork')}>{t.fork}</button><button disabled={!session || busy} onClick={closeSession}>{t.close} {t.session}</button></div></details></div></WindowSlot>
+      {settingsOpen ? <Suspense fallback={<PageSkeleton label={t.loading} />}><Settings key={`${settingsTab}:${settingsQuery}`} initialQuery={settingsQuery} initialTab={settingsTab} cwd={cwd} reconnectSession={cwd && bootstrap.runtime ? () => reconnectSettingsSession(true) : undefined} bootstrap={bootstrap} t={t} sessionId={configurationSession?.id} ensureSession={cwd && bootstrap.runtime ? () => openConfigurationSession().then(current => current.id) : undefined} update={setBootstrap} onError={showError} close={() => setSettingsOpen(false)} /></Suspense> : <>
+        <WindowSlot inert={!!terminalId}><div className="header-location">{!sidebar && <button className="icon-button" title={t.expand} onClick={() => setSidebar(true)}><PanelLeftOpen size={18} /></button>}<Folder size={15} /><button onClick={addProject}>{project?.name ?? t.openProject}</button>{session && <><span className="breadcrumb-divider">/</span><span className="header-title">{session.title}</span></>}</div><div className="workspace-actions"><button className={`quiet-button ${inspector === 'review' ? 'active' : ''}`} disabled={!cwd} onClick={() => setInspector(value => value === 'review' ? null : 'review')}><FileDiff size={15} /><span>{t.review}</span></button><button className="icon-button" title={t.context} aria-haspopup="dialog" disabled={!cwd} onClick={() => navigateCommand({ name: 'context', kind: 'slash' })}><Layers size={17} /></button><details ref={moreMenu} className="more-menu" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false; }} onClick={event => { if ((event.target as Element).closest("button")) { event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); } }}><summary className="icon-button" title={t.more}><ChevronDown size={16} /></summary><div className="ui-menu">{(['files', 'agents', 'tasks', 'tree'] as InspectorTab[]).map(tab => <button disabled={!cwd} key={tab} onClick={() => setInspector(tab)}>{t[tab]}</button>)}<div className="menu-separator" />{(['search', 'git', 'worktrees', 'editor', 'terminals', 'artifacts', 'notes', 'side-questions', 'schedules'] as DesktopTab[]).map(tab => <button key={tab} disabled={!cwd} onClick={() => openDesktop(tab)}>{{ search: '项目搜索', git: 'Git 暂存与提交', worktrees: '工作树管理', editor: '多文件编辑', terminals: '独立终端', artifacts: '工具与产物', notes: '选段批注', 'side-questions': '连续旁问', schedules: '定时任务' }[tab as string]}</button>)}{bootstrap.preferences.features?.reviews && <button disabled={!session} onClick={() => openDesktop('structured-review')}>结构化评审与修复</button>}{bootstrap.preferences.features?.browser && <button onClick={() => openDesktop('browser')}>浏览器工作区</button>}{bootstrap.preferences.features?.cards && <button disabled={!session} onClick={() => session && request('card.open', { id: session.id }).catch(showError)}>浮动任务卡</button>}<button disabled={!session} onClick={() => void exportMarkdown('results')}>导出 Markdown 结果</button><button disabled={!session} onClick={() => void exportMarkdown('full')}>导出 Markdown 完整记录</button><button disabled={!session?.path || busy} onClick={() => session?.path && request('session.archive', { path: session.path, archived: true }).then(() => refreshHistory(cwd)).catch(showError)}>归档会话</button><div className="menu-separator" /><button disabled={!session || session.historyOnly || !session.state.isSettled} onClick={() => { setTerminalInput(''); setTerminalId(session!.id); }}>{t.terminal}</button><button disabled={!session || session.historyOnly} onClick={() => { if (session) rpc(session.id, 'export_html').then(result => prepareCommand(String(result.path ?? result))).catch(showError); }}>{t.export}</button><button disabled={!session || busy} onClick={() => prepareCommand('/fork')}>{t.fork}</button><button disabled={!session || busy} onClick={closeSession}>{t.close} {t.session}</button></div></details></div></WindowSlot>
         {error && <div className="error-banner" role="alert"><CircleHelp size={16} /><span>{localizeError(error, bootstrap.preferences.language)}</span><button className="icon-button" title={t.dismiss} onClick={() => setError('')}><X size={15} /></button></div>}
-        {terminalId ? <Suspense fallback={<PageSkeleton label={t.loading} />}><TerminalPanel id={terminalId} initialCommand={terminalInput} t={t} onError={showError} close={closeTerminal} /></Suspense> : <ConversationLayout layoutKey={layoutKey} identity={session ? sessionKey(session) : draftKey}><GenerationRateProvider session={session} language={bootstrap.preferences.language} cache={rateCache.current}><SessionTodos session={session} language={bootstrap.preferences.language} /><SplitWorkspace language={bootstrap.preferences.language} closePreview={() => setInspector(null)} preview={inspector && <Suspense fallback={<aside className="inspector"><PageSkeleton label={t.loading} /></aside>}><Inspector language={bootstrap.preferences.language} onSessionChanged={() => session ? lifecycle.refresh(session.id, true, t.newTitle) : Promise.resolve()} tab={inspector} session={session} cwd={cwd} t={t} onError={showError} close={() => setInspector(null)} send={prepareCommand} /></Suspense>}><div className="conversation-column">
-          {session?.messages.length ? <Transcript key={sessionKey(session)} restoreKey={sessionKey(session)} pinNonce={pinNonce} showTurns={bootstrap.preferences.showTurnNumber !== false} messages={session.messages} t={t} busy={busy} runStartedAt={session.state.desktopRunStartedAt} activity={session.state.activity} actionsDisabled={sending || messageAction} onEdit={editMessage} onRetry={retryTurn} loadEarlier={session.nextCursor ? earlier : undefined} loadingEarlier={historyPageLoading?.id === session.id && historyPageLoading.revision === selectionRevision.current} /> : <div className="welcome"><div className="welcome-symbol"><span /><span /><span /></div><h1>{t.welcome}</h1><p>{t.welcomeText}</p>{!native && <p className="browser-note">{t.nativeOnly}</p>}<div className="starter-actions">{[[t.exploreAction, t.explorePrompt], [t.reviewAction, t.reviewPrompt], [t.buildAction, t.buildPrompt]].map(([label, prompt]) => <button key={label} onClick={() => { changeDraft(composerDraft, prompt); textarea.current?.focus(); }}>{label}<ArrowUpRight size={14} /></button>)}</div></div>}
+        {terminalId ? <Suspense fallback={<PageSkeleton label={t.loading} />}><TerminalPanel id={terminalId} initialCommand={terminalInput} t={t} onError={showError} close={closeTerminal} /></Suspense> : <ConversationLayout layoutKey={layoutKey} identity={session ? sessionKey(session) : draftKey}><GenerationRateProvider session={session} language={bootstrap.preferences.language} cache={rateCache.current}><SessionTodos session={session} language={bootstrap.preferences.language} /><SplitWorkspace key={contextKey || cwd} restoreKey={contextKey || cwd} language={bootstrap.preferences.language} closePreview={closePreview} preview={desktopTab ? <Suspense fallback={<PageSkeleton label={t.loading} />}><DesktopTools tab={desktopTab} cwd={cwd} language={bootstrap.preferences.language} preferences={bootstrap.preferences} session={session} selection={selectedText} selectionNonce={selectionNonce} sideQuestionSource={sideQuestionSource} sideQuestionThreadId={sideQuestionThreadId} onSideQuestionThreadsChange={threads => setSideQuestionMetadata({ key: sideQuestionsKey, threads })} onExportSideQuestions={exportSideQuestions} onTab={setDesktopTab} onClose={closePreview} onPrompt={prepareCommand} onEnsureSession={openSession} onSideQuestion={askSideQuestion} onCancelSideQuestion={cancelSideQuestion} onReference={reference} onArchiveChange={() => { for (const value of bootstrap.projects) void refreshHistory(value.path); }} onOpen={(summary, messageId) => { const project = bootstrap.projects.find(value => sessionPathKey(value.path) === sessionPathKey(summary.cwd)); if (project) setProject(project); void loadHistory(summary, messageId); }} onProject={path => void request<Project[]>('project.add', { path }).then(projects => { setBootstrap(current => ({ ...current, projects })); const project = projects.find(value => sessionPathKey(value.path) === sessionPathKey(path)); if (project) selectProject(project); }).catch(showError)} /></Suspense> : inspector && <Suspense fallback={<aside className="inspector"><PageSkeleton label={t.loading} /></aside>}><Inspector language={bootstrap.preferences.language} onSessionChanged={() => session ? lifecycle.refresh(session.id, true, t.newTitle) : Promise.resolve()} tab={inspector} session={session} cwd={cwd} t={t} onError={showError} close={() => setInspector(null)} send={prepareCommand} /></Suspense>}><div className="conversation-column">
+          {session?.messages.length ? <Transcript key={sessionKey(session)} restoreKey={sessionKey(session)} pinNonce={pinNonce} showTurns={bootstrap.preferences.showTurnNumber !== false} targetMessageId={targetMessageId} onSelection={selectionAction} referenceSource={{ sessionId: session.id, sessionPath: session.path, sessionTitle: session.title }} onReference={reference} sideQuestionThreads={sideQuestionThreads} onSideQuestionThread={openSideQuestionThread} messages={session.messages} t={t} busy={busy} runStartedAt={session.state.desktopRunStartedAt} activity={session.state.activity} actionsDisabled={sending || messageAction} onEdit={editMessage} onRetry={retryTurn} loadEarlier={session.nextCursor ? earlier : undefined} loadLater={session.afterCursor ? later : undefined} loadingEarlier={historyPageLoading?.id === session.id && historyPageLoading.revision === selectionRevision.current} /> : <div className="welcome"><div className="welcome-symbol"><span /><span /><span /></div><h1>{t.welcome}</h1><p>{t.welcomeText}</p>{!native && <p className="browser-note">{t.nativeOnly}</p>}<div className="starter-actions">{[[t.exploreAction, t.explorePrompt], [t.reviewAction, t.reviewPrompt], [t.buildAction, t.buildPrompt]].map(([label, prompt]) => <button key={label} onClick={() => { changeDraft(composerDraft, prompt); textarea.current?.focus(); }}>{label}<ArrowUpRight size={14} /></button>)}</div></div>}
           <div className="composer-area">{activeQuestion && session && <Question key={session.id + ":" + activeQuestion.id} question={activeQuestion} draft={questionDraft(session, activeQuestion)} change={update => lifecycle.update(session.id, current => updateQuestionDraft(current, activeQuestion.id, update))} language={bootstrap.preferences.language} t={t} answer={response => answer(session.id, response)} />}
-            {session && !session.historyOnly && <SessionActivity session={session} t={t} refresh={() => lifecycle.refresh(session.id, false, t.newTitle)} onError={showError} />}
+            {session && <SessionActivity session={session} t={t} threads={sideQuestionThreads} onSideQuestion={openSideQuestionThread} refresh={() => lifecycle.refresh(session.id, false, t.newTitle)} onError={showError} />}
             {!bootstrap.runtime && !booting && <button className="setup-callout" onClick={() => openSettings('runtime')}><span className="setup-icon"><TerminalSquare size={18} /></span><span><strong>{t.installRuntime}</strong><small>{t.installText}</small></span><ArrowUpRight size={16} /></button>}
             {session && !session.historyOnly && <QueuedMessages key={sessionKey(session)} begin={beginQueueAction} end={endQueueAction} session={session} t={t} disabled={sending || messageAction} refresh={() => lifecycle.refresh(session.id, false, t.newTitle)} restore={(text, attachments) => restoreQueuedDraft(session.id, text, attachments)} onError={showError} />}
             <AttachmentDropZone language={bootstrap.preferences.language} disabled={sending || (messageAction && actionPending.current === 'edit')} busy={preparingAttachments > 0} addFiles={addAttachmentFiles} addPaths={addAttachmentPaths} addPrepared={addPreparedAttachments} onError={showError}><div className={`composer ${busy ? 'is-busy' : ''}`}>
               {attachments.length > 0 && <ComposerAttachments items={attachments} language={bootstrap.preferences.language} disabled={sending || (messageAction && actionPending.current === 'edit')} name={attachmentName} remove={removeAttachment} />}
-              <ComposerInput key={composerDraft.id} textareaRef={textarea} value={draft} onChange={text => changeDraft(composerDraft, text)} onSend={() => void send()} onRecall={recallLast} commands={slashCommands} language={bootstrap.preferences.language} onCommandsOpen={() => void loadSlashCommands()} disabled={messageAction && actionPending.current === 'edit'} cwd={cwd} t={t} />
+              <ComposerReferences references={references} onRemove={id => changeDraft(composerDraft, composerDraft.text, composerDraft.attachments, composerDraft.references.filter(value => value.id !== id))} /><ComposerInput key={composerDraft.id} textareaRef={textarea} value={draft} onChange={text => changeDraft(composerDraft, text)} onSend={() => void send()} onRecall={recallLast} commands={slashCommands} language={bootstrap.preferences.language} onCommandsOpen={() => void loadSlashCommands()} disabled={messageAction && actionPending.current === 'edit'} cwd={cwd} t={t} />
               <div className="composer-toolbar"><input className="visually-hidden" type="file" tabIndex={-1} accept="image/*" multiple ref={fileInput} onChange={event => { const input = event.currentTarget; void addAttachmentFiles(Array.from(input.files ?? [])).catch(showError); input.value = ''; }} />
                 <div className="attachment-control" ref={attachmentControl} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setAttachmentMenu(false); }}>
                   <button ref={addButton} disabled={messageAction && actionPending.current === 'edit'} className="icon-button" title={t.addContent} aria-haspopup="menu" aria-expanded={attachmentMenu} aria-controls={attachmentMenu ? 'attachment-menu' : undefined} onClick={() => { setAttachmentMenu(value => !value); setModelPicker(false); }}><Plus size={18} /></button>
@@ -603,7 +669,7 @@ export default function App() {
                 </div>
                 <div className="model-control" ref={modelControl}><button ref={modelButton} className="model-button" aria-haspopup="dialog" aria-expanded={modelPicker} disabled={!cwd || !bootstrap.runtime} onClick={toggleModels}>{session?.state.model?.name ?? session?.state.model?.id ?? t.chooseModel}<ChevronDown size={12} /></button><MotionPresence open={modelPicker}><div className="model-picker ui-menu" role="dialog" aria-label={t.chooseModel}><input autoFocus aria-label={t.search} placeholder={t.search} value={modelQuery} onChange={e => setModelQuery(e.target.value)} /><div>{models.filter(model => `${model.name} ${model.id} ${model.provider}`.toLowerCase().includes(modelQuery.toLowerCase())).map(model => <button key={`${model.provider}:${model.id}`} aria-pressed={session?.state.model?.id === model.id && session?.state.model?.provider === model.provider} onClick={() => chooseModel(model)}><strong>{model.name ?? model.id}</strong><small>{model.provider}</small></button>)}{!models.length && <p role="status">{modelsLoading ? t.loading : t.noModels}</p>}{models.length > 0 && !models.some(model => `${model.name} ${model.id} ${model.provider}`.toLowerCase().includes(modelQuery.toLowerCase())) && <p>{t.noResults}</p>}</div></div></MotionPresence></div>
                 {session && !session.historyOnly && <Select label={t.effort} value={session.state.thinkingLevel ?? 'medium'} options={Object.entries(t.effortLevels).map(([value, label]) => ({ value, label }))} onChange={level => rpc(session.id, 'set_thinking_level', { level }).then(() => lifecycle.update(session.id, current => ({ ...current, state: { ...current.state, thinkingLevel: level } }))).catch(showError)} />}
-                <GenerationRate /><span className="spacer" />{busy && <Select label={t.queued} value={delivery} onChange={setDelivery} options={[{ value: 'steer', label: t.steer }, { value: 'follow_up', label: t.followUp }]} />}{busy && session && !draft && !attachments.length ? <button className="send-button stop-button" title={t.stop} onClick={() => rpc(session.id, 'abort').catch(showError)}><Square size={14} fill="currentColor" /></button> : <button className="send-button" title={t.send} disabled={sending || preparingAttachments > 0 || messageAction || (!draft.trim() && !attachments.length) || !cwd || !bootstrap.runtime} onClick={() => send()}>{sending || messageAction ? <LoaderCircle size={16} className="spin" /> : <ArrowUp size={18} />}</button>}
+                <GenerationRate /><span className="spacer" />{busy && <Select label={t.queued} value={delivery} onChange={setDelivery} options={[{ value: 'steer', label: t.steer }, { value: 'follow_up', label: t.followUp }]} />}{busy && session && !draft && !attachments.length && !references.length ? <button className="send-button stop-button" title={t.stop} onClick={() => rpc(session.id, 'abort').catch(showError)}><Square size={14} fill="currentColor" /></button> : <button className="send-button" title={t.send} disabled={sending || preparingAttachments > 0 || messageAction || (!draft.trim() && !attachments.length && !references.length) || !cwd || !bootstrap.runtime} onClick={() => send()}>{sending || messageAction ? <LoaderCircle size={16} className="spin" /> : <ArrowUp size={18} />}</button>}
               </div>
             </div></AttachmentDropZone><div className="composer-footnote"><span><span className={`status-dot ${busy ? 'working' : 'connected'}`} />{busy ? t.running : session?.pending.length ? t.waiting : t.ready}</span><span>{cwd ? <><FolderOpen size={12} />{displayPath(cwd)}</> : <button onClick={addProject}>{t.openProject}</button>}</span></div>
             <SessionUsage session={session} language={bootstrap.preferences.language} cache={usageCache.current} onAdvanced={() => { if (session) setContextTarget(sessionKey(session)); }} />

@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import modelFields from './provider-model-fields.json' with { type: 'json' };
+import { inferredModelCapabilities } from './model-metadata.mjs';
 
 const protocols = new Set(['openai-completions', 'openai-responses', 'anthropic-messages']);
 const record = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -88,8 +89,11 @@ export function mergeProvider(config, input) {
   if (!ids.length) throw Error('Enter at least one model ID.');
   const oldModels = Array.isArray(previous.models) ? previous.models : [];
   if (input.modelSettings !== undefined && !record(input.modelSettings)) throw Error('Model settings must be an object.');
+  if (input.discoveredModels !== undefined && !Array.isArray(input.discoveredModels)) throw Error('模型发现结果必须是列表。');
   const models = ids.map(id => {
     const model = applyFields(oldModels.find(model => model.id === id) ?? { id }, input.modelSettings?.[id], modelFields);
+    const inferred = inferredModelCapabilities(id, input.discoveredModels?.find(model => model.id === id)).fields;
+    for (const [field, value] of Object.entries(inferred)) if (model[field] === undefined) model[field] = value;
     validateModel(model);
     return model;
   });
@@ -119,7 +123,10 @@ export function modelRows(body) {
   const models = new Map();
   for (const value of values) {
     const id = typeof value === 'string' ? value : typeof value?.id === 'string' ? value.id : typeof value?.name === 'string' ? value.name.replace(/^models\//, '') : '';
-    if (id) models.set(id, { id, ...(typeof value?.display_name === 'string' ? { name: value.display_name } : {}) });
+    if (id) {
+      const inferred = inferredModelCapabilities(id, value);
+      models.set(id, { id, ...(typeof value?.display_name === 'string' ? { name: value.display_name } : {}), ...inferred.fields, maxInputTokens: inferred.maxInputTokens, capabilitySource: inferred.source });
+    }
   }
   return [...models.values()];
 }

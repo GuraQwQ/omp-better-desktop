@@ -7,6 +7,8 @@ import { displayPath } from '../lib/display-path';
 import { applyModelSelection } from '../lib/provider-models';
 import modelFields from '../../src-tauri/src/provider-model-fields.json';
 import Select from './Select';
+import ProviderCompaction from './ProviderCompaction';
+import { capabilityFields, inferredModelCapabilities, readModelCapabilities } from '../../src-tauri/src/model-metadata.mjs';
 import './custom-providers.css';
 
 interface Provider { id: string; api: string; baseUrl: string; hasApiKey: boolean; models: (Json & { id: string })[]; options: Json }
@@ -37,7 +39,7 @@ function HeadersEditor({ value, onChange, disabled, label, add, remove }: { valu
   return <div className="provider-headers"><span>{label}</span>{rows.map(([key, text], index) => <div className="provider-header-row" key={index}><input aria-label={`${label} ${index + 1} key`} value={key} disabled={disabled} placeholder="Header" onChange={event => change(rows.map((row, i) => i === index ? [event.target.value, text] : row))} /><input aria-label={`${label} ${index + 1} value`} value={text} disabled={disabled} placeholder="Value" onChange={event => change(rows.map((row, i) => i === index ? [key, event.target.value] : row))} /><button type="button" className="quiet-button" disabled={disabled} aria-label={`${remove} ${key || index + 1}`} onClick={() => change(rows.filter((_, i) => i !== index))}>{remove}</button></div>)}<button type="button" className="quiet-button" disabled={disabled} onClick={() => setRows([...rows, ['', '']])}>{add}</button></div>;
 }
 
-export default function CustomProviders({ bootstrap, t, cwd }: { bootstrap: Bootstrap; t: Copy; cwd: string }) {
+export default function CustomProviders({ bootstrap, t, cwd, sessionId, ensureSession }: { bootstrap: Bootstrap; t: Copy; cwd: string; sessionId?: string; ensureSession?: () => Promise<string> }) {
   const [configuration, setConfiguration] = useState<Configuration | null>(null);
   const [selected, setSelected] = useState('');
   const [id, setId] = useState('');
@@ -45,7 +47,7 @@ export default function CustomProviders({ bootstrap, t, cwd }: { bootstrap: Boot
   const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [modelIds, setModelIds] = useState('');
-  const [models, setModels] = useState<{ id: string; name?: string }[]>([]);
+  const [models, setModels] = useState<(Json & { id: string; name?: string })[]>([]);
   const [modelPicker, setModelPicker] = useState(false);
   const [modelQuery, setModelQuery] = useState('');
   const [checkedModels, setCheckedModels] = useState<Set<string>>(new Set());
@@ -79,6 +81,8 @@ export default function CustomProviders({ bootstrap, t, cwd }: { bootstrap: Boot
   const availableIds = ids;
   const activeModel = availableIds.includes(modelSelection) ? modelSelection : availableIds[0] ?? '';
   const currentModel = modelSettings[activeModel] ?? {};
+  const inferred = inferredModelCapabilities(activeModel, models.find(model => model.id === activeModel));
+  const effectiveModel = { ...inferred.fields, ...Object.fromEntries(Object.entries(currentModel).filter(([, value]) => value != null)) };
   const load = useCallback(async () => {
     const current = ++contextRevision.current;
     revision.current++;
@@ -97,7 +101,7 @@ export default function CustomProviders({ bootstrap, t, cwd }: { bootstrap: Boot
     const current = ++revision.current;
     setWorking('fetch'); setError('');
     try {
-      const result = await request<{ models: { id: string; name?: string }[] }>('providers.discover', { cwd, provider: { id, api, baseUrl, apiKey, options } });
+      const result = await request<{ models: (Json & { id: string; name?: string })[] }>('providers.discover', { cwd, provider: { id, api, baseUrl, apiKey, options } });
       if (revision.current === current) {
         if (result.models.length) { setModels(result.models); setCheckedModels(new Set(currentIds.current)); setModelQuery(''); setModelPicker(true); }
         else setError(t.providerNoModels);
@@ -165,19 +169,22 @@ export default function CustomProviders({ bootstrap, t, cwd }: { bootstrap: Boot
         <div className="provider-model-heading"><span>{t.providerModels}</span><button ref={fetchButton} type="button" className="quiet-button" disabled={!!working || !baseUrl.trim() || needsKey && !hasKey} onClick={() => void discover()}><RefreshCw size={13} className={working === 'fetch' ? 'spin' : ''} />{working === 'fetch' ? t.loading : t.fetchModels}</button></div>
         <textarea aria-label={t.providerModels} value={modelIds} rows={4} required disabled={locked} placeholder={t.modelIdsHint} onChange={event => { setModelIds(event.target.value); setNotice(''); }} />
         <details className="provider-advanced"><summary><ChevronRight size={14} />{text.advanced}</summary><div className="provider-advanced-content">
+          <ProviderCompaction provider={id.trim()} model={activeModel} sessionId={sessionId} ensureSession={ensureSession} language={bootstrap.preferences.language} />
           <div className="provider-fields"><label>{text.authentication}<Select label={text.authentication} value={options.auth ?? ''} disabled={locked} onChange={value => setOption('auth', value || null)} options={[{ value: '', label: text.standard }, { value: 'apiKey', label: t.apiKey }, { value: 'none', label: text.noAuth }, { value: 'oauth', label: 'OAuth' }]} /></label><label>{text.transport}<Select label={text.transport} value={options.transport ?? ''} disabled={locked} onChange={value => setOption('transport', value || null)} options={[{ value: '', label: text.standard }, { value: 'pi-native', label: text.native }]} /></label></div>
           <div className="provider-fields">{optionalBoolean(text.authHeader, options.authHeader, value => setOption('authHeader', value))}{optionalBoolean(text.strict, options.disableStrictTools, value => setOption('disableStrictTools', value))}</div>
           <HeadersEditor value={options.headers} onChange={value => setOption('headers', value)} disabled={locked} label={text.headers} add={text.addHeader} remove={t.remove} />
           <label>{text.compatibility}<textarea rows={3} value={compat} disabled={locked} spellCheck={false} placeholder="{}" onChange={event => { setCompat(event.target.value); setNotice(''); }} /></label>
           {activeModel && <section className="provider-model-options"><h4>{text.model}</h4><p className="provider-scope">{text.defaults}</p><Select label={text.model} value={activeModel} disabled={locked} onChange={setModelSelection} options={availableIds.map(value => ({ value, label: value }))} />
+            <div className="provider-model-capabilities"><p className="provider-scope">{zh ? '当前能力' : 'Effective capabilities'} · {effectiveModel.contextWindow ? Number(effectiveModel.contextWindow).toLocaleString() : (zh ? '上下文待配置' : 'Configure context')} · {effectiveModel.input?.map((value: string) => zh ? value === 'text' ? '文本' : '图片' : value).join(' / ') ?? (zh ? '输入待配置' : 'Configure input')}</p>{inferred.maxInputTokens && <p className="provider-scope">{zh ? '供应商最大输入' : 'Provider maximum input'}：{inferred.maxInputTokens.toLocaleString()} tokens</p>}{inferred.source && <small className="provider-scope">{inferred.source === 'api' ? (zh ? '来自供应商接口与目录补全' : 'Provider API with catalog fallback') : inferred.source.startsWith('https:') ? <a href={inferred.source} target="_blank" rel="noreferrer">{zh ? '官方能力说明' : 'Official capabilities'}</a> : inferred.source}</small>}{inferred.modalities?.some(value => !['text', 'image'].includes(value)) && <p className="provider-scope">{zh ? `供应商支持 ${inferred.modalities.join(' / ')}；当前 OMP 输入通道为文本与图片。` : `Provider accepts ${inferred.modalities.join(' / ')}; OMP currently sends text and images.`}</p>}</div>
             <div className="provider-fields"><label>{text.name}<input value={currentModel.name ?? ''} disabled={locked} placeholder={text.standard} onChange={event => setModelOption('name', event.target.value || null)} /></label><label>{t.protocol}<Select label={t.protocol} value={currentModel.api ?? ''} disabled={locked} onChange={value => setModelOption('api', value || null)} options={[{ value: '', label: text.standard }, ...protocols, ...(currentModel.api && !protocols.some(option => option.value === currentModel.api) ? [{ value: currentModel.api, label: currentModel.api }] : [])]} /></label></div>
             <label>{t.baseUrl}<input type="url" value={currentModel.baseUrl ?? ''} disabled={locked} placeholder={text.standard} onChange={event => setModelOption('baseUrl', event.target.value || null)} /></label>
-            <div className="provider-model-numbers">{[['contextWindow', text.context], ['maxContextWindow', text.extended], ['maxTokens', text.output]].map(([key, label]) => <label key={key}>{label}<input type="number" min="1" step="1" disabled={locked} value={currentModel[key] ?? ''} placeholder={text.standard} onChange={event => setModelOption(key, event.target.value === '' ? null : Number(event.target.value))} /></label>)}</div>
+            <div className="provider-model-numbers">{[['contextWindow', text.context], ['maxContextWindow', text.extended], ['maxTokens', text.output]].map(([key, label]) => <label key={key}>{label}<input type="number" min="1" step="1" disabled={locked} value={currentModel[key] ?? ''} placeholder={inferred.fields[key as keyof typeof inferred.fields]?.toLocaleString() ?? text.standard} onChange={event => setModelOption(key, event.target.value === '' ? null : Number(event.target.value))} /></label>)}</div>
             <div className="provider-fields">{optionalBoolean(text.reasoning, currentModel.reasoning, value => setModelOption('reasoning', value))}<label>{text.input}<Select label={text.input} value={currentModel.input?.join(',') ?? ''} disabled={locked} onChange={value => setModelOption('input', value ? value.split(',') : null)} options={[{ value: '', label: text.standard }, { value: 'text', label: text.text }, { value: 'text,image', label: text.textImage }, { value: 'image', label: text.image }]} /></label>{optionalBoolean(text.tools, currentModel.supportsTools, value => setModelOption('supportsTools', value))}{optionalBoolean(text.omitOutput, currentModel.omitMaxOutputTokens, value => setModelOption('omitMaxOutputTokens', value))}{optionalBoolean(text.websockets, currentModel.preferWebsockets, value => setModelOption('preferWebsockets', value))}<label>{text.compression}<input value={currentModel.compactionModel ?? ''} disabled={locked} placeholder={text.standard} onChange={event => setModelOption('compactionModel', event.target.value || null)} /></label></div>
             <div className="provider-costs"><strong>{text.cost}</strong><div className="provider-fields">{[['input', text.inputCost], ['output', text.outputCost], ['cacheRead', text.cacheReadCost], ['cacheWrite', text.cacheWriteCost]].map(([key, label]) => <label key={key}>{label}<input type="number" min="0" step="any" disabled={locked} value={currentModel.cost?.[key] ?? ''} placeholder={text.standard} onChange={event => { const next = { ...currentModel.cost }; if (event.target.value === '') delete next[key]; else next[key] = Number(event.target.value); setModelOption('cost', Object.keys(next).length ? next : null); }} /></label>)}</div><small>{text.costHint}</small></div>
             <HeadersEditor key={activeModel} value={currentModel.headers} onChange={value => setModelOption('headers', value)} disabled={locked} label={text.headers} add={text.addHeader} remove={t.remove} />
             <label>{text.compatibility}<textarea rows={3} value={modelCompat[activeModel] ?? ''} disabled={locked} spellCheck={false} placeholder="{}" onChange={event => { if (!ids.includes(activeModel)) setModelIds([...ids, activeModel].join('\n')); setModelCompat(previous => ({ ...previous, [activeModel]: event.target.value })); setNotice(''); }} /></label>
             <button type="button" className="quiet-button" disabled={locked} onClick={() => { setModelSettings(previous => ({ ...previous, [activeModel]: Object.fromEntries(modelFields.map(key => [key, null])) })); setModelCompat(previous => ({ ...previous, [activeModel]: '' })); setNotice(''); }}>{text.reset}</button>
+            {inferred.source && <button type="button" className="quiet-button" disabled={locked} onClick={() => { setModelSettings(previous => ({ ...previous, [activeModel]: { ...previous[activeModel], ...Object.fromEntries(capabilityFields.map(field => [field, inferred.fields[field] ?? null])) } })); setNotice(''); }}>{zh ? '采用识别能力' : 'Use detected capabilities'}</button>}
           </section>}
         </div></details>
         {error && <p className="provider-error" role="alert">{error}</p>}{notice && <p className="provider-notice" role="status">{notice}</p>}
@@ -187,7 +194,7 @@ export default function CustomProviders({ bootstrap, t, cwd }: { bootstrap: Boot
         <header><h3 id="provider-model-dialog-title">{zh ? '选择要保留的模型' : 'Choose models to keep'}</h3><span role="status">{models.filter(model => checkedModels.has(model.id)).length} / {models.length}</span></header>
         <div className="provider-model-search"><input type="search" autoFocus aria-label={t.search} placeholder={t.search} value={modelQuery} onChange={event => setModelQuery(event.target.value)} /><div><button type="button" className="quiet-button" onClick={() => setCheckedModels(new Set(models.map(model => model.id)))}>{zh ? '全选' : 'Select all'}</button><button type="button" className="quiet-button" onClick={() => setCheckedModels(new Set())}>{zh ? '取消全选' : 'Clear selection'}</button></div></div>
         <div className="provider-model-list">{visibleModels.map(model => <label key={model.id}><input type="checkbox" checked={checkedModels.has(model.id)} onChange={event => setCheckedModels(previous => { const next = new Set(previous); if (event.target.checked) next.add(model.id); else next.delete(model.id); return next; })} /><span><strong>{model.name ?? model.id}</strong>{model.name && model.name !== model.id && <small>{model.id}</small>}</span></label>)}{!visibleModels.length && <p role="status">{t.noResults}</p>}</div>
-        <footer><button type="button" className="quiet-button" onClick={() => setModelPicker(false)}>{t.cancel}</button><button type="button" className="secondary-button" onClick={() => { setModelIds(previous => applyModelSelection(modelList(previous), models, checkedModels).join('\n')); setModelPicker(false); setNotice(''); }}>{zh ? '确认保留' : 'Keep selected'}</button></footer>
+        <footer><button type="button" className="quiet-button" onClick={() => setModelPicker(false)}>{t.cancel}</button><button type="button" className="secondary-button" onClick={() => { setModelIds(previous => applyModelSelection(modelList(previous), models, checkedModels).join('\n')); setModelSettings(previous => ({ ...previous, ...Object.fromEntries(models.filter(model => checkedModels.has(model.id)).map(model => [model.id, { ...readModelCapabilities(model), ...previous[model.id] }])) })); setModelPicker(false); setNotice(''); }}>{zh ? '确认保留' : 'Keep selected'}</button></footer>
       </dialog>
     </>}
   </div>;

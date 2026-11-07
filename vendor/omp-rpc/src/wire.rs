@@ -5222,6 +5222,8 @@ pub struct DesktopSettingsParams {
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub key: Option<String>,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub entry: Option<String>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub value: Option<Value>,
 }
 
@@ -5737,6 +5739,9 @@ pub struct BtwParams {
 	pub question: String,
 	#[serde(rename = "recordId", default, skip_serializing_if = "Option::is_none")]
 	pub record_id: Option<String>,
+	/// Images attached to the message.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub images: Option<Vec<ImageContent>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -6233,6 +6238,8 @@ pub struct DesktopSettingsCommand {
 	pub operation: DesktopSettingsParamsOperation,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub key: Option<String>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub entry: Option<String>,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub value: Option<Value>,
 }
@@ -7492,6 +7499,9 @@ pub struct BtwCommand {
 	pub question: String,
 	#[serde(rename = "recordId", default, skip_serializing_if = "Option::is_none")]
 	pub record_id: Option<String>,
+	/// Images attached to the message.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub images: Option<Vec<ImageContent>>,
 }
 
 impl Command for BtwCommand {

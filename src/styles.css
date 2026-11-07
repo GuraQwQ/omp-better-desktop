@@ -1,5 +1,6 @@
 @import url('./tokens.css');
 @import url('./motion.css');
+@import url('./components/choice-controls.css');
 
 * { box-sizing: border-box; }
 body { margin: 0; font-family: var(--font-ui); font-size: 13px; font-weight: var(--weight-normal); line-height: 1.5; background: var(--surface); color: var(--text); -webkit-font-smoothing: antialiased; }

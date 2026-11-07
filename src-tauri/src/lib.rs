@@ -1,6 +1,8 @@
 mod attachments;
 mod bootstrap;
 mod browser_login;
+mod desktop_extras;
+mod desktop_tools;
 mod history;
 mod launch;
 mod platform;
@@ -8,9 +10,12 @@ mod providers;
 mod questions;
 mod request_capture;
 mod runtime_diagnostics;
+mod session_library;
 mod sessions;
+mod shells;
 mod storage;
 mod workspace;
+mod workspace_tools;
 
 use serde_json::{Value, json};
 use std::{
@@ -26,6 +31,7 @@ use tauri::{Emitter, Manager};
 pub struct Desktop {
     root: PathBuf,
     sessions: sessions::Sessions,
+    shells: shells::Shells,
     configuration: Mutex<()>,
     data_access: std::sync::RwLock<()>,
     exiting: AtomicBool,
@@ -98,9 +104,33 @@ fn set_preferences(root: &Path, patch: &Value) -> Result<Value, String> {
             "theme" if matches!(value.as_str(), Some("system" | "light" | "dark")) => {}
             "motion" if matches!(value.as_str(), Some("rich" | "normal" | "reduced")) => {}
             "showTurnNumber" | "notifyOnDone" | "asyncQuestions" if value.is_boolean() => {}
+            "features"
+                if value.as_object().is_some_and(|values| {
+                    values.iter().all(|(key, value)| {
+                        matches!(
+                            key.as_str(),
+                            "reviews" | "browser" | "cards" | "externalSessions"
+                        ) && value.is_boolean()
+                    })
+                }) => {}
+            "shortcuts"
+                if value.as_object().is_some_and(|values| {
+                    values
+                        .values()
+                        .all(|value| value.as_str().is_some_and(|text| text.len() <= 80))
+                }) => {}
             _ => return Err(format!("Invalid preference {key}")),
         };
-        cfg["preferences"][key] = value.clone();
+        if key == "features" {
+            let mut values = cfg["preferences"][key]
+                .as_object()
+                .cloned()
+                .unwrap_or_default();
+            values.extend(value.as_object().unwrap().clone());
+            cfg["preferences"][key] = Value::Object(values);
+        } else {
+            cfg["preferences"][key] = value.clone();
+        }
     }
     save(&root.join("desktop.json"), &cfg)?;
     Ok(cfg["preferences"].clone())
@@ -177,7 +207,15 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
         }
         "preferences.set" => {
             let _lock = desktop.configuration.lock().unwrap();
-            set_preferences(root, &request["patch"])
+            let preferences = set_preferences(root, &request["patch"])?;
+            if preferences["features"]["cards"] != true {
+                for (label, window) in app.webview_windows() {
+                    if label.starts_with("card-") {
+                        let _ = window.close();
+                    }
+                }
+            }
+            Ok(preferences)
         }
         "runtime.install" | "runtime.rollback" | "runtime.clean" | "data.import"
         | "data.takeover" => {
@@ -253,10 +291,49 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
             save(&root.join("desktop.json"), &cfg)?;
             Ok(cfg["projects"].clone())
         }
-        "attachment.paths" | "attachment.store" | "attachment.clipboard" | "attachment.discard" => {
-            attachments::execute(root, &request)
+        "attachment.paths"
+        | "attachment.store"
+        | "attachment.clipboard"
+        | "attachment.discard"
+        | "attachment.btw" => attachments::execute(root, &request),
+        "session.list" => session_library::list(root, request["cwd"].as_str(), false),
+        "session.search" | "session.locate" | "session.after" | "session.archive"
+        | "session.archives" | "usage.summary" => session_library::execute(root, &request),
+        "external.sessions" | "external.history" => {
+            if config(root)?["preferences"]["features"]["externalSessions"] != true {
+                return Err("请先在设置中开启外部会话查看。".into());
+            }
+            session_library::execute(root, &request)
         }
-        "session.list" => history::list(root, request["cwd"].as_str()),
+        "workspace.search"
+        | "workspace.search.cancel"
+        | "file.get"
+        | "file.save"
+        | "git.status"
+        | "git.diff"
+        | "git.stage"
+        | "git.unstage"
+        | "git.commit"
+        | "worktree.list"
+        | "worktree.add"
+        | "worktree.remove" => {
+            workspace_tools::execute(Path::new(request["cwd"].as_str().unwrap_or(".")), &request)
+        }
+        operation if operation.starts_with("shell.") => {
+            desktop.shells.execute(app.clone(), root, &request)
+        }
+        operation
+            if operation.starts_with("artifact.")
+                || operation.starts_with("layout.")
+                || operation.starts_with("schedule.")
+                || operation.starts_with("desktop.state.")
+                || operation == "export.markdown" =>
+        {
+            desktop_tools::execute(root, &request)
+        }
+        operation if operation.starts_with("browser.") || operation.starts_with("card.") => {
+            desktop_extras::execute(app.clone(), root, &request)
+        }
         "session.history" => history::page(
             root,
             Path::new(text(&request, "path")?),
@@ -334,37 +411,7 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
                 json!({"stdout":String::from_utf8_lossy(&output.stdout),"stderr":String::from_utf8_lossy(&output.stderr),"code":output.status.code()}),
             )
         }
-        "system.open_url" => {
-            let url = text(&request, "url")?;
-            if !url.starts_with("https://")
-                && !url.starts_with("http://localhost")
-                && !url.starts_with("http://127.0.0.1")
-            {
-                return Err("Unsupported URL scheme".into());
-            }
-            #[cfg(windows)]
-            {
-                platform::hidden(
-                    std::process::Command::new("rundll32.exe")
-                        .arg("url.dll,FileProtocolHandler")
-                        .arg(url),
-                )
-                .spawn()
-                .map_err(|e| e.to_string())?;
-            }
-            #[cfg(not(windows))]
-            {
-                std::process::Command::new(if cfg!(target_os = "macos") {
-                    "open"
-                } else {
-                    "xdg-open"
-                })
-                .arg(url)
-                .spawn()
-                .map_err(|e| e.to_string())?;
-            }
-            Ok(Value::Null)
-        }
+        "system.open_url" => desktop_extras::open_url(text(&request, "url")?),
         other => Err(format!("Unknown desktop command: {other}")),
     }
 }
@@ -391,11 +438,18 @@ pub fn run() {
     let mut context = tauri::generate_context!();
     context.config_mut().app.windows[0].create = false;
     let app = tauri::Builder::default()
+        .register_uri_scheme_protocol("artifact", |context, request| {
+            desktop_extras::artifact_response(
+                &context.app_handle().state::<Desktop>().root,
+                request,
+            )
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .manage(Desktop {
             root,
             sessions: sessions::Sessions::default(),
+            shells: shells::Shells::default(),
             configuration: Mutex::new(()),
             data_access: std::sync::RwLock::new(()),
             exiting: AtomicBool::new(false),
@@ -430,6 +484,7 @@ pub fn run() {
                 let _ = app.emit("desktop-shutdown", ());
                 std::thread::spawn(move || {
                     handle.state::<Desktop>().sessions.shutdown();
+                    handle.state::<Desktop>().shells.shutdown();
                     handle.exit(0);
                 });
             }
