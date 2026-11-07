@@ -12,6 +12,9 @@ import { messageText } from '../lib/session-state';
 import { isStoppedMessage, projectTranscript, type TranscriptItem } from '../lib/transcript-items';
 import type { Copy as CopyText } from '../lib/i18n';
 import type { ContentBlock, Message } from '../lib/types';
+import { displayUserPrompt } from '../lib/genui-prompt';
+import { collectGenUIRepairs, type GenUIRepairs } from '../lib/genui';
+import type { GenUIConfiguration } from '../lib/genui-config';
 import { selectionMenuPosition } from '../lib/selection-menu';
 import './desktop-tools.css';
 import { createMessageReference, createToolCallReference, parseReferencedPrompt, type ConversationReference, type ReferenceSource, type SelectionContext } from '../lib/references';
@@ -20,6 +23,8 @@ import type { SideQuestionThreadSummary } from '../lib/side-questions';
 import { ReferenceCards } from './ComposerReferences';
 import SideQuestionMarkers from './SideQuestionMarkers';
 
+const RichMessage = lazy(() => import('./RichMessage'));
+type GenUIContext = { configuration: GenUIConfiguration; sessionId?: string; sessionKey?: string; cwd: string; language: 'zh' | 'en'; onSend: (text: string) => void };
 
 type Activity = { kind: 'compaction' | 'retry'; since: number; attempt?: number; maxAttempts?: number };
 type Row = TranscriptItem | { kind: 'working'; id: string };
@@ -59,13 +64,14 @@ function CollapsedBlock({ block, t, active, stopped, live, onReference }: { bloc
   </details>;
 }
 
-const MessageView = memo(function MessageView({ message, t, disabled, active, live, turn, edit, retry, onReference, sideQuestionThreads, onSideQuestionThread }: { message: Message; t: CopyText; disabled: boolean; active: boolean; live: boolean; turn?: number; edit?: (message: Message) => void; retry?: () => void; onReference?: (message: Message, block?: ContentBlock) => void; sideQuestionThreads?: SideQuestionThreadSummary[]; onSideQuestionThread?: (id: string) => void }) {
+const MessageView = memo(function MessageView({ message, t, disabled, active, live, turn, edit, retry, genui, repairs, onReference, sideQuestionThreads, onSideQuestionThread }: { message: Message; t: CopyText; disabled: boolean; active: boolean; live: boolean; turn?: number; edit?: (message: Message) => void; retry?: () => void; genui?: GenUIContext; repairs?: GenUIRepairs; onReference?: (message: Message, block?: ContentBlock) => void; sideQuestionThreads?: SideQuestionThreadSummary[]; onSideQuestionThread?: (id: string) => void }) {
   const text = messageText(message);
   const stopped = isStoppedMessage(message);
   const activityOnly = message.role === 'assistant' && !stopped && !message.errorMessage && Array.isArray(message.content) && message.content.length > 0 && message.content.every(block => block?.type === 'thinking' || block?.type === 'toolCall');
+  const rich = genui?.configuration.enabled && message.role === 'assistant';
   const renderText = (value: string, key?: number) => {
-    const prompt = message.role === 'user' ? parseReferencedPrompt(value) : { body: value, references: [] };
-    return <div key={key} className="message-reference-text"><ReferenceCards references={prompt.references} /><div data-reference-kind="text"><Markdown text={prompt.body} t={t} live={live && message.role === 'assistant'} /></div></div>;
+    const prompt = message.role === 'user' ? parseReferencedPrompt(displayUserPrompt(value)) : { body: value, references: [] };
+    return <div key={key} className="message-reference-text"><ReferenceCards references={prompt.references} /><div data-reference-kind="text">{rich ? <Suspense fallback={<Markdown text={value} t={t} live={live} />}><RichMessage text={value} id={key === undefined ? message.id : `${message.id}-${key}`} {...genui!} isStreaming={live} repairs={repairs} /></Suspense> : <Markdown text={prompt.body} t={t} live={live && message.role === 'assistant'} />}</div></div>;
   };
   return <article data-message-id={message.id} className={`message message-${message.role}${activityOnly ? ' message-activity' : ''}${live ? ' is-streaming' : ''}`}>
     {message.role === 'user' && <div className="message-label">{t.you}</div>}
@@ -79,10 +85,11 @@ const MessageView = memo(function MessageView({ message, t, disabled, active, li
   </article>;
 });
 
-export default function Transcript({ restoreKey, pinNonce = 0, showTurns = true, messages: source, t, busy, activity, runStartedAt, loadEarlier, loadLater, loadingEarlier = false, onEdit, onRetry, actionsDisabled = false, targetMessageId, onSelection, referenceSource = {}, onReference, sideQuestionThreads, onSideQuestionThread }: { restoreKey: string; pinNonce?: number; showTurns?: boolean; messages: Message[]; t: CopyText; busy: boolean; activity?: Activity; runStartedAt?: number; loadEarlier?: () => void; loadLater?: () => void; loadingEarlier?: boolean; onEdit?: (message: Message) => void; onRetry?: () => void; actionsDisabled?: boolean; targetMessageId?: string; onSelection?: (text: string, action: 'quote' | 'note' | 'btw', context?: SelectionContext) => void; referenceSource?: ReferenceSource; onReference?: (references: ConversationReference[]) => void; sideQuestionThreads?: SideQuestionThreadSummary[]; onSideQuestionThread?: (id: string) => void }) {
+export default function Transcript({ restoreKey, pinNonce = 0, showTurns = true, messages: source, t, busy, activity, runStartedAt, loadEarlier, loadLater, loadingEarlier = false, onEdit, onRetry, actionsDisabled = false, genui, targetMessageId, onSelection, referenceSource = {}, onReference, sideQuestionThreads, onSideQuestionThread }: { restoreKey: string; pinNonce?: number; showTurns?: boolean; messages: Message[]; t: CopyText; busy: boolean; activity?: Activity; runStartedAt?: number; loadEarlier?: () => void; loadLater?: () => void; loadingEarlier?: boolean; onEdit?: (message: Message) => void; onRetry?: () => void; actionsDisabled?: boolean; genui?: GenUIContext; targetMessageId?: string; onSelection?: (text: string, action: 'quote' | 'note' | 'btw', context?: SelectionContext) => void; referenceSource?: ReferenceSource; onReference?: (references: ConversationReference[]) => void; sideQuestionThreads?: SideQuestionThreadSummary[]; onSideQuestionThread?: (id: string) => void }) {
   const [selection, setSelection] = useState<{ text: string; x: number; y: number; context: SelectionContext } | null>(null);
   const selectionToolbar = useRef<HTMLDivElement>(null);
   const [selectionPosition, setSelectionPosition] = useState({ left: 0, top: 0 });
+  const repairs = useMemo(() => genui?.configuration.enabled ? collectGenUIRepairs(source.filter(message => message.role === 'assistant').map(messageText)) : {}, [source, genui?.configuration.enabled]);
   const items = useMemo(() => projectTranscript(source), [source]);
   const working = busy || !!activity;
   // 等待指示作为虚拟列表的最后一行，贴底时它出现和消失都由列表统一跟随。
@@ -211,7 +218,7 @@ export default function Transcript({ restoreKey, pinNonce = 0, showTurns = true,
         <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
           {virtualizer.getVirtualItems().map(item => {
             const row = rows[item.index];
-            return <div key={item.key} data-index={item.index} className={row.kind === 'message' && row.message.id === targetMessageId ? 'message-search-target' : undefined} ref={virtualizer.measureElement} style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${item.start}px)` }}>{row.kind === 'tools' ? <ToolSteps messages={row.messages} t={t} active={busy} onReference={onReference ? referenceTool : undefined} canReferenceCall={message => toolCalls.has(message.id) || message.args !== undefined} sideQuestionThreads={questionMap} onSideQuestionThread={onSideQuestionThread} /> : row.kind === 'working' ? <Working key={activity?.kind ?? 'run'} t={t} activity={activity} runStartedAt={runStartedAt} /> : <MessageView message={row.message} t={t} disabled={busy || actionsDisabled} active={busy} live={row.message.id === liveId} turn={showTurns && !loadEarlier ? turns.get(row.message.id) : undefined} edit={row.message.role === 'user' ? onEdit : undefined} retry={row.message.id === retryId ? onRetry : undefined} onReference={onReference ? referenceMessage : undefined} sideQuestionThreads={questionMap.get(row.message.id)} onSideQuestionThread={onSideQuestionThread} />}</div>;
+            return <div key={item.key} data-index={item.index} className={row.kind === 'message' && row.message.id === targetMessageId ? 'message-search-target' : undefined} ref={virtualizer.measureElement} style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${item.start}px)` }}>{row.kind === 'tools' ? <ToolSteps messages={row.messages} t={t} active={busy} onReference={onReference ? referenceTool : undefined} canReferenceCall={message => toolCalls.has(message.id) || message.args !== undefined} sideQuestionThreads={questionMap} onSideQuestionThread={onSideQuestionThread} /> : row.kind === 'working' ? <Working key={activity?.kind ?? 'run'} t={t} activity={activity} runStartedAt={runStartedAt} /> : <MessageView message={row.message} t={t} disabled={busy || actionsDisabled} active={busy} live={row.message.id === liveId} turn={showTurns && !loadEarlier ? turns.get(row.message.id) : undefined} edit={row.message.role === 'user' ? onEdit : undefined} retry={row.message.id === retryId ? onRetry : undefined} genui={genui} repairs={repairs} onReference={onReference ? referenceMessage : undefined} sideQuestionThreads={questionMap.get(row.message.id)} onSideQuestionThread={onSideQuestionThread} />}</div>;
           })}
         </div>
         {loadLater && <button className="quiet-button history-more" disabled={loadingEarlier} onClick={loadLater}>{loadingEarlier ? t.loading : '加载后续消息'}</button>}

@@ -3,6 +3,7 @@ mod bootstrap;
 mod browser_login;
 mod desktop_extras;
 mod desktop_tools;
+mod genui;
 mod history;
 mod launch;
 mod platform;
@@ -119,6 +120,14 @@ fn set_preferences(root: &Path, patch: &Value) -> Result<Value, String> {
                         .values()
                         .all(|value| value.as_str().is_some_and(|text| text.len() <= 80))
                 }) => {}
+            "generativeUI"
+                if value.is_object()
+                    && value["enabled"].is_boolean()
+                    && value["components"].is_array()
+                    && value["features"]
+                        .as_object()
+                        .is_some_and(|values| values.values().all(Value::is_boolean))
+                    && value["capabilities"].is_array() => {}
             _ => return Err(format!("Invalid preference {key}")),
         };
         if key == "features" {
@@ -305,6 +314,7 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
             }
             session_library::execute(root, &request)
         }
+        operation if operation.starts_with("genui.") => genui::execute(root, &request),
         "workspace.search"
         | "workspace.search.cancel"
         | "file.get"
@@ -443,6 +453,9 @@ pub fn run() {
                 &context.app_handle().state::<Desktop>().root,
                 request,
             )
+        })
+        .register_uri_scheme_protocol("genui", |_context, request| {
+            genui::document_response(request)
         })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())

@@ -1,7 +1,7 @@
 export type Language = 'en' | 'zh';
 export type MotionLevel = 'rich' | 'normal' | 'reduced';
 export type Json = Record<string, any>;
-export interface Preferences { language: Language; theme: 'system' | 'light' | 'dark'; motion?: MotionLevel; showTurnNumber?: boolean; notifyOnDone?: boolean; asyncQuestions?: boolean; features?: Partial<Record<'reviews' | 'browser' | 'cards' | 'externalSessions', boolean>>; shortcuts?: Record<string, string> }
+export interface Preferences { language: Language; theme: 'system' | 'light' | 'dark'; motion?: MotionLevel; showTurnNumber?: boolean; notifyOnDone?: boolean; asyncQuestions?: boolean; features?: Partial<Record<'reviews' | 'browser' | 'cards' | 'externalSessions', boolean>>; shortcuts?: Record<string, string>; generativeUI?: import('./genui-config').GenUIConfiguration }
 export interface Project { path: string; name: string }
 export interface RuntimeRecord { path: string; version: string; revision?: string }
 export interface Bootstrap { dataRoot: string; runtime: RuntimeRecord | null; preferences: Preferences; projects: Project[] }

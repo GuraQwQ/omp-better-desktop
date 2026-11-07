@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { appendReferences, createMessageReference, createToolCallReference, encodeReferencedPrompt, parseReferencedPrompt, referencePreview } from '../src/lib/references';
+import { displayUserPrompt, genUIPrompt } from '../src/lib/genui-prompt';
 import type { Message } from '../src/lib/types';
 
 const source = { sessionId: 'session-1', sessionPath: 'D:/history/session.jsonl', sessionTitle: '完整来源' };
@@ -15,6 +16,7 @@ const prompt = encodeReferencedPrompt('正文\n后续', references);
 assert.deepEqual(parseReferencedPrompt(prompt), { body: '正文\n后续', references });
 assert.equal(encodeReferencedPrompt('原文', []), '原文');
 for (const value of ['原文', '[omp-desktop-references]\n未完成', '[omp-desktop-references]\n[{}]\n[/omp-desktop-references]\n\n正文']) assert.deepEqual(parseReferencedPrompt(value), { body: value, references: [] });
+assert.deepEqual(parseReferencedPrompt(displayUserPrompt(genUIPrompt('reference-check', prompt, { enabled: true }).message)), { body: '正文\n后续', references });
 const tool: Message = { id: 'result-1', role: 'toolResult', toolCallId: 'call-1', toolName: 'read', args: { path: 'D:/file' }, content: '工具完整输出', result: { details: { extra: '完整详情' } } };
 assert.equal(createToolCallReference(source, tool).content, JSON.stringify(tool.args, null, 2));
 assert.deepEqual(JSON.parse(createMessageReference(source, tool).content), { content: tool.content, result: tool.result });
