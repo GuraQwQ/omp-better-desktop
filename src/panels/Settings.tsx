@@ -12,6 +12,7 @@ import './import-status.css';
 import './omp-settings.css';
 
 const OmpSettings = lazy(() => import('./OmpSettings'));
+const GenerativeUISettings = lazy(() => import('./GenerativeUISettings'));
 const ModelRoles = lazy(() => import('./ModelRoles'));
 const ManagedResources = lazy(() => import('./ManagedResources'));
 const LaunchSettings = lazy(() => import('./LaunchSettings'));
@@ -69,7 +70,7 @@ export default function Settings({ bootstrap, t, sessionId, cwd = '', ensureSess
   const navigation = [
     { group: 'OMP', tabs: [['omp', zh ? 'OMP 配置' : 'OMP settings'], ['models', zh ? '模型角色' : 'Model roles'], ['providers', t.providers]] },
     { group: zh ? '能力' : 'Capabilities', tabs: [['imports', zh ? '发现与导入' : 'Discover & import'], ['mcp', zh ? 'MCP 服务' : 'MCP servers'], ['skills', zh ? '技能' : 'Skills'], ['plugins', zh ? '插件与市场' : 'Plugins'], ['agents', zh ? '代理定义' : 'Agent definitions'], ['resources', zh ? '指令与记忆' : 'Instructions & memory'], ['ssh', zh ? 'SSH 主机' : 'SSH hosts']] },
-    { group: zh ? '应用' : 'Application', tabs: [['general', zh ? '通用' : 'General'], ['appearance', t.appearance], ['shortcuts', zh ? '快捷键' : 'Keyboard shortcuts'], ['launch', zh ? '项目启动配置' : 'Project launch'], ['runtime', t.runtime], ['data', t.data], ['advanced', t.advanced]] },
+    { group: zh ? '应用' : 'Application', tabs: [['general', zh ? '通用' : 'General'], ['appearance', t.appearance], ['shortcuts', zh ? '快捷键' : 'Keyboard shortcuts'], ['generativeUI', zh ? '生成式UI' : 'Generative UI'], ['launch', zh ? '项目启动配置' : 'Project launch'], ['runtime', t.runtime], ['data', t.data], ['advanced', t.advanced]] },
   ];
   const connection = !canConnect ? <p>{t.selectProject}</p> : connectionError ? <div role="alert"><p className="settings-error">{localizeError(connectionError, language)}</p><button className="quiet-button" onClick={() => void reconnect()}><RefreshCw size={14} />{t.refresh}</button></div> : <p role="status">{t.loading}</p>;
   return <div className="settings-page">
@@ -77,6 +78,7 @@ export default function Settings({ bootstrap, t, sessionId, cwd = '', ensureSess
     <div className="settings-layout"><nav className="settings-nav" aria-label={t.settings}>{navigation.map(group => <div key={group.group}><small>{group.group}</small>{group.tabs.map(([id, label]) => <button key={id} aria-current={tab === id ? 'page' : undefined} className={tab === id ? 'active' : ''} onClick={() => { setNotice(''); setTab(id); }}>{label}</button>)}</div>)}</nav>
       <section className="settings-content" key={tab}><Suspense fallback={<p role="status">{t.loading}</p>}>
         {tab === 'shortcuts' && <><h2>{zh ? '快捷键' : 'Keyboard shortcuts'}</h2><p>{zh ? '点击输入框后按下组合键。Mod 对应 Ctrl 或 Command，清空可停用。' : 'Focus an input and press a key combination. Mod means Ctrl or Command; clear to disable.'}</p>{Object.entries(shortcuts).map(([key, shortcut]) => <div className="setting-row" key={key}><label htmlFor={`shortcut-${key}`}>{shortcut.label}</label><input id={`shortcut-${key}`} aria-label={shortcut.label} value={shortcutValue(key as keyof typeof shortcuts, bootstrap.preferences.shortcuts)} onChange={event => void preference({ shortcuts: { ...bootstrap.preferences.shortcuts, [key]: event.target.value } }).catch(onError)} onKeyDown={event => { if (event.key === 'Tab') return; event.preventDefault(); if (['Control', 'Meta', 'Shift', 'Alt'].includes(event.key)) return; const value = event.key === 'Backspace' || event.key === 'Delete' ? '' : [...(event.ctrlKey || event.metaKey ? ['Mod'] : []), ...(event.altKey ? ['Alt'] : []), ...(event.shiftKey ? ['Shift'] : []), event.key.length === 1 ? event.key.toUpperCase() : event.key].join('+'); const values = { ...bootstrap.preferences.shortcuts, [key]: value }; if (value && Object.keys(shortcuts).some(id => id !== key && shortcutValue(id as keyof typeof shortcuts, values).toLowerCase() === value.toLowerCase())) { onError(zh ? '该组合键已用于其他操作。' : 'This shortcut is already assigned.'); return; } void preference({ shortcuts: values }).catch(onError); }} /></div>)}<button className="quiet-button" onClick={() => void preference({ shortcuts: {} }).catch(onError)}>{zh ? '恢复默认' : 'Restore defaults'}</button></>}
+        {tab === 'generativeUI' && <GenerativeUISettings language={language} configuration={bootstrap.preferences.generativeUI} onChange={configuration => preference({ generativeUI: configuration }).then(() => {})} />}
         {tab === 'advanced' && <AdvancedSettings language={bootstrap.preferences.language} />}
         {tab === 'general' && <GeneralPreferences bootstrap={bootstrap} t={t} change={patch => void preference(patch).catch(onError)} />}
         {tab === 'appearance' && <AppearancePreferences bootstrap={bootstrap} t={t} change={patch => void preference(patch).catch(onError)} />}
