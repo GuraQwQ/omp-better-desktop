@@ -83,6 +83,7 @@ try {
   console.log('Installing pinned OMP build dependencies...');
   await run(['bun', 'install', '--ignore-scripts', '--frozen-lockfile'], buildRoot, env);
   await run(['bun', 'run', 'gen:rpc'], buildRoot, env);
+  await run(['bun', 'run', '--filter', './packages/coding-agent', 'check:types'], buildRoot, env);
 
   const nativeCache = path.join(cacheRoot, `natives-${lock.runtimeVersion}-win32-x64`);
   await fs.mkdir(nativeCache, { recursive: true });
