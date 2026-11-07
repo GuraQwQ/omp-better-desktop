@@ -1,0 +1,29 @@
+{
+  "checkedAt": "2026-11-07",
+  "models": [
+    { "id": "gpt-6.1-sol", "source": "https://developers.openai.com/api/docs/models/gpt-6.1-sol", "contextWindow": 1050000, "maxInputTokens": 922000, "maxTokens": 128000, "reasoning": true, "input": ["text", "image"], "supportsTools": true },
+    { "id": "gpt-6-astra", "source": "https://developers.openai.com/api/docs/models/gpt-6-astra", "contextWindow": 1050000, "maxInputTokens": 922000, "maxTokens": 128000, "reasoning": true, "input": ["text", "image"], "supportsTools": true },
+    { "id": "claude-opus-5-5", "source": "https://platform.claude.com/docs/en/models/overview", "contextWindow": 1000000, "maxTokens": 128000, "reasoning": true, "input": ["text", "image"], "supportsTools": true },
+    { "id": "claude-sonnet-5-5", "source": "https://platform.claude.com/docs/en/models/overview", "contextWindow": 1000000, "maxTokens": 128000, "reasoning": true, "input": ["text", "image"], "supportsTools": true },
+    { "id": "claude-haiku-5-5", "source": "https://platform.claude.com/docs/en/models/overview", "contextWindow": 1000000, "maxTokens": 128000, "reasoning": true, "input": ["text", "image"], "supportsTools": true },
+    { "id": "claude-fable-5-1", "source": "https://platform.claude.com/docs/en/models/overview", "contextWindow": 1000000, "maxTokens": 128000, "reasoning": true, "input": ["text", "image"], "supportsTools": true },
+    { "id": "deepseek-flash", "source": "https://api-docs.deepseek.com/quick_start/pricing/", "contextWindow": 1048576, "maxTokens": 393216, "reasoning": true, "input": ["text", "image"], "supportsTools": true },
+    { "id": "deepseek-v4.1-flash", "source": "https://api-docs.deepseek.com/quick_start/pricing/", "contextWindow": 1048576, "maxTokens": 393216, "reasoning": true, "input": ["text", "image"], "supportsTools": true },
+    { "id": "deepseek-v4-pro", "source": "https://api-docs.deepseek.com/quick_start/pricing/", "contextWindow": 1048576, "maxTokens": 393216, "reasoning": true, "input": ["text"], "supportsTools": true },
+    { "id": "glm-5.3", "source": "https://docs.z.ai/guides/llm/glm-5.3", "contextWindow": 1000000, "maxTokens": 131072, "reasoning": true, "input": ["text"], "supportsTools": true },
+    { "id": "grok-4.7", "source": "https://docs.x.ai/developers/models/grok-4.7", "contextWindow": 500000, "reasoning": true, "input": ["text", "image"], "supportsTools": true },
+    { "id": "kimi-k3.1-pro", "source": "https://platform.kimi.ai/docs/guide/kimi-k3-1-pro-quickstart", "contextWindow": 1048576, "reasoning": true, "input": ["text", "image"], "supportsTools": true },
+    { "id": "kimi-k3.1-pro-highspeed", "source": "https://platform.kimi.ai/docs/guide/kimi-k3-1-pro-quickstart", "contextWindow": 1048576, "reasoning": true, "input": ["text", "image"], "supportsTools": true },
+    { "id": "MiniMax-M3.1-Flash", "source": "https://platform.minimax.io/docs/guides/text-generation", "contextWindow": 1000000, "reasoning": true, "input": ["text", "image"], "supportsTools": true, "modalities": ["text", "image", "video"] },
+    { "id": "MiniMax-M3", "source": "https://platform.minimax.io/docs/guides/text-generation", "contextWindow": 1000000, "reasoning": true, "input": ["text", "image"], "supportsTools": true },
+    { "id": "qwen3.8-max", "source": "https://help.aliyun.com/zh/model-studio/qwen3-8-max", "contextWindow": 1000000, "maxTokens": 131072, "reasoning": true, "input": ["text", "image"], "supportsTools": true, "modalities": ["text", "image", "video"] },
+    { "id": "qwen3.8-max-0902", "source": "https://help.aliyun.com/zh/model-studio/qwen3-8-max", "contextWindow": 1000000, "maxTokens": 131072, "reasoning": true, "input": ["text", "image"], "supportsTools": true, "modalities": ["text", "image", "video"] },
+    { "id": "qwen3.8-max-2026-09-02", "source": "https://help.aliyun.com/zh/model-studio/qwen3-8-max", "contextWindow": 1000000, "maxTokens": 131072, "reasoning": true, "input": ["text", "image"], "supportsTools": true, "modalities": ["text", "image", "video"] },
+    { "id": "qwen3.8-flash", "source": "https://help.aliyun.com/zh/model-studio/qwen3-8-flash", "contextWindow": 1000000, "maxTokens": 131072, "reasoning": true, "input": ["text", "image"], "supportsTools": true, "modalities": ["text", "image", "video"] },
+    { "id": "doubao-seed-evolving", "source": "https://www.volcengine.com/docs/82379/1330310", "contextWindow": 1048576, "maxTokens": 262144, "reasoning": true, "input": ["text", "image"], "supportsTools": true },
+    { "id": "doubao-seed-2-1-pro-260915", "source": "https://www.volcengine.com/docs/82379/1330310", "contextWindow": 1048576, "maxTokens": 262144, "reasoning": true, "input": ["text", "image"], "supportsTools": true },
+    { "id": "doubao-seed-2-1-lite-260915", "source": "https://www.volcengine.com/docs/82379/1330310", "contextWindow": 1048576, "maxTokens": 262144, "reasoning": true, "input": ["text", "image"], "supportsTools": true },
+    { "id": "doubao-seed-2-1-pro-260628", "source": "https://www.volcengine.com/docs/82379/1330310", "contextWindow": 262144, "maxTokens": 262144, "reasoning": true, "input": ["text", "image"], "supportsTools": true },
+    { "id": "doubao-seed-2-1-turbo-260628", "source": "https://www.volcengine.com/docs/82379/1330310", "contextWindow": 262144, "maxTokens": 262144, "reasoning": true, "input": ["text", "image"], "supportsTools": true }
+  ]
+}

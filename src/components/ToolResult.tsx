@@ -7,7 +7,10 @@ import FileName from './FileName';
 import Collapse from './Collapse';
 import type { Copy } from '../lib/i18n';
 import type { Json, Message } from '../lib/types';
+import type { SideQuestionThreadSummary } from '../lib/side-questions';
+import SideQuestionMarkers from './SideQuestionMarkers';
 import './tool-result.css';
+import './references.css';
 
 const record = (value: unknown): Json => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Json : {};
 const text = (value: unknown): string => typeof value === 'string' ? value : '';
@@ -46,7 +49,7 @@ function ToolBody({ message, t, active }: { message: Message; t: Copy; active: b
   const diffs = files.length ? files : [{ path, diff: text(details.diff), firstChangedLine: details.firstChangedLine }];
   const hasDiff = kind === 'edit' && diffs.some(file => text(file.diff));
   const images = Array.isArray(message.content) ? message.content.filter(block => block.type === 'image' && block.data && block.mimeType) : [];
-  return <div className="tool-result-body">
+  return <div className="tool-result-body" data-reference-message-id={message.id} data-reference-kind="tool-result">
       {kind === 'bash' && <div className="tool-command-row">{command && <code className="tool-command">$ {command.length > 12_000 ? `${command.slice(0, 12_000)}…` : command}</code>}{exitCode !== null && <span className={`tool-exit ${exitCode !== 0 ? 'is-error' : ''}`}>{t.toolExitCode}: {exitCode}</span>}</div>}
       {kind === 'read' && path && <div className="tool-file-heading"><code><FileName value={path} /></code></div>}
       {hasDiff ? <>{failed && output && <Output value={output} t={t} />}{diffs.map((file, index) => <section className="tool-file-change" key={index}><div className="tool-file-heading"><code><FileName value={text(file.path) || path} /></code>{typeof file.firstChangedLine === 'number' && <span>:{file.firstChangedLine}</span>}</div>{file.isError && (file.displayErrorText || file.errorText) && <Output value={text(file.displayErrorText) || text(file.errorText)} t={t} />}<Output value={text(file.diff)} t={t} diff /></section>)}</> : <Output value={(kind === 'read' ? readText : output) || (message.running ? active ? t.loading : t.stopped : t.emptyOutput)} t={t} numberAt={kind === 'read' && readText ? numberAt : undefined} />}
@@ -55,7 +58,7 @@ function ToolBody({ message, t, active }: { message: Message; t: Copy; active: b
   </div>;
 }
 
-export default function ToolResult({ message, t, active = true, expanded, onExpandedChange }: { message: Message; t: Copy; active?: boolean; expanded?: boolean; onExpandedChange?: (open: boolean) => void }) {
+export default function ToolResult({ message, t, active = true, expanded, onExpandedChange, onReference, canReferenceCall = true, sideQuestionThreads, onSideQuestionThread }: { message: Message; t: Copy; active?: boolean; expanded?: boolean; onExpandedChange?: (open: boolean) => void; onReference?: (kind: 'tool-call' | 'tool-result') => void; canReferenceCall?: boolean; sideQuestionThreads?: SideQuestionThreadSummary[]; onSideQuestionThread?: (id: string) => void }) {
   const [ownOpen, setOwnOpen] = useState(false);
   const open = expanded ?? ownOpen;
   const args = record(message.args);
@@ -71,8 +74,8 @@ export default function ToolResult({ message, t, active = true, expanded, onExpa
   const stopped = !!message.running && !active;
   const status = failed ? t.statusLabels.error : running ? t.running : stopped ? t.stopped : t.done;
   const Icon = kind === 'read' || kind === 'write' ? FileText : kind === 'edit' ? FileDiff : TerminalSquare;
-  return <details className={`tool-result tool-structured ${failed ? 'is-error' : ''}`} open={open} onToggle={event => { if (event.target !== event.currentTarget) return; const next = event.currentTarget.open; setOwnOpen(next); onExpandedChange?.(next); }}>
-    <summary><ChevronRight size={12} aria-hidden="true" /><Icon size={14} aria-hidden="true" /><strong>{toolLabel(kind, t)}</strong>{fileSummary ? <FileName className="tool-summary" value={path} /> : <span className="tool-summary" title={summary.slice(0, 240)}>{summary.slice(0, 140)}</span>}{running && <ToolGenerationRate callId={message.toolCallId} />}<span className="tool-result-status" role="img" aria-label={status} title={status}>{failed ? <X size={13} /> : running ? <LoaderCircle className="spin" size={13} /> : stopped ? <Square size={12} /> : <Check size={13} />}</span></summary>
+  return <details data-message-id={message.id} className={`tool-result tool-structured ${failed ? 'is-error' : ''}`} open={open} onToggle={event => { if (event.target !== event.currentTarget) return; const next = event.currentTarget.open; setOwnOpen(next); onExpandedChange?.(next); }}>
+    <summary><ChevronRight size={12} aria-hidden="true" /><Icon size={14} aria-hidden="true" /><strong>{toolLabel(kind, t)}</strong>{fileSummary ? <FileName className="tool-summary" value={path} /> : <span className="tool-summary" title={summary.slice(0, 240)}>{summary.slice(0, 140)}</span>}{running && <ToolGenerationRate callId={message.toolCallId} />}<SideQuestionMarkers threads={sideQuestionThreads} onOpen={onSideQuestionThread} />{onReference && <span className="tool-reference-actions">{(['tool-call', 'tool-result'] as const).filter(kind => kind === 'tool-result' || canReferenceCall).map(kind => <button type="button" key={kind} title={kind === 'tool-call' ? '引用工具调用' : '引用工具结果'} aria-label={kind === 'tool-call' ? '引用工具调用' : '引用工具结果'} onClick={event => { event.preventDefault(); event.stopPropagation(); onReference(kind); }}>{kind === 'tool-call' ? '引用调用' : '引用结果'}</button>)}</span>}<span className="tool-result-status" role="img" aria-label={status} title={status}>{failed ? <X size={13} /> : running ? <LoaderCircle className="spin" size={13} /> : stopped ? <Square size={12} /> : <Check size={13} />}</span></summary>
     <Collapse open={open}><ToolBody message={message} t={t} active={active} /></Collapse>
   </details>;
 }

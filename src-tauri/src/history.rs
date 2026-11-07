@@ -358,16 +358,68 @@ pub fn page(root: &Path, path: &Path, cursor: Option<&str>, limit: usize) -> Res
         .unwrap_or(index.messages.len())
         .min(index.messages.len());
     let start = end.saturating_sub(limit.clamp(1, 256));
-    let messages: Vec<Value> = index.messages[start..end]
+    let messages = message_range(&index, start, end);
+    Ok(json!({"messages":messages,"nextCursor":if start>0 {Some(start.to_string())}else{None}}))
+}
+
+fn message_range(index: &SessionIndex, start: usize, end: usize) -> Vec<Value> {
+    index.messages[start..end]
         .iter()
         .map(|&row| {
             let row = &index.rows[row];
             let mut message = row["message"].clone();
             message["id"] = row["id"].clone();
+            if message.get("timestamp").is_none() {
+                message["timestamp"] = row["timestamp"].clone();
+            }
             message
         })
-        .collect();
-    Ok(json!({"messages":messages,"nextCursor":if start>0 {Some(start.to_string())}else{None}}))
+        .collect()
+}
+
+pub fn visit_messages(
+    root: &Path,
+    path: &Path,
+    mut visit: impl FnMut(&Value, &Value),
+) -> Result<(), String> {
+    let path = session_path(root, path)?;
+    let index = index(&path)?;
+    for &position in &index.messages {
+        let row = &index.rows[position];
+        visit(&row["message"], row);
+    }
+    Ok(())
+}
+
+pub fn locate(root: &Path, path: &Path, id: &str, limit: usize) -> Result<Value, String> {
+    let path = session_path(root, path)?;
+    let index = index(&path)?;
+    let position = index
+        .messages
+        .iter()
+        .position(|&row| index.rows[row]["id"] == id)
+        .ok_or("目标消息已不在当前会话分支中，请重新搜索。")?;
+    let limit = limit.clamp(1, 256);
+    let end = (position + limit / 2 + 1).min(index.messages.len());
+    let start = end.saturating_sub(limit);
+    Ok(
+        json!({"messages":message_range(&index,start,end),"messageId":id,"nextCursor":if start>0 {Some(start.to_string())}else{None},"afterCursor":if end<index.messages.len() {Some(end.to_string())}else{None}}),
+    )
+}
+
+pub fn after(root: &Path, path: &Path, cursor: &str, limit: usize) -> Result<Value, String> {
+    let path = session_path(root, path)?;
+    let index = index(&path)?;
+    let start = cursor
+        .parse::<usize>()
+        .unwrap_or(index.messages.len())
+        .min(index.messages.len());
+    let end = start
+        .saturating_add(limit.clamp(1, 256))
+        .min(index.messages.len());
+    Ok(
+        json!({"messages":message_range(&index,start,end),"afterCursor":if end<index.messages.len() {Some(end.to_string())}else{None}}),
+    )
 }
 
 pub fn stats(root: &Path, path: &Path) -> Result<Value, String> {

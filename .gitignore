@@ -19,4 +19,5 @@ src-tauri/gen/
 /docs/*
 !/docs/feature-map.md
 !/docs/desktop-contract.md
+!/docs/model-capabilities.md
 /public/agent-icons/

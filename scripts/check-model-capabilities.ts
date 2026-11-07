@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict';
+import { inferredModelCapabilities, lookupModelCapabilities, normalizeModelId, readModelCapabilities } from '../src-tauri/src/model-metadata.mjs';
+import { mergeProvider, modelRows } from '../src-tauri/src/provider-config.mjs';
+import { compactionThresholdChanges, parseCompactionThreshold } from '../src/lib/model-compaction';
+
+for (const id of ['GPT 6.1 SOL', 'openai/GPT-6.1-sol', 'OpenAI.GPT_6.1_SOL', 'gpt-6-1-sol', 'gpt-6.1-sol-20261107']) {
+  assert.equal(inferredModelCapabilities(id).fields.contextWindow, 1050000, id);
+  assert.deepEqual(inferredModelCapabilities(id).fields.input, ['text', 'image']);
+}
+assert.equal(normalizeModelId('us.anthropic.claude-opus-5-5-v1:0'), 'claudeopus55');
+assert.equal(lookupModelCapabilities('gpt-6.2-sol'), undefined);
+assert.equal(lookupModelCapabilities('gpt-6.1-sol-unknown'), undefined);
+assert.equal(lookupModelCapabilities('qwen-3.8-max')?.contextWindow, 1000000);
+assert.equal(lookupModelCapabilities('Grok_4.7')?.contextWindow, 500000);
+assert.equal(lookupModelCapabilities('claude OPUS 5.5')?.contextWindow, 1000000);
+assert.equal(lookupModelCapabilities('gemini 3.8 flash')?.contextWindow, 1048576);
+assert.equal(lookupModelCapabilities('deepseek-flash')?.contextWindow, 1048576);
+assert.equal(lookupModelCapabilities('GLM 5.3')?.input?.includes('image'), false);
+assert.equal(lookupModelCapabilities('Kimi K3.1 Pro Highspeed')?.contextWindow, 1048576);
+assert.equal(lookupModelCapabilities('MiniMax M3.1 Flash')?.contextWindow, 1000000);
+assert.equal(lookupModelCapabilities('doubao seed 2.1 pro 260915')?.contextWindow, 1048576);
+assert.equal(lookupModelCapabilities('doubao-seed-2-1-pro-260628')?.contextWindow, 262144);
+assert.deepEqual(readModelCapabilities({ context_window: '200000', max_output_tokens: 5000, architecture: { input_modalities: ['text', 'image', 'audio'] } }), { contextWindow: 200000, maxTokens: 5000, input: ['text', 'image'] });
+assert.deepEqual(readModelCapabilities({ max_input_tokens: 1000000, max_tokens: 128000, capabilities: { image_input: { supported: true }, thinking: { supported: true } } }), { maxTokens: 128000, reasoning: true, input: ['text', 'image'] });
+assert.deepEqual(readModelCapabilities({ inputTokenLimit: 1048576, outputTokenLimit: 65536 }), { maxTokens: 65536 });
+assert.equal(inferredModelCapabilities('gpt-6.1-sol', { max_input_tokens: 922000, max_output_tokens: 128000 }).fields.contextWindow, 1050000, '最大输入不覆盖总上下文');
+assert.equal(inferredModelCapabilities('gpt-6.1-sol').maxInputTokens, 922000);
+assert.deepEqual(readModelCapabilities({ contextWindow: -1, maxTokens: 2.5, input: ['invalid'], reasoning: 'true' }), {});
+assert.equal(inferredModelCapabilities('gpt-6.1-sol', { context_length: 200000 }).fields.contextWindow, 200000);
+const input = { id: 'proxy', api: 'openai-responses', baseUrl: 'https://example.invalid', apiKey: 'fixture', modelIds: ['GPT 6.1 SOL'] };
+assert.equal(mergeProvider({}, input).providers.proxy.models[0].contextWindow, 1050000);
+const explicit = { providers: { proxy: { apiKey: 'kept', models: [{ id: 'GPT 6.1 SOL', contextWindow: 128000, input: ['text'] }] } } };
+assert.equal(mergeProvider(explicit, { ...input, apiKey: '' }).providers.proxy.models[0].contextWindow, 128000);
+assert.deepEqual(mergeProvider(explicit, { ...input, apiKey: '', modelSettings: { 'GPT 6.1 SOL': { contextWindow: null, input: null } } }).providers.proxy.models[0].input, ['text', 'image']);
+const rows = modelRows({ data: [{ id: 'gpt-6.1-sol', context_length: 200000, top_provider: { max_completion_tokens: 8192 }, architecture: { input_modalities: ['text'] } }] });
+assert.equal(rows[0].contextWindow, 200000); assert.equal(rows[0].maxTokens, 8192); assert.deepEqual(rows[0].input, ['text']);
+assert.deepEqual([parseCompactionThreshold('80%'), parseCompactionThreshold('90k'), parseCompactionThreshold('1M'), parseCompactionThreshold('')], ['80%', 'f90000', 'f1000000', null]);
+for (const input of ['0%', '101%', '-1', '0', '1.1k', 'anything']) assert.throws(() => parseCompactionThreshold(input));
+const thresholds = { 'other/*': '75%', 'proxy/*': '80%', 'proxy/gpt-6.1-sol': 'f500000', 'proxy/kept': 120000 };
+assert.deepEqual(compactionThresholdChanges(thresholds, 'proxy', 'gpt-6.1-sol', '85%', ''), [{ entry: 'proxy/*', value: '85%' }, { entry: 'proxy/gpt-6.1-sol', value: null }]);
+assert.deepEqual(compactionThresholdChanges(thresholds, 'proxy', 'kept', '80%', '120000'), [], '未修改的原生基数不转为固定触发点');
+console.log('模型能力识别、API优先、显式覆盖、供应商与模型压缩阈值检查通过');

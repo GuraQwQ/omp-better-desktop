@@ -1570,6 +1570,7 @@ export interface DesktopManageResult {
 export interface DesktopSettingsParams {
 	operation: "list" | "set" | "unset";
 	key?: string;
+	entry?: string;
 	value?: unknown;
 }
 
@@ -1942,6 +1943,8 @@ export interface PredictWordFeedbackParams {
 export interface BtwParams {
 	question: string;
 	recordId?: string;
+	/** Images attached to the message. */
+	images?: ImageContent[];
 }
 
 export interface BtwResult {

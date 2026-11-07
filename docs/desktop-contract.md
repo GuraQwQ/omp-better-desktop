@@ -100,3 +100,33 @@ OMP 的 RPC、CLI 和内置终端统一设置 `PI_NATIVES_DIR=<dataRoot>/cache/n
 输入框支持粘贴图片、Windows 剪贴板中的本地文件，以及拖入文件或文件夹。图片保留完整预览并以原始图片内容发送；文件卡片显示完整名称与路径，发送时追加路径引用。浏览器提供但没有本地路径的文件保存到数据目录的 `omp/agent/attachments/`，供后续会话读取；明确移除尚未发送的托管附件时同步移除该副本，外部原始文件保持原样。
 
 运行耗时以观察到的 `agent_start` 为起点保存在会话状态，切换会话或重挂载界面保留；任务结束后清除。没有起点的中途恢复会话显示运行状态，收到下一次真实起点后再显示耗时。OMP 连接失败时设置页保留具体阶段和内核标准错误的尾部，支持原地重试。
+
+### 桌面工作区与资料库
+
+通用设置包含轮次显示、后台完成通知、异步提问和四个默认关闭的开关：结构化评审、浏览器工作区入口、浮动任务卡、外部会话查看。外观只管理语言、主题与动效。features 的局部保存合并现有设置，避免快速修改不同开关互相覆盖。勾选与开关统一使用全局控件样式，减少动态效果时保留清晰的最终状态。
+
+| 请求 | 关键字段 | 返回或行为 |
+|---|---|---|
+| workspace.search / workspace.search.cancel | cwd, query, requestId | 遵循忽略规则的全文匹配；可取消 |
+| file.get / file.save | cwd, path, content, baseRevision | 读取版本；保留编码与换行，冲突保留草稿 |
+| git.status / git.diff / git.stage / git.unstage / git.commit | cwd, paths?, message? | 状态、差异与 Git 操作 |
+| worktree.list / worktree.add / worktree.remove | cwd, path?, branch?, ref? | Git 管理工作树 |
+| shell.open/list/read/write/resize/rename/close | cwd?, id?, name?, data?, cols?, rows? | 独立终端；desktop-shell 事件带 id 和单调 seq |
+| session.search / session.locate / session.after | query?, cwd?, path?, messageId?, cursor?, limit? | 正文搜索、目标附近消息、向后分页 |
+| session.archive / session.archives | path?, archived? | 桌面归档元数据与恢复 |
+| usage.summary | cwd? | 用量、模型、项目和日期汇总 |
+| external.sessions / external.history | source, home?, path?, id?, cursor? | 按需只读 Codex JSONL/SQLite 和 ZCode SQLite |
+| artifact.list/add/read/remove | cwd?, path?, id?, name? | 文件登记、HTML/图片/Markdown 预览；移除只删登记 |
+| layout.get/set / desktop.state.get/set | key, value? | 布局、批注、评审和网址历史 |
+| schedule.list/save/claim/started/finish/recover/retry/remove | job?, runId?, sessionId?, status?, id? | 持久计划、独占领取、运行记录与恢复 |
+| export.markdown | path, sessionPath 或 messages, title, mode | 全部记录或助手结果；覆盖需原版本 |
+| browser.open / system.open_url | url | 系统默认浏览器；浏览器工作区开关仅控制其面板 |
+| card.open/sync/get/focus | id, value?, sessionId? | 独立任务卡；关闭设置时收回卡片窗口 |
+
+工作区、资料库和各业务面板分模块维护。App 连接入口与会话；调度和布局在独立 Hook 中，终端生命周期由原生模块管理。Windows 的 ConPTY 主机与终端子进程一起托管，正常关闭、取消和持有者异常退出均回收本次创建的进程。
+
+选段操作栏按点击位置显示，并在视口边缘翻转或夹紧；旁问与批注使用独立侧栏。旁问以稳定会话路径保存问答、选段与草稿，沿用原生 btw 流式事件，并显式携带当前保留的连续问答。清空或逐条删除后，后续请求只使用剩余上下文；迟到事件不能写回已清除的记录，取消绑定原请求的运行会话。清空、持久化或取消失败均保留可重试入口。
+
+配置页复用当前可用连接；当前会话只读或恢复失败时，使用项目内的后台空连接读取 MCP、模型角色与 OMP 配置，关闭设置后回收该连接。
+
+计划任务在应用运行期间执行；重复任务在重开后最多补一次并跳到未来，不重复领取同一计划。中断运行保留记录，手动重试可恢复；保存失败保留表单。Markdown 全量导出从历史文件读取，包含已分页之外的记录。HTML 工具通过独立 artifact 文档协议运行，页面与宿主 IPC 隔离。

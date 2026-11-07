@@ -1,0 +1,88 @@
+diff --git a/packages/coding-agent/src/modes/rpc/desktop.ts b/packages/coding-agent/src/modes/rpc/desktop.ts
+index c6c053c..58e5c43 100644
+--- a/packages/coding-agent/src/modes/rpc/desktop.ts
++++ b/packages/coding-agent/src/modes/rpc/desktop.ts
+@@ -6,6 +6,7 @@ import { BUILTIN_SLASH_COMMANDS_INTERNAL } from "../../slash-commands/builtin-re
+ export interface DesktopSettingsRequest {
+ 	operation: "list" | "set" | "unset";
+ 	key?: string;
++	entry?: string;
+ 	value?: unknown;
+ }
+ 
+@@ -14,7 +15,16 @@ export async function desktopSettings(settings: Settings, request: DesktopSettin
+ 		if (request.operation !== "set" && request.operation !== "unset") throw new Error("Unknown settings operation");
+ 		const setting = request.key ? lookup(request.key) : undefined;
+ 		if (!setting) throw new Error(`Unknown setting: ${request.key ?? ""}`);
+-		if (request.operation === "unset") setting.unset(settings);
++		if (request.entry !== undefined) {
++			if (setting.type !== "record" || typeof request.entry !== "string" || !request.entry.length)
++				throw new Error("记录设置需要有效的目标键");
++			if (request.operation === "unset") setting.setEntry(settings, request.entry, undefined);
++			else {
++				if (!Object.hasOwn(request, "value")) throw new Error("A setting value is required");
++				setting.assertWritable({ [request.entry]: request.value });
++				setting.setEntry(settings, request.entry, request.value);
++			}
++		} else if (request.operation === "unset") setting.unset(settings);
+ 		else {
+ 			if (!Object.hasOwn(request, "value")) throw new Error("A setting value is required");
+ 			setting.assertWritable(request.value);
+diff --git a/packages/coding-agent/src/modes/rpc/rpc-types.ts b/packages/coding-agent/src/modes/rpc/rpc-types.ts
+index 0c9c1c1..916b4d1 100644
+--- a/packages/coding-agent/src/modes/rpc/rpc-types.ts
++++ b/packages/coding-agent/src/modes/rpc/rpc-types.ts
+@@ -66,7 +66,7 @@ export type RpcMessageUpdates = "full" | "delta";
+ 
+ export type RpcCommand =
+ 	| { id?: string; type: "desktop_manage"; resource: string; action: string; args?: Record<string, unknown> }
+-	| { id?: string; type: "desktop_settings"; operation: "list" | "set" | "unset"; key?: string; value?: unknown }
++	| { id?: string; type: "desktop_settings"; operation: "list" | "set" | "unset"; key?: string; entry?: string; value?: unknown }
+ 	| { id?: string; type: "desktop_commands" }
+ 	// Protocol
+ 	| { id?: string; type: "negotiate_protocol"; protocolVersion: number }
+diff --git a/packages/coding-agent/src/modes/rpc/wire/commands.ts b/packages/coding-agent/src/modes/rpc/wire/commands.ts
+index 910d595..7eeff00 100644
+--- a/packages/coding-agent/src/modes/rpc/wire/commands.ts
++++ b/packages/coding-agent/src/modes/rpc/wire/commands.ts
+@@ -59,7 +59,7 @@ export const rpcCommands: readonly RpcCommandSpec[] = [
+ 	{
+ 		name: "desktop_settings",
+ 		doc: "Read or update settings through the runtime registry and persistence layer.",
+-		params: { operation: "'list' | 'set' | 'unset'", "key?": "string", "value?": "unknown" },
++		params: { operation: "'list' | 'set' | 'unset'", "key?": "string", "entry?": "string", "value?": "unknown" },
+ 		result: { settings: "Record<string, unknown>[]" },
+ 	},
+ 	{
+diff --git a/packages/coding-agent/test/desktop-setting-entry.test.ts b/packages/coding-agent/test/desktop-setting-entry.test.ts
+new file mode 100644
+index 0000000..7048b4d
+--- /dev/null
++++ b/packages/coding-agent/test/desktop-setting-entry.test.ts
+@@ -0,0 +1,26 @@
++import { describe, expect, test } from "bun:test";
++import { Settings } from "../src/config/settings";
++import { desktopSettings } from "../src/modes/rpc/desktop";
++
++describe("桌面记录设置逐键修改", () => {
++	test("写入和删除只影响目标键，保留已有阈值", async () => {
++		const settings = Settings.isolated();
++		await desktopSettings(settings, { operation: "set", key: "compaction.modelThresholds", value: { "kept/*": "75%" } });
++		await desktopSettings(settings, { operation: "set", key: "compaction.modelThresholds", entry: "proxy/*", value: "80%" });
++		await desktopSettings(settings, { operation: "set", key: "compaction.modelThresholds", entry: "proxy/gpt-6.1-sol", value: "f500000" });
++		const current = (await desktopSettings(settings, { operation: "list" })) as { settings: { path: string; value: unknown }[] };
++		expect(current.settings.find(row => row.path === "compaction.modelThresholds")?.value).toEqual({ "kept/*": "75%", "proxy/*": "80%", "proxy/gpt-6.1-sol": "f500000" });
++		await desktopSettings(settings, { operation: "unset", key: "compaction.modelThresholds", entry: "proxy/gpt-6.1-sol" });
++		expect(JSON.stringify(settings.getGlobalSettings())).toContain('"kept/*":"75%"');
++		expect(JSON.stringify(settings.getGlobalSettings())).not.toContain("proxy/gpt-6.1-sol");
++	});
++	test("逐键写入不复制高层的其它阈值；无效内容不破坏旧数据", async () => {
++		const settings = Settings.isolated({ "compaction.modelThresholds": { "overlay/*": "90%" } });
++		await desktopSettings(settings, { operation: "set", key: "compaction.modelThresholds", entry: "proxy/*", value: "80%" });
++		const before = JSON.stringify(settings.getGlobalSettings());
++		expect(before).not.toContain("overlay/*");
++		await expect(desktopSettings(settings, { operation: "set", key: "compaction.modelThresholds", entry: "proxy/*", value: "101%" })).rejects.toThrow();
++		expect(JSON.stringify(settings.getGlobalSettings())).toBe(before);
++		await expect(desktopSettings(settings, { operation: "set", key: "compaction.enabled", entry: "invalid", value: true })).rejects.toThrow();
++	});
++});

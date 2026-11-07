@@ -1,10 +1,150 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use std::{
+    collections::HashSet,
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::{Component, Path, PathBuf},
 };
+
+fn btw_payload(request: &Value) -> Result<Value, String> {
+    let mut files = Vec::new();
+    let mut images = Vec::new();
+    let mut warnings = Vec::new();
+    let mut remaining = 256 * 1024usize;
+    let mut image_bytes = 0usize;
+    let mut seen = HashSet::new();
+    let mut pending = request["attachments"]
+        .as_array()
+        .ok_or("附件请求缺少 attachments 数组")?
+        .iter()
+        .rev()
+        .cloned()
+        .collect::<Vec<_>>();
+    while let Some(item) = pending.pop() {
+        if files.len() + images.len() >= 64 || remaining == 0 {
+            warnings.push(
+                "附件较多，本次已读取前 64 个文件或 256 KiB 文本；可按需缩小附件范围。".to_owned(),
+            );
+            break;
+        }
+        if item["type"] == "image" {
+            let bytes = STANDARD
+                .decode(text(&item, "data")?)
+                .map_err(|error| format!("图片附件内容无效：{error}"))?;
+            let mime = image_type(&bytes).ok_or("请使用 PNG、JPEG、GIF 或 WebP 图片附件。")?;
+            image_bytes += bytes.len();
+            if image_bytes > 16 * 1024 * 1024 {
+                return Err("旁问图片合计超过 16 MiB，请缩小图片后重试。".into());
+            }
+            images.push(json!({"type":"image","data":item["data"],"mimeType":mime}));
+            continue;
+        }
+        let supplied = Path::new(text(&item, "path")?);
+        let path = match fs::canonicalize(supplied) {
+            Ok(path) => path,
+            Err(error) => {
+                warnings.push(context("无法读取附件", supplied, error));
+                continue;
+            }
+        };
+        if !seen.insert(path.clone()) {
+            continue;
+        }
+        if path.is_dir() {
+            let mut entries = match fs::read_dir(&path) {
+                Ok(entries) => entries
+                    .collect::<std::io::Result<Vec<_>>>()
+                    .map_err(|error| context("无法读取附件目录", &path, error))?,
+                Err(error) => {
+                    warnings.push(context("无法读取附件目录", &path, error));
+                    continue;
+                }
+            };
+            entries.sort_by_key(|entry| entry.file_name());
+            for entry in entries.into_iter().rev() {
+                if entry.file_name() == ".git" {
+                    continue;
+                }
+                pending.push(json!({"type":"file","path":entry.path()}));
+            }
+            continue;
+        }
+        let mut bytes = Vec::new();
+        match File::open(&path)
+            .and_then(|file| file.take(remaining as u64 + 1).read_to_end(&mut bytes))
+        {
+            Ok(_) => {}
+            Err(error) => {
+                warnings.push(context("无法读取附件", &path, error));
+                continue;
+            }
+        }
+        if let Some(mime) = image_type(&bytes) {
+            let size = fs::metadata(&path)
+                .map_err(|error| context("无法读取图片信息", &path, error))?
+                .len();
+            if size > (16 * 1024 * 1024 - image_bytes) as u64 {
+                return Err("旁问图片合计超过 16 MiB，请缩小图片后重试。".into());
+            }
+            let bytes =
+                fs::read(&path).map_err(|error| context("无法读取图片附件", &path, error))?;
+            image_bytes += bytes.len();
+            if image_bytes > 16 * 1024 * 1024 {
+                return Err("旁问图片合计超过 16 MiB，请缩小图片后重试。".into());
+            }
+            images.push(json!({"type":"image","data":STANDARD.encode(bytes),"mimeType":mime}));
+            continue;
+        }
+        let truncated = bytes.len() > remaining;
+        bytes.truncate(remaining);
+        let content = match std::str::from_utf8(&bytes) {
+            Ok(text) if !text.contains('\0') => text.to_owned(),
+            Err(error) if truncated && error.error_len().is_none() => {
+                String::from_utf8(bytes[..error.valid_up_to()].to_vec()).unwrap()
+            }
+            _ => {
+                warnings.push(format!(
+                    "{} 为二进制或非 UTF-8 文件，请改用文本或图片附件。",
+                    display_path(&path)
+                ));
+                continue;
+            }
+        };
+        if content.contains('\0') {
+            warnings.push(format!(
+                "{} 为二进制文件，请改用文本或图片附件。",
+                display_path(&path)
+            ));
+            continue;
+        }
+        remaining = remaining.saturating_sub(bytes.len());
+        if truncated {
+            warnings.push(format!("{} 的内容已截取前段。", display_path(&path)));
+        }
+        files.push(json!({"path":display_path(&path),"content":content,"truncated":truncated}));
+    }
+    if !request["attachments"].as_array().unwrap().is_empty()
+        && files.is_empty()
+        && images.is_empty()
+    {
+        return Err(if warnings.is_empty() {
+            "所选附件中没有可读取的文本或图片。".into()
+        } else {
+            warnings.join("\n")
+        });
+    }
+    let message = text(request, "message")?;
+    let message = if files.is_empty() && warnings.is_empty() {
+        message.to_owned()
+    } else {
+        format!(
+            "{message}\n\n旁问附件材料：\n{}",
+            json!({"files":files,"warnings":warnings})
+        )
+    };
+    Ok(json!({"message":message,"images":images,"warnings":warnings}))
+}
 
 fn context(action: &str, path: &Path, error: impl std::fmt::Display) -> String {
     format!("{action} {}：{error}", path.display())
@@ -233,6 +373,46 @@ pub fn execute(root: &Path, request: &Value) -> Result<Value, String> {
         "attachment.clipboard" => prepare_paths(&clipboard_paths()?),
         "attachment.store" => store(root, request),
         "attachment.discard" => discard(root, request),
+        "attachment.btw" => btw_payload(request),
         operation => Err(format!("不支持的附件操作：{operation}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn btw_reads_material_and_bounds_text_without_losing_utf8() {
+        let root = std::env::temp_dir().join(format!("omp-btw-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&root).unwrap();
+        let file = root.join("材料.txt");
+        fs::write(&file, "真实附件：测试上下文").unwrap();
+        let result =
+            btw_payload(&json!({"message":"问题","attachments":[{"type":"file","path":file}]}))
+                .unwrap();
+        assert!(
+            result["message"]
+                .as_str()
+                .unwrap()
+                .contains("真实附件：测试上下文")
+        );
+        fs::write(&file, "中文".repeat(100_000)).unwrap();
+        let result =
+            btw_payload(&json!({"message":"问题","attachments":[{"type":"file","path":file}]}))
+                .unwrap();
+        assert!(!result["warnings"].as_array().unwrap().is_empty());
+        assert!(result["message"].as_str().unwrap().len() < 270_000);
+        fs::write(&file, [0, 1, 2]).unwrap();
+        assert!(
+            btw_payload(&json!({"message":"问题","attachments":[{"type":"file","path":file}]}))
+                .is_err()
+        );
+        assert_eq!(
+            btw_payload(&json!({"message":"问题","attachments":[]})).unwrap()["message"],
+            "问题"
+        );
+        fs::remove_file(&file).unwrap();
+        fs::remove_dir(&root).unwrap();
     }
 }

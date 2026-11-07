@@ -6277,6 +6277,9 @@
 				"key": {
 					"type": "string"
 				},
+				"entry": {
+					"type": "string"
+				},
 				"value": {}
 			},
 			"required": [
@@ -7386,6 +7389,13 @@
 				},
 				"recordId": {
 					"type": "string"
+				},
+				"images": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/ImageContent"
+					},
+					"description": "Images attached to the message."
 				}
 			},
 			"required": [

@@ -5,13 +5,14 @@ import { ToolGenerationRate } from './GenerationRate';
 import type { Copy } from '../lib/i18n';
 import type { Message } from '../lib/types';
 import Collapse from './Collapse';
+import type { SideQuestionThreadSummary } from '../lib/side-questions';
 
-export default function ToolSteps({ messages, t, active }: { messages: Message[]; t: Copy; active: boolean }) {
+export default function ToolSteps({ messages, t, active, onReference, canReferenceCall, sideQuestionThreads, onSideQuestionThread }: { messages: Message[]; t: Copy; active: boolean; onReference?: (message: Message, kind: 'tool-call' | 'tool-result') => void; canReferenceCall?: (message: Message) => boolean; sideQuestionThreads?: Map<string, SideQuestionThreadSummary[]>; onSideQuestionThread?: (id: string) => void }) {
   const [open, setOpen] = useState<boolean | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const renderTool = (message: Message) => {
     const key = message.toolCallId ?? message.id;
-    return <ToolResult key={key} message={message} t={t} active={active} expanded={expanded.has(key)} onExpandedChange={next => setExpanded(previous => { const value = new Set(previous); if (next) value.add(key); else value.delete(key); return value; })} />;
+    return <ToolResult key={key} message={message} t={t} active={active} onReference={onReference ? kind => onReference(message, kind) : undefined} canReferenceCall={canReferenceCall?.(message)} sideQuestionThreads={sideQuestionThreads?.get(message.id)} onSideQuestionThread={onSideQuestionThread} expanded={expanded.has(key)} onExpandedChange={next => setExpanded(previous => { const value = new Set(previous); if (next) value.add(key); else value.delete(key); return value; })} />;
   };
   if (messages.length === 1) return renderTool(messages[0]);
   const counts = new Map<string, number>();
