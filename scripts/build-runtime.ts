@@ -79,8 +79,7 @@ const lockPath = path.join(projectRoot, 'upstream.lock.json');
 
 try {
   console.log('Checking out locked OMP source ' + lock.revision + '...');
-  const sourceRoot = process.env.OMP_SOURCE_ROOT ?? process.env.OMP_UPSTREAM_ROOT ?? lock.repository;
-  await prepareUpstream(buildRoot, sourceRoot, projectRoot);
+  await prepareUpstream(buildRoot, projectRoot);
   console.log('Installing pinned OMP build dependencies...');
   await run(['bun', 'install', '--ignore-scripts', '--frozen-lockfile'], buildRoot, env);
   await run(['bun', 'run', 'gen:rpc'], buildRoot, env);

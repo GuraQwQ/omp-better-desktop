@@ -25,11 +25,12 @@ export async function run(args: string[], cwd = upstreamRoot, env?: NodeJS.Proce
   return stdout;
 }
 
-export async function prepareUpstream(root = upstreamRoot, sourceRoot = root === upstreamRoot ? lock.repository : upstreamRoot, outputRoot = projectRoot): Promise<void> {
+export async function prepareUpstream(root = upstreamRoot, outputRoot = projectRoot): Promise<void> {
   try { await fs.access(path.join(root, '.git')); }
   catch {
     await fs.mkdir(path.dirname(root), { recursive: true });
-    await run(['git', 'clone', '--config', 'core.autocrlf=false', ...(/^(https?|ssh):|^git@/.test(sourceRoot) ? [] : ['--shared']), '--filter=blob:none', '--no-checkout', sourceRoot, root], projectRoot);
+    // 直接读取官方发布标签的完整文件，避免本地共享引用和历史下载开销。
+    await run(['git', 'clone', '--config', 'core.autocrlf=false', '--branch', 'v' + lock.runtimeVersion, '--depth=1', '--no-checkout', lock.repository, root], projectRoot);
     await run(['git', 'checkout', '--detach', lock.revision], root);
   }
   const revision = (await run(['git', 'rev-parse', 'HEAD'], root)).trim();

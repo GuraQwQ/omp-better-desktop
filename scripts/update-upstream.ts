@@ -32,12 +32,11 @@ if (import.meta.main) {
   }
 
   const upstreamRoot = path.resolve(process.env.OMP_UPSTREAM_ROOT ?? path.join(process.env.OMP_DESKTOP_CACHE ?? path.join(projectRoot, '.cache'), 'upstream-release-' + version));
-  const legacyRoot = path.join(projectRoot, '..', '.references', 'oh-my-pi');
   await fs.mkdir(path.dirname(upstreamRoot), { recursive: true });
   if (!await Bun.file(path.join(upstreamRoot, '.git', 'HEAD')).exists()) {
     if (await fs.stat(upstreamRoot).then(() => true).catch(() => false)) throw new Error(`Reference target exists but is not a Git checkout: ${upstreamRoot}`);
-    const source = await Bun.file(path.join(legacyRoot, '.git', 'HEAD')).exists() ? legacyRoot : lock.repository;
-    const clone = Bun.spawn(['git', 'clone', ...(source === legacyRoot ? ['--shared'] : []), '--filter=blob:none', '--no-checkout', source, upstreamRoot], { stdout: 'inherit', stderr: 'inherit' });
+    // 发布候选独立读取官方仓库，不继承本地参考 checkout 的 alternates 或 promisor。
+    const clone = Bun.spawn(['git', 'clone', '--config', 'core.autocrlf=false', '--branch', 'v' + version, '--depth=1', '--no-checkout', lock.repository, upstreamRoot], { stdout: 'inherit', stderr: 'inherit' });
     if (await clone.exited !== 0) throw new Error('Create an isolated OMP release checkout failed.');
   }
   const targetRoot = upstreamRoot;
