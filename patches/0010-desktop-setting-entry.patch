@@ -1,8 +1,14 @@
 diff --git a/packages/coding-agent/src/modes/rpc/desktop.ts b/packages/coding-agent/src/modes/rpc/desktop.ts
-index c6c053c..58e5c43 100644
+index c6c053c0f8..b0093b3ee9 100644
 --- a/packages/coding-agent/src/modes/rpc/desktop.ts
 +++ b/packages/coding-agent/src/modes/rpc/desktop.ts
-@@ -6,6 +6,7 @@ import { BUILTIN_SLASH_COMMANDS_INTERNAL } from "../../slash-commands/builtin-re
+@@ -1,11 +1,12 @@
+ import { orderedSettings } from "../../config/all-settings";
+-import { lookup } from "../../config/registry";
++import { lookup, type Setting } from "../../config/registry";
+ import type { Settings } from "../../config/settings";
+ import { BUILTIN_SLASH_COMMANDS_INTERNAL } from "../../slash-commands/builtin-registry";
+ 
  export interface DesktopSettingsRequest {
  	operation: "list" | "set" | "unset";
  	key?: string;
@@ -22,7 +28,7 @@ index c6c053c..58e5c43 100644
 +			else {
 +				if (!Object.hasOwn(request, "value")) throw new Error("A setting value is required");
 +				setting.assertWritable({ [request.entry]: request.value });
-+				setting.setEntry(settings, request.entry, request.value);
++				(setting as Setting<Record<string, unknown>>).setEntry(settings, request.entry, request.value);
 +			}
 +		} else if (request.operation === "unset") setting.unset(settings);
  		else {
