@@ -53,7 +53,7 @@ export const GENUI_FEATURES = {
   autoRepair: { label: '自动修复', enabled: false, hint: '同一生成目标最多自动尝试两次，可随时取消。' },
   verify: { label: '渲染复验', enabled: false, hint: '检查界面的空白、溢出与表单有效性。' },
   persistence: { label: '持久化状态', enabled: false, hint: '保存源码与输入状态，重开后恢复。' },
-  showSource: { label: '显示源码查看按钮', labelEn: 'Show source viewer button', enabled: false, hint: '在生成式UI底部查看源码。', hintEn: 'View source below the generated interface.' },
+  showSource: { label: '显示源码查看按钮', labelEn: 'Show source viewer button', enabled: false, hint: '在界面下方留白显示小图标，原位展开源码。', hintEn: 'Show a small icon below the interface to expand its source.' },
 } as const;
 export type GenUIFeature = keyof typeof GENUI_FEATURES;
 export const GENUI_CAPABILITIES = [
