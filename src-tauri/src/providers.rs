@@ -1,5 +1,5 @@
 use crate::{platform, storage};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     io::Write,
     path::Path,
