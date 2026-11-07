@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { native, onDesktopEvent, request, rpc } from './bridge';
 import type { Json, SessionView } from './types';
+import { acknowledgeGenUIPrompt, genUIPrompt } from './genui-prompt';
 let recovery: Promise<unknown> | undefined;
-export function useDesktopSchedules({ enabled, onSession, onError }: { enabled: boolean; onSession: (session: SessionView) => void; onError: (error: unknown) => void }) {
-  const latest = useRef({ enabled, onSession, onError }); latest.current = { enabled, onSession, onError };
+export function useDesktopSchedules({ enabled, configuration, onSession, onError }: { enabled: boolean; configuration: unknown; onSession: (session: SessionView) => void; onError: (error: unknown) => void }) {
+  const latest = useRef({ enabled, configuration, onSession, onError }); latest.current = { enabled, configuration, onSession, onError };
   const running = useRef(new Map<string, string>());
   const finishes = useRef(new Map<string, { id: string; status: string; error?: string }>());
   useEffect(() => {
@@ -27,7 +28,8 @@ export function useDesktopSchedules({ enabled, onSession, onError }: { enabled: 
             latest.current.onSession({ id: opened.id, cwd: claim.job.cwd, path: opened.path, title: claim.job.name, messages: [], state: opened.state ?? {}, status: 'ready', pending: [] });
             await request('schedule.started', { runId: claim.runId, sessionId: opened.id, path: opened.path });
             await rpc(opened.id, 'set_session_name', { name: claim.job.name });
-            await rpc(opened.id, 'prompt', { message: claim.job.prompt });
+            const prompt = genUIPrompt(opened.path ?? opened.id, claim.job.prompt, latest.current.configuration);
+            await rpc(opened.id, 'prompt', { message: prompt.message }); acknowledgeGenUIPrompt(opened.path ?? opened.id, prompt.key);
           } catch (error) { if (id) running.current.delete(id); await request('schedule.finish', { runId: claim.runId, status: 'error', error: String(error) }); latest.current.onError(error); }
         }
       } catch (error) { latest.current.onError(error); } finally { polling = false; }
