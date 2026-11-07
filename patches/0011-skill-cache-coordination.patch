@@ -1,196 +1,6 @@
-diff --git a/packages/coding-agent/src/extensibility/skill-descriptions.ts b/packages/coding-agent/src/extensibility/skill-descriptions.ts
-index b6a93cc..d220750 100644
---- a/packages/coding-agent/src/extensibility/skill-descriptions.ts
-+++ b/packages/coding-agent/src/extensibility/skill-descriptions.ts
-@@ -22,6 +22,11 @@ import {
- import type { Settings } from "../config/settings";
- import compressDescriptionPrompt from "../prompts/skills/compress-description.md" with { type: "text" };
- import { Semaphore } from "../task/parallel";
-+import {
-+	type SkillDescriptionClaim,
-+	type SkillDescriptionClaimOptions,
-+	SkillDescriptionClaims,
-+} from "./skill-description-claims";
- import type { Skill } from "./skills";
- 
- const MAX_PREVIEW_CHARS = 100;
-@@ -255,12 +260,15 @@ export class SkillDescriptionStore {
- 	readonly #db: Database;
- 	readonly #select: Statement<{ description: string }, [string]>;
- 	readonly #upsert: Statement<unknown, [string, string]>;
-+	readonly #claimOptions?: SkillDescriptionClaimOptions;
-+	#claims?: SkillDescriptionClaims;
- 	#closeCall?: Promise<void>;
- 	#closed = false;
- 
--	private constructor(dbPath: string, db: Database) {
-+	private constructor(dbPath: string, db: Database, claimOptions?: SkillDescriptionClaimOptions) {
- 		this.path = dbPath;
- 		this.#db = db;
-+		this.#claimOptions = claimOptions;
- 		this.#select = db.prepare("SELECT description FROM skill_descriptions WHERE key = ?");
- 		this.#upsert = db.prepare("INSERT OR REPLACE INTO skill_descriptions (key, description) VALUES (?, ?)");
- 	}
-@@ -269,7 +277,10 @@ export class SkillDescriptionStore {
- 	 * Open (creating if needed) the store at `dbPath`.
- 	 * @throws when the directory or database cannot be created.
- 	 */
--	static open(dbPath: string = resolveSkillDescriptionsDbPath()): SkillDescriptionStore {
-+	static open(
-+		dbPath: string = resolveSkillDescriptionsDbPath(),
-+		claimOptions?: SkillDescriptionClaimOptions,
-+	): SkillDescriptionStore {
- 		fs.mkdirSync(path.dirname(dbPath), { recursive: true, mode: 0o700 });
- 		const db = new Database(dbPath, { create: true });
- 		try {
-@@ -279,7 +290,7 @@ export class SkillDescriptionStore {
- 			db.run("PRAGMA synchronous=NORMAL");
- 			db.run("CREATE TABLE IF NOT EXISTS skill_descriptions (key TEXT PRIMARY KEY, description TEXT NOT NULL)");
- 			if (process.platform !== "win32") fs.chmodSync(dbPath, 0o600);
--			return new SkillDescriptionStore(dbPath, db);
-+			return new SkillDescriptionStore(dbPath, db, claimOptions);
- 		} catch (error) {
- 			db.close();
- 			throw error;
-@@ -296,6 +307,15 @@ export class SkillDescriptionStore {
- 		this.#upsert.run(key, description);
- 	}
- 
-+	claimCompression(key: string, unusableKey?: string): SkillDescriptionClaim {
-+		this.#claims ??= new SkillDescriptionClaims(this.#db, this.#claimOptions);
-+		return this.#claims.claim(key, unusableKey);
-+	}
-+
-+	finishCompression(key: string, owner: string, result?: { key: string; description: string }): void {
-+		this.#claims?.finish(key, owner, result);
-+	}
-+
- 	/** Whether closing has begun and no new compression work is admitted. */
- 	get isClosing(): boolean {
- 		return this.#closeCall !== undefined;
-@@ -333,6 +353,11 @@ export class SkillDescriptionStore {
- 
- 	#closeDatabase(): void {
- 		this.#closed = true;
-+		try {
-+			this.#claims?.close();
-+		} catch (error) {
-+			logger.warn("Skill description claim cleanup failed", { error: String(error) });
-+		}
- 		// Unfinalized statements keep the file handle open on Windows.
- 		this.#select.finalize();
- 		this.#upsert.finalize();
-@@ -405,43 +430,73 @@ export class SkillDescriptionCatalog {
- 		// Defer model work until the current synchronous prompt rendering has finished.
- 		const pending = Promise.resolve().then(async () => {
- 			try {
--				await compressionSlots.acquire();
--				try {
--					if (store.isClosing) return;
--					if (this.reuseCache) {
--						try {
--							// 等待期间其他会话可能已完成压缩；保留本会话已冻结的描述。
--							if (store.get(key) !== undefined) return;
--						} catch (error) {
--							logger.warn("Skill description cache recheck failed", { error: String(error) });
--						}
--					}
--					// Unusable answers are remembered per model: that model is not asked again, a newly selected one is.
--					const model = compressor.modelKey();
--					const unusableKey = model === undefined ? undefined : `${key}:${model}`;
--					if (unusableKey !== undefined && store.get(unusableKey) !== undefined) return;
--					const request = prompt.render(compressDescriptionPrompt, {
--						name: skill.name,
--						description: skill.description,
--					});
--					let result: string | null = null;
-+				while (!store.isClosing) {
-+					let retryMs: number | undefined;
-+					await compressionSlots.acquire();
- 					try {
--						result = validCompression(await compressor.compress(skill.name, skill.description, request));
--					} catch (error) {
--						if (!(error instanceof SkillDescriptionLengthError)) throw error;
--					}
--					if (store.isClosed) return;
--					if (result !== null) {
--						store.put(key, result);
--					} else if (unusableKey !== undefined) {
--						logger.warn("Skill description compression unusable; keeping the preview for this model", {
--							skill: skill.name,
--							model,
--						});
--						store.put(unusableKey, previewSkillDescription(skill.description));
-+						if (store.isClosing) return;
-+						if (this.reuseCache) {
-+							try {
-+								// 等待期间其他会话可能已完成压缩；保留本会话已冻结的描述。
-+								if (store.get(key) !== undefined) return;
-+							} catch (error) {
-+								logger.warn("Skill description cache recheck failed", { error: String(error) });
-+							}
-+						}
-+						const model = compressor.modelKey();
-+						const unusableKey = model === undefined ? undefined : `${key}:${model}`;
-+						if (unusableKey !== undefined && store.get(unusableKey) !== undefined) return;
-+						let owner: string | undefined;
-+						if (this.reuseCache) {
-+							try {
-+								const claim = store.claimCompression(key, unusableKey);
-+								if (claim.status === "complete") return;
-+								if (claim.status === "wait") retryMs = claim.retryMs;
-+								else owner = claim.owner;
-+							} catch (error) {
-+								// 协调库暂不可用时沿用原压缩路径，保留可观测错误。
-+								logger.warn("Skill description claim unavailable", { error: String(error) });
-+							}
-+						}
-+						if (retryMs === undefined) {
-+							try {
-+								const request = prompt.render(compressDescriptionPrompt, {
-+									name: skill.name,
-+									description: skill.description,
-+								});
-+								let result: string | null = null;
-+								try {
-+									result = validCompression(await compressor.compress(skill.name, skill.description, request));
-+								} catch (error) {
-+									if (!(error instanceof SkillDescriptionLengthError)) throw error;
-+								}
-+								if (store.isClosed) return;
-+								const saved =
-+									result !== null
-+										? { key, description: result }
-+										: unusableKey === undefined
-+											? undefined
-+											: { key: unusableKey, description: previewSkillDescription(skill.description) };
-+								if (result === null && unusableKey !== undefined) {
-+									logger.warn("Skill description compression unusable; keeping the preview for this model", {
-+										skill: skill.name,
-+										model,
-+									});
-+								}
-+								if (owner !== undefined) {
-+									store.finishCompression(key, owner, saved);
-+									owner = undefined;
-+								} else if (saved) store.put(saved.key, saved.description);
-+							} finally {
-+								if (owner !== undefined && !store.isClosed) store.finishCompression(key, owner);
-+							}
-+							return;
-+						}
-+					} finally {
-+						compressionSlots.release();
- 					}
--				} finally {
--					compressionSlots.release();
-+					// 其他进程压缩时释放本机槽位；等待只发生在已冻结预览后的后台任务。
-+					await Bun.sleep(retryMs);
- 				}
- 			} catch (error) {
- 				logger.warn("Skill description compression failed", { skill: skill.name, error: String(error) });
 diff --git a/packages/coding-agent/src/extensibility/skill-description-claims.ts b/packages/coding-agent/src/extensibility/skill-description-claims.ts
 new file mode 100644
+index 0000000000..722d8f5a15
 --- /dev/null
 +++ b/packages/coding-agent/src/extensibility/skill-description-claims.ts
 @@ -0,0 +1,82 @@
@@ -276,3 +86,206 @@ new file mode 100644
 +		}
 +	}
 +}
+diff --git a/packages/coding-agent/src/extensibility/skill-descriptions.ts b/packages/coding-agent/src/extensibility/skill-descriptions.ts
+index 9a3c8be1e5..61a57947e2 100644
+--- a/packages/coding-agent/src/extensibility/skill-descriptions.ts
++++ b/packages/coding-agent/src/extensibility/skill-descriptions.ts
+@@ -24,6 +24,11 @@ import type { Settings } from "../config/settings";
+ import { CostCapError, type CostGateApi } from "../session/cost-gate";
+ import compressDescriptionPrompt from "../prompts/skills/compress-description.md" with { type: "text" };
+ import { Semaphore } from "../task/parallel";
++import {
++	type SkillDescriptionClaim,
++	type SkillDescriptionClaimOptions,
++	SkillDescriptionClaims,
++} from "./skill-description-claims";
+ import type { Skill } from "./skills";
+ 
+ const MAX_PREVIEW_CHARS = 100;
+@@ -293,12 +298,15 @@ export class SkillDescriptionStore {
+ 	readonly #db: Database;
+ 	readonly #select: Statement<{ description: string }, [string]>;
+ 	readonly #upsert: Statement<unknown, [string, string]>;
++	readonly #claimOptions?: SkillDescriptionClaimOptions;
++	#claims?: SkillDescriptionClaims;
+ 	#closeCall?: Promise<void>;
+ 	#closed = false;
+ 
+-	private constructor(dbPath: string, db: Database) {
++	private constructor(dbPath: string, db: Database, claimOptions?: SkillDescriptionClaimOptions) {
+ 		this.path = dbPath;
+ 		this.#db = db;
++		this.#claimOptions = claimOptions;
+ 		this.#select = db.prepare("SELECT description FROM skill_descriptions WHERE key = ?");
+ 		this.#upsert = db.prepare("INSERT OR REPLACE INTO skill_descriptions (key, description) VALUES (?, ?)");
+ 	}
+@@ -307,7 +315,10 @@ export class SkillDescriptionStore {
+ 	 * Open (creating if needed) the store at `dbPath`.
+ 	 * @throws when the directory or database cannot be created.
+ 	 */
+-	static open(dbPath: string = resolveSkillDescriptionsDbPath()): SkillDescriptionStore {
++	static open(
++		dbPath: string = resolveSkillDescriptionsDbPath(),
++		claimOptions?: SkillDescriptionClaimOptions,
++	): SkillDescriptionStore {
+ 		fs.mkdirSync(path.dirname(dbPath), { recursive: true, mode: 0o700 });
+ 		const db = new Database(dbPath, { create: true });
+ 		try {
+@@ -317,7 +328,7 @@ export class SkillDescriptionStore {
+ 			db.run("PRAGMA synchronous=NORMAL");
+ 			db.run("CREATE TABLE IF NOT EXISTS skill_descriptions (key TEXT PRIMARY KEY, description TEXT NOT NULL)");
+ 			if (process.platform !== "win32") fs.chmodSync(dbPath, 0o600);
+-			return new SkillDescriptionStore(dbPath, db);
++			return new SkillDescriptionStore(dbPath, db, claimOptions);
+ 		} catch (error) {
+ 			db.close();
+ 			throw error;
+@@ -334,6 +345,15 @@ export class SkillDescriptionStore {
+ 		this.#upsert.run(key, description);
+ 	}
+ 
++	claimCompression(key: string, unusableKey?: string): SkillDescriptionClaim {
++		this.#claims ??= new SkillDescriptionClaims(this.#db, this.#claimOptions);
++		return this.#claims.claim(key, unusableKey);
++	}
++
++	finishCompression(key: string, owner: string, result?: { key: string; description: string }): void {
++		this.#claims?.finish(key, owner, result);
++	}
++
+ 	/** Whether closing has begun and no new compression work is admitted. */
+ 	get isClosing(): boolean {
+ 		return this.#closeCall !== undefined;
+@@ -371,6 +391,11 @@ export class SkillDescriptionStore {
+ 
+ 	#closeDatabase(): void {
+ 		this.#closed = true;
++		try {
++			this.#claims?.close();
++		} catch (error) {
++			logger.warn("Skill description claim cleanup failed", { error: String(error) });
++		}
+ 		// Unfinalized statements keep the file handle open on Windows.
+ 		this.#select.finalize();
+ 		this.#upsert.finalize();
+@@ -473,7 +498,9 @@ export class SkillDescriptionCatalog {
+ 			const job = `${store.path}:${key}`;
+ 			if (inFlight.has(job)) continue;
+ 			batchModel ??= Promise.resolve().then(() => compressor.modelKey());
+-			const pending = compressSkill(store, compressor, batchModel, key, skill, this).finally(() => inFlight.delete(job));
++			const pending = compressSkill(store, compressor, batchModel, key, skill, this).finally(() =>
++				inFlight.delete(job),
++			);
+ 			inFlight.set(job, pending);
+ 		}
+ 	}
+@@ -494,44 +521,73 @@ async function compressSkill(
+ 	try {
+ 		const candidate = await batchModel;
+ 		if (candidate === undefined || store.isClosing || store.get(unusableKey(key, candidate)) !== undefined) return;
+-		await compressionSlots.acquire();
+-		try {
+-			if (store.isClosing) return;
+-			if (catalog.reuseCache) {
+-				try {
+-					// 等待期间其他会话可能已完成压缩；保留本会话已冻结的描述。
+-					if (store.get(key) !== undefined) return;
+-				} catch (error) {
+-					logger.warn("Skill description cache recheck failed", { error: String(error) });
+-				}
+-			}
+-			// Unusable answers are remembered per model: that model is not asked again, a newly selected one is.
+-			// Re-resolved because the role can change while this job waits behind running requests.
+-			const model = compressor.modelKey();
+-			const unusable = model === undefined ? undefined : unusableKey(key, model);
+-			if (unusable !== undefined && store.get(unusable) !== undefined) return;
+-			const request = prompt.render(compressDescriptionPrompt, {
+-				name: skill.name,
+-				description: skill.description,
+-			});
+-			let result: string | null = null;
++		while (!store.isClosing) {
++			let retryMs: number | undefined;
++			await compressionSlots.acquire();
+ 			try {
+-				result = validCompression(await compressor.compress(skill.name, skill.description, request));
+-			} catch (error) {
+-				if (!(error instanceof SkillDescriptionLengthError)) throw error;
+-			}
+-			if (store.isClosed) return;
+-			if (result !== null) {
+-				store.put(key, result);
+-			} else if (unusable !== undefined) {
+-				logger.warn("Skill description compression unusable; keeping the preview for this model", {
+-					skill: skill.name,
+-					model,
+-				});
+-				store.put(unusable, previewSkillDescription(skill.description));
++				if (store.isClosing) return;
++				if (catalog.reuseCache) {
++					try {
++						if (store.get(key) !== undefined) return;
++					} catch (error) {
++						logger.warn("Skill description cache recheck failed", { error: String(error) });
++					}
++				}
++				// 等待槽位期间角色可能改变，复用上游的模型重选和无效结果版本标记。
++				const model = compressor.modelKey();
++				const unusable = model === undefined ? undefined : unusableKey(key, model);
++				if (unusable !== undefined && store.get(unusable) !== undefined) return;
++				let owner: string | undefined;
++				if (catalog.reuseCache) {
++					try {
++						const claim = store.claimCompression(key, unusable);
++						if (claim.status === "complete") return;
++						if (claim.status === "wait") retryMs = claim.retryMs;
++						else owner = claim.owner;
++					} catch (error) {
++						// 协调库暂不可用时沿用原压缩路径，保留可观测错误。
++						logger.warn("Skill description claim unavailable", { error: String(error) });
++					}
++				}
++				if (retryMs === undefined) {
++					try {
++						const request = prompt.render(compressDescriptionPrompt, {
++							name: skill.name,
++							description: skill.description,
++						});
++						let result: string | null = null;
++						try {
++							result = validCompression(await compressor.compress(skill.name, skill.description, request));
++						} catch (error) {
++							if (!(error instanceof SkillDescriptionLengthError)) throw error;
++						}
++						if (store.isClosed) return;
++						const saved =
++							result !== null
++								? { key, description: result }
++								: unusable === undefined
++									? undefined
++									: { key: unusable, description: previewSkillDescription(skill.description) };
++						if (result === null && unusable !== undefined) {
++							logger.warn("Skill description compression unusable; keeping the preview for this model", {
++								skill: skill.name,
++								model,
++							});
++						}
++						if (owner !== undefined) {
++							store.finishCompression(key, owner, saved);
++							owner = undefined;
++						} else if (saved) store.put(saved.key, saved.description);
++					} finally {
++						if (owner !== undefined && !store.isClosed) store.finishCompression(key, owner);
++					}
++					return;
++				}
++			} finally {
++				compressionSlots.release();
+ 			}
+-		} finally {
+-			compressionSlots.release();
++			// 其他进程压缩时释放本机槽位，等待只影响后台任务。
++			await Bun.sleep(retryMs);
+ 		}
+ 	} catch (error) {
+ 		logger.warn("Skill description compression failed", { skill: skill.name, error: String(error) });

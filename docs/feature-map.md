@@ -1,6 +1,6 @@
 # OMP feature map
 
-Generated from upstream `7efd77219374ca4e8767979809835e4aa90666ba`. This is an inventory of execution surfaces, not a claim that each surface has been verified. Settings are discovered live using `desktop_settings`; every registry entry uses the settings form.
+Generated from upstream `b5a6b2f7e5b6606b6562e678ead83f21738f34a0`. This is an inventory of execution surfaces, not a claim that each surface has been verified. Settings are discovered live using `desktop_settings`; every registry entry uses the settings form.
 
 | Kind | Capability | Surface |
 |---|---|---|
@@ -84,6 +84,7 @@ Generated from upstream `7efd77219374ca4e8767979809835e4aa90666ba`. This is an i
 | slash | `handoff` | prompt |
 | slash | `resume` | sessions |
 | slash | `pin` | prompt |
+| slash | `unpin` | prompt |
 | slash | `btw` | terminal |
 | slash | `tan` | terminal |
 | slash | `omfg` | terminal |

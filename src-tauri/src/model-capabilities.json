@@ -1,0 +1,1663 @@
+{
+  "upstreamRevision": "b5a6b2f7e5b6606b6562e678ead83f21738f34a0",
+  "models": [
+    {
+      "id": "claude-fable-5",
+      "source": "OMP 18.18.0 / anthropic",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "claude-fable-5-1",
+      "source": "OMP 18.18.0 / anthropic",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "claude-haiku-4-5",
+      "source": "OMP 18.18.0 / anthropic",
+      "contextWindow": 200000,
+      "maxTokens": 64000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "claude-haiku-4-5-20251001",
+      "source": "OMP 18.18.0 / anthropic",
+      "contextWindow": 200000,
+      "maxTokens": 64000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "claude-haiku-5-5",
+      "source": "OMP 18.18.0 / anthropic",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "claude-mythos-5",
+      "source": "OMP 18.18.0 / anthropic",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "claude-mythos-5-1",
+      "source": "OMP 18.18.0 / anthropic",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "claude-opus-4-5",
+      "source": "OMP 18.18.0 / anthropic",
+      "contextWindow": 200000,
+      "maxTokens": 64000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "claude-opus-4-5-20251101",
+      "source": "OMP 18.18.0 / anthropic",
+      "contextWindow": 200000,
+      "maxTokens": 64000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "claude-opus-4-6",
+      "source": "OMP 18.18.0 / anthropic",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "claude-opus-4-7",
+      "source": "OMP 18.18.0 / anthropic",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "claude-opus-4-8",
+      "source": "OMP 18.18.0 / anthropic",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "claude-opus-5",
+      "source": "OMP 18.18.0 / anthropic",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "claude-opus-5-5",
+      "source": "OMP 18.18.0 / anthropic",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "claude-sonnet-4-5",
+      "source": "OMP 18.18.0 / anthropic",
+      "contextWindow": 200000,
+      "maxTokens": 64000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "claude-sonnet-4-5-20250929",
+      "source": "OMP 18.18.0 / anthropic",
+      "contextWindow": 200000,
+      "maxTokens": 64000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "claude-sonnet-4-6",
+      "source": "OMP 18.18.0 / anthropic",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "claude-sonnet-5",
+      "source": "OMP 18.18.0 / anthropic",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "claude-sonnet-5-5",
+      "source": "OMP 18.18.0 / anthropic",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "deepseek-flash",
+      "source": "OMP 18.18.0 / deepseek",
+      "contextWindow": 1000000,
+      "maxTokens": 384000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "deepseek-v4-flash",
+      "source": "OMP 18.18.0 / deepseek",
+      "contextWindow": 1048576,
+      "maxTokens": 393216,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "deepseek-v4-flash-vision-exp",
+      "source": "OMP 18.18.0 / deepseek",
+      "contextWindow": 1048576,
+      "maxTokens": 393216,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "source": "OMP 18.18.0 / deepseek",
+      "contextWindow": 1048576,
+      "maxTokens": 393216,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "gemini-1.5-flash",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1000000,
+      "maxTokens": 8192,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-1.5-flash-8b",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1000000,
+      "maxTokens": 8192,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-1.5-pro",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1000000,
+      "maxTokens": 8192,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-2.0-flash",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 8192,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-2.0-flash-lite",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 8192,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-2.5-computer-use-preview-10-2025",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 128000,
+      "maxTokens": 64000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-2.5-flash",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-2.5-flash-image",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 32768,
+      "maxTokens": 32768,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ],
+      "supportsTools": false
+    },
+    {
+      "id": "gemini-2.5-flash-lite",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-2.5-flash-lite-preview-06-17",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-2.5-flash-lite-preview-09-2025",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-2.5-flash-preview-04-17",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-2.5-flash-preview-05-20",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-2.5-flash-preview-09-2025",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-2.5-pro",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-2.5-pro-preview-05-06",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-2.5-pro-preview-06-05",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-3-flash-preview",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-3-pro-image",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 65536,
+      "maxTokens": 32768,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ],
+      "supportsTools": false
+    },
+    {
+      "id": "gemini-3-pro-image-preview",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 131072,
+      "maxTokens": 32768,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ],
+      "supportsTools": false
+    },
+    {
+      "id": "gemini-3-pro-preview",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-3.1-flash-image",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 131072,
+      "maxTokens": 32768,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ],
+      "supportsTools": false
+    },
+    {
+      "id": "gemini-3.1-flash-image-preview",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 65536,
+      "maxTokens": 65536,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ],
+      "supportsTools": false
+    },
+    {
+      "id": "gemini-3.1-flash-lite",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-3.1-flash-lite-image",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 65536,
+      "maxTokens": 4096,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ],
+      "supportsTools": false
+    },
+    {
+      "id": "gemini-3.1-flash-lite-preview",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-3.1-flash-live-preview",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 131072,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-3.1-pro-preview",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-3.1-pro-preview-customtools",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-3.5-flash",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-3.5-flash-lite",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-3.6-flash",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-3.7-flash",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-3.8-flash",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-4-argon",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 32768,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-flash-latest",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-flash-lite-latest",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-live-2.5-flash",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 128000,
+      "maxTokens": 8000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-live-2.5-flash-preview-native-audio",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 131072,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "gemini-pro-latest",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gemini-robotics-er-1.6-preview",
+      "source": "OMP 18.18.0 / google",
+      "contextWindow": 131072,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "glm-4.5",
+      "source": "OMP 18.18.0 / zai",
+      "contextWindow": 131072,
+      "maxTokens": 98304,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "glm-4.5-air",
+      "source": "OMP 18.18.0 / zai",
+      "contextWindow": 131072,
+      "maxTokens": 98304,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "glm-4.5-flash",
+      "source": "OMP 18.18.0 / zai",
+      "contextWindow": 131072,
+      "maxTokens": 98304,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "glm-4.5v",
+      "source": "OMP 18.18.0 / zai",
+      "contextWindow": 64000,
+      "maxTokens": 16384,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "glm-4.6",
+      "source": "OMP 18.18.0 / zai",
+      "contextWindow": 204800,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "glm-4.6v",
+      "source": "OMP 18.18.0 / zai",
+      "contextWindow": 128000,
+      "maxTokens": 32768,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "glm-4.6v-flash",
+      "source": "OMP 18.18.0 / zai",
+      "contextWindow": 128000,
+      "maxTokens": 32768,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "glm-4.7",
+      "source": "OMP 18.18.0 / zai",
+      "contextWindow": 204800,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "glm-4.7-flash",
+      "source": "OMP 18.18.0 / zai",
+      "contextWindow": 200000,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "glm-4.7-flashx",
+      "source": "OMP 18.18.0 / zai",
+      "contextWindow": 200000,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "glm-5",
+      "source": "OMP 18.18.0 / zai",
+      "contextWindow": 204800,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "glm-5-turbo",
+      "source": "OMP 18.18.0 / zai",
+      "contextWindow": 200000,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "glm-5.1",
+      "source": "OMP 18.18.0 / zai",
+      "contextWindow": 200000,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "glm-5.2",
+      "source": "OMP 18.18.0 / zai",
+      "contextWindow": 1000000,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "glm-5.3",
+      "source": "OMP 18.18.0 / zai",
+      "contextWindow": 1000000,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "glm-5.3-flash",
+      "source": "OMP 18.18.0 / zai",
+      "contextWindow": 1000000,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "glm-5.3-flashx",
+      "source": "OMP 18.18.0 / zai",
+      "contextWindow": 1000000,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "glm-5v-turbo",
+      "source": "OMP 18.18.0 / zai",
+      "contextWindow": 200000,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gpt-6-astra",
+      "source": "OMP 18.18.0 / openai",
+      "contextWindow": 1050000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gpt-6-luna",
+      "source": "OMP 18.18.0 / openai",
+      "contextWindow": 1050000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gpt-6-luna-decisions",
+      "source": "OMP 18.18.0 / openai",
+      "contextWindow": 1050000,
+      "maxTokens": 945000,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ],
+      "supportsTools": false
+    },
+    {
+      "id": "gpt-6-sol",
+      "source": "OMP 18.18.0 / openai",
+      "contextWindow": 1050000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gpt-6.1-sol",
+      "source": "OMP 18.18.0 / openai",
+      "contextWindow": 1050000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gpt-6.1-terra",
+      "source": "OMP 18.18.0 / openai",
+      "contextWindow": 1050000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "grok-2",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 131072,
+      "maxTokens": 8192,
+      "reasoning": false,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "grok-2-1212",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 131072,
+      "maxTokens": 8192,
+      "reasoning": false,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "grok-2-latest",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 131072,
+      "maxTokens": 8192,
+      "reasoning": false,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "grok-2-vision",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 8192,
+      "maxTokens": 4096,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "grok-2-vision-1212",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 8192,
+      "maxTokens": 4096,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "grok-2-vision-latest",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 8192,
+      "maxTokens": 4096,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "grok-3",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 131072,
+      "maxTokens": 8192,
+      "reasoning": false,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "grok-3-fast",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 131072,
+      "maxTokens": 8192,
+      "reasoning": false,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "grok-3-fast-latest",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 131072,
+      "maxTokens": 8192,
+      "reasoning": false,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "grok-3-latest",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 131072,
+      "maxTokens": 8192,
+      "reasoning": false,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "grok-3-mini",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 131072,
+      "maxTokens": 8192,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "grok-3-mini-fast",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 131072,
+      "maxTokens": 8192,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "grok-3-mini-fast-latest",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 131072,
+      "maxTokens": 8192,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "grok-3-mini-latest",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 131072,
+      "maxTokens": 8192,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "grok-4",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 256000,
+      "maxTokens": 64000,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "grok-4-1-fast",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 2000000,
+      "maxTokens": 30000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "grok-4-1-fast-non-reasoning",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 2000000,
+      "maxTokens": 30000,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "grok-4-fast",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 2000000,
+      "maxTokens": 30000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "grok-4-fast-non-reasoning",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 2000000,
+      "maxTokens": 30000,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "grok-4.20-0309-non-reasoning",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 1000000,
+      "maxTokens": 30000,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "grok-4.20-0309-reasoning",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 1000000,
+      "maxTokens": 30000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "grok-4.20-beta-latest-non-reasoning",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 2000000,
+      "maxTokens": 30000,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "grok-4.20-beta-latest-reasoning",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 2000000,
+      "maxTokens": 30000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "grok-4.20-multi-agent-beta-latest",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 2000000,
+      "maxTokens": 30000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "grok-4.3",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 1000000,
+      "maxTokens": 30000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "grok-4.5",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 500000,
+      "maxTokens": 500000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "grok-4.6",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 500000,
+      "maxTokens": 500000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "grok-4.7",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 500000,
+      "maxTokens": 500000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "grok-beta",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 131072,
+      "maxTokens": 4096,
+      "reasoning": false,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "grok-build-0.1",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 256000,
+      "maxTokens": 256000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "grok-code-fast-1",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 256000,
+      "maxTokens": 10000,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "grok-imagine-image",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 16000,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ],
+      "supportsTools": false
+    },
+    {
+      "id": "grok-imagine-image-quality",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 16000,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ],
+      "supportsTools": false
+    },
+    {
+      "id": "grok-tts",
+      "source": "OMP 18.18.0 / xai",
+      "reasoning": false,
+      "input": [
+        "text"
+      ],
+      "supportsTools": false
+    },
+    {
+      "id": "grok-vision-beta",
+      "source": "OMP 18.18.0 / xai",
+      "contextWindow": 8192,
+      "maxTokens": 4096,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "kimi-k2-0711-preview",
+      "source": "OMP 18.18.0 / moonshot",
+      "contextWindow": 131072,
+      "maxTokens": 16384,
+      "reasoning": false,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "kimi-k2-0905-preview",
+      "source": "OMP 18.18.0 / moonshot",
+      "contextWindow": 262144,
+      "maxTokens": 262144,
+      "reasoning": false,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "kimi-k2-thinking",
+      "source": "OMP 18.18.0 / moonshot",
+      "contextWindow": 262144,
+      "maxTokens": 262144,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "kimi-k2-thinking-turbo",
+      "source": "OMP 18.18.0 / moonshot",
+      "contextWindow": 262144,
+      "maxTokens": 262144,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "kimi-k2-turbo-preview",
+      "source": "OMP 18.18.0 / moonshot",
+      "contextWindow": 262144,
+      "maxTokens": 262144,
+      "reasoning": false,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "kimi-k2.5",
+      "source": "OMP 18.18.0 / moonshot",
+      "contextWindow": 262144,
+      "maxTokens": 262144,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "kimi-k2.6",
+      "source": "OMP 18.18.0 / moonshot",
+      "contextWindow": 262144,
+      "maxTokens": 262144,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "kimi-k2.7-code",
+      "source": "OMP 18.18.0 / moonshot",
+      "contextWindow": 262144,
+      "maxTokens": 262144,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "kimi-k2.7-code-highspeed",
+      "source": "OMP 18.18.0 / moonshot",
+      "contextWindow": 262144,
+      "maxTokens": 262144,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "kimi-k3",
+      "source": "OMP 18.18.0 / moonshot",
+      "contextWindow": 1048576,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "MiniMax-M2",
+      "source": "OMP 18.18.0 / minimax",
+      "contextWindow": 204800,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "MiniMax-M2.1",
+      "source": "OMP 18.18.0 / minimax",
+      "contextWindow": 204800,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "MiniMax-M2.5",
+      "source": "OMP 18.18.0 / minimax",
+      "contextWindow": 204800,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "MiniMax-M2.5-highspeed",
+      "source": "OMP 18.18.0 / minimax",
+      "contextWindow": 204800,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "MiniMax-M2.5-lightning",
+      "source": "OMP 18.18.0 / minimax",
+      "contextWindow": 204800,
+      "maxTokens": 32000,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "MiniMax-M2.7",
+      "source": "OMP 18.18.0 / minimax",
+      "contextWindow": 204800,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "MiniMax-M2.7-highspeed",
+      "source": "OMP 18.18.0 / minimax",
+      "contextWindow": 204800,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "MiniMax-M3",
+      "source": "OMP 18.18.0 / minimax",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "MiniMax-M3.1-Flash",
+      "source": "OMP 18.18.0 / minimax",
+      "contextWindow": 1000000,
+      "maxTokens": 524288,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "moonshot-v1-128k",
+      "source": "OMP 18.18.0 / moonshot",
+      "contextWindow": 131072,
+      "reasoning": false,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "moonshot-v1-128k-vision-preview",
+      "source": "OMP 18.18.0 / moonshot",
+      "contextWindow": 131072,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "moonshot-v1-32k",
+      "source": "OMP 18.18.0 / moonshot",
+      "contextWindow": 32768,
+      "reasoning": false,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "moonshot-v1-32k-vision-preview",
+      "source": "OMP 18.18.0 / moonshot",
+      "contextWindow": 32768,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "moonshot-v1-8k",
+      "source": "OMP 18.18.0 / moonshot",
+      "contextWindow": 8192,
+      "reasoning": false,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "moonshot-v1-8k-vision-preview",
+      "source": "OMP 18.18.0 / moonshot",
+      "contextWindow": 8192,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "moonshot-v1-auto",
+      "source": "OMP 18.18.0 / moonshot",
+      "contextWindow": 131072,
+      "reasoning": false,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "qwen3.6-flash",
+      "source": "OMP 18.18.0 / alibaba-token-plan",
+      "contextWindow": 1000000,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "qwen3.7-max",
+      "source": "OMP 18.18.0 / alibaba-token-plan",
+      "contextWindow": 1000000,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "qwen3.7-plus",
+      "source": "OMP 18.18.0 / alibaba-token-plan",
+      "contextWindow": 1000000,
+      "maxTokens": 64000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "qwen3.8-flash",
+      "source": "OMP 18.18.0 / alibaba-token-plan",
+      "contextWindow": 1000000,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "qwen3.8-max",
+      "source": "OMP 18.18.0 / alibaba-token-plan",
+      "contextWindow": 1000000,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "qwen3.8-max-preview",
+      "source": "OMP 18.18.0 / alibaba-token-plan",
+      "contextWindow": 983616,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ]
+    }
+  ]
+}

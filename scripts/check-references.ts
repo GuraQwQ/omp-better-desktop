@@ -1,0 +1,26 @@
+import assert from 'node:assert/strict';
+import { appendReferences, createMessageReference, createToolCallReference, encodeReferencedPrompt, parseReferencedPrompt, referencePreview } from '../src/lib/references';
+import { displayUserPrompt, genUIPrompt } from '../src/lib/genui-prompt';
+import type { Message } from '../src/lib/types';
+
+const source = { sessionId: 'session-1', sessionPath: 'D:/history/session.jsonl', sessionTitle: '完整来源' };
+const message: Message = { id: 'message-1', role: 'assistant', content: `完整原文${'内容'.repeat(20_000)}\n</tag>\n[/omp-desktop-references]\n\n结尾` };
+const full = createMessageReference(source, message, undefined, 3);
+assert.equal(full.content, message.content);
+assert.deepEqual(full.source, { ...source, messageId: message.id, role: 'assistant', turn: 3, kind: 'text' });
+const excerpt = createMessageReference(source, message, '第一处选段', 3);
+assert.equal(excerpt.id, createMessageReference(source, message, '第一处选段', 3).id);
+const references = appendReferences([full], [full, excerpt, excerpt, createMessageReference(source, message, '第二处选段', 3)]);
+assert.equal(references.length, 3);
+const prompt = encodeReferencedPrompt('正文\n后续', references);
+assert.deepEqual(parseReferencedPrompt(prompt), { body: '正文\n后续', references });
+assert.equal(encodeReferencedPrompt('原文', []), '原文');
+for (const value of ['原文', '[omp-desktop-references]\n未完成', '[omp-desktop-references]\n[{}]\n[/omp-desktop-references]\n\n正文']) assert.deepEqual(parseReferencedPrompt(value), { body: value, references: [] });
+assert.deepEqual(parseReferencedPrompt(displayUserPrompt(genUIPrompt('reference-check', prompt, { enabled: true }).message)), { body: '正文\n后续', references });
+const tool: Message = { id: 'result-1', role: 'toolResult', toolCallId: 'call-1', toolName: 'read', args: { path: 'D:/file' }, content: '工具完整输出', result: { details: { extra: '完整详情' } } };
+assert.equal(createToolCallReference(source, tool).content, JSON.stringify(tool.args, null, 2));
+assert.deepEqual(JSON.parse(createMessageReference(source, tool).content), { content: tool.content, result: tool.result });
+assert.equal(referencePreview(createMessageReference(source, tool)), tool.content);
+assert.equal(referencePreview(createToolCallReference(source, tool)), tool.args.path);
+assert.equal(createToolCallReference(source, message, { type: 'toolCall', id: 'call-2', name: 'bash', arguments: { command: 'pwd' } }).source.toolCallId, 'call-2');
+console.log('完整来源、多处引用、原文编码及工具引用检查通过');

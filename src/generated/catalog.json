@@ -593,6 +593,14 @@
     "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
   },
   {
+    "name": "unpin",
+    "kind": "slash",
+    "description": "Unpin a session from the top of the resume list",
+    "surface": "prompt",
+    "rpc": true,
+    "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
+  },
+  {
     "name": "btw",
     "kind": "slash",
     "description": "Ask a side question, or browse this session's BTW history",

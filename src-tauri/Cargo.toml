@@ -1,6 +1,6 @@
 [package]
 name = "omp-better-desktop"
-version = "0.4.5"
+version = "0.5.0"
 edition = "2024"
 default-run = "omp-better-desktop"
 
@@ -26,7 +26,7 @@ ignore = "0.4"
 omp-rpc = { path = "../vendor/omp-rpc" }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_DataExchange", "Win32_System_Ole", "Win32_UI_Shell"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_DataExchange", "Win32_System_Ole", "Win32_UI_Shell"] }
 winreg = "0.55"
 
 [profile.release]

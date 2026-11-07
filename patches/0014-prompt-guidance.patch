@@ -1,5 +1,5 @@
 diff --git a/packages/coding-agent/src/prompts/system/mid-run-todo-nudge.md b/packages/coding-agent/src/prompts/system/mid-run-todo-nudge.md
-index 4851cf7..9c6eec2 100644
+index 4851cf7a73..9c6eec2a70 100644
 --- a/packages/coding-agent/src/prompts/system/mid-run-todo-nudge.md
 +++ b/packages/coding-agent/src/prompts/system/mid-run-todo-nudge.md
 @@ -1,3 +1,7 @@
@@ -12,7 +12,7 @@ index 4851cf7..9c6eec2 100644
  </system-reminder>
 diff --git a/packages/coding-agent/src/prompts/system/programmatic-tool-use.md b/packages/coding-agent/src/prompts/system/programmatic-tool-use.md
 deleted file mode 100644
-index 737c842..0000000
+index 737c842e26..0000000000
 --- a/packages/coding-agent/src/prompts/system/programmatic-tool-use.md
 +++ /dev/null
 @@ -1,7 +0,0 @@
@@ -24,7 +24,7 @@ index 737c842..0000000
 -
 -Simple actions stay direct. Stop a batch at decisions or missing information; preserve the original tests and completion criteria.
 diff --git a/packages/coding-agent/src/prompts/system/project-prompt.md b/packages/coding-agent/src/prompts/system/project-prompt.md
-index 65a7793..d4e49ba 100644
+index 65a7793224..d4e49bac59 100644
 --- a/packages/coding-agent/src/prompts/system/project-prompt.md
 +++ b/packages/coding-agent/src/prompts/system/project-prompt.md
 @@ -57,7 +57,9 @@ Additional workspace directories. This CURRENT workspace state supersedes worksp
@@ -38,7 +38,7 @@ index 65a7793..d4e49ba 100644
  </critical>
  
 diff --git a/packages/coding-agent/src/prompts/system/system-prompt.md b/packages/coding-agent/src/prompts/system/system-prompt.md
-index 9561b94..64a4326 100644
+index 20cef214f7..0f5d4ec596 100644
 --- a/packages/coding-agent/src/prompts/system/system-prompt.md
 +++ b/packages/coding-agent/src/prompts/system/system-prompt.md
 @@ -94,16 +94,32 @@ Write JSON args as `content` to `xd://<tool>` via `{{toolRefs.write}}`. Invalid
@@ -74,7 +74,7 @@ index 9561b94..64a4326 100644
  {{#has tools "read"}}- File/directory reads: `{{toolRefs.read}}` (directory lists entries).{{/has}}
  {{#has tools "edit"}}- Surgical edits: `{{toolRefs.edit}}`.{{/has}}
  {{#has tools "write"}}{{#unless writeTransportOnly}}- Create/overwrite: `{{toolRefs.write}}`.{{/unless}}{{/has}}
-@@ -194,9 +210,14 @@ Inline first. Fan out only when 2+ independent slices each cost more than a hand
+@@ -206,9 +222,14 @@ Inline first. Fan out only when 2+ independent slices each cost more than a hand
  - Tool failure or intervening file change: re-read before acting.
  
  # 3. Decompose
@@ -89,7 +89,7 @@ index 9561b94..64a4326 100644
  
  # 4. Implement
  - Prefer existing files; review as user.
-@@ -209,6 +230,13 @@ Main agent verifies once after all subagents land; parallel runs storm the CPU a
+@@ -221,6 +242,13 @@ Main agent verifies once after all subagents land; parallel runs storm the CPU a
  - Changes complete → yield; name the checks main agent should run.
  {{else}}
  # 5. Verify
@@ -103,7 +103,7 @@ index 9561b94..64a4326 100644
  Non-trivial work: NEVER yield without a smoke run: run the thing, exercise the changed path, observe the result. Tests alone are not proof.
  - Investigation: run it; output proves it; no tests.
  - UI: verify actual surface.
-@@ -228,6 +256,7 @@ Non-trivial work: NEVER yield without a smoke run: run the thing, exercise the c
+@@ -240,6 +268,7 @@ Non-trivial work: NEVER yield without a smoke run: run the thing, exercise the c
  - NEVER test wiring/copies/forwarding/mock echoes/source text/incidental defaults, tautologies, bare not-throw, non-empty/length-grew, duplicate same-path rows. Use throwaway scripts.
  - Existing wording/implementation/incidental-behavior tests: MUST delete, NEVER re-pin regardless of author.
  {{/if}}
@@ -112,7 +112,7 @@ index 9561b94..64a4326 100644
  # 6. Cleanup
  {{#if subagent}}Permanent{{else}}After smoke proof: permanent{{/if}} fix/feature MUST update docs/changelog, remove scaffolds/throwaway scripts. Investigation: no tests/docs. NEVER pre-plan cleanup todos.
 diff --git a/packages/coding-agent/src/prompts/tools/todo.md b/packages/coding-agent/src/prompts/tools/todo.md
-index 638e9ae..0801df1 100644
+index 638e9ae238..0801df12b5 100644
 --- a/packages/coding-agent/src/prompts/tools/todo.md
 +++ b/packages/coding-agent/src/prompts/tools/todo.md
 @@ -1,4 +1,8 @@
@@ -125,10 +125,10 @@ index 638e9ae..0801df1 100644
  Before work, init for 3+ steps, requested task sets, or new instructions. MUST list EVERY user item separately (phased/numbered/bulleted/N); NEVER omit or remember leftovers.
  After successful mutation: no active means earliest pending starts (phase order); multiple active means only earliest stays. Blocked NEVER starts automatically; unblock returns pending. Done out of order may rewind pointer but NEVER reopen completed. Mark done immediately; follow phase order.
 diff --git a/packages/coding-agent/src/sdk.ts b/packages/coding-agent/src/sdk.ts
-index 7bd2edc..0888cb0 100644
+index 9ec207c1a8..2b966c3908 100644
 --- a/packages/coding-agent/src/sdk.ts
 +++ b/packages/coding-agent/src/sdk.ts
-@@ -208,6 +208,7 @@ import {
+@@ -222,6 +222,7 @@ import {
  	USER_INTERRUPT_LABEL,
  	wrapSteeringForModel,
  } from "./session/messages";
@@ -136,7 +136,7 @@ index 7bd2edc..0888cb0 100644
  import {
  	capArchiveFrameBytes,
  	clampProviderContextImageBytes,
-@@ -404,6 +405,7 @@ import {
+@@ -428,6 +429,7 @@ import {
  	cfgSnapcompactSystemPrompt,
  	cfgSnapcompactToolResults,
  	cfgTokenOptimizationProgrammatic,
@@ -144,7 +144,7 @@ index 7bd2edc..0888cb0 100644
  	cfgTokenOptimizationSkillCacheReuse,
  	cfgWorkspaceAdditionalDirectories,
  } from "./session/context-settings";
-@@ -1357,8 +1359,8 @@ export interface BuildSystemPromptOptions {
+@@ -1421,8 +1423,8 @@ export interface BuildSystemPromptOptions {
  	systemPromptTemplate?: string;
  	appendPrompt?: string;
  	inlineToolDescriptors?: boolean;
@@ -155,7 +155,7 @@ index 7bd2edc..0888cb0 100644
  	includeWorkspaceTree?: boolean;
  	/** Include the read-only security:// resource inventory entry. Default: false. */
  	securityEnabled?: boolean;
-@@ -1389,7 +1391,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
+@@ -1453,7 +1455,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
  		contextFiles: options.contextFiles,
  		appendSystemPrompt: options.appendPrompt,
  		inlineToolDescriptors: options.inlineToolDescriptors,
@@ -164,16 +164,16 @@ index 7bd2edc..0888cb0 100644
  		includeWorkspaceTree: options.includeWorkspaceTree,
  		securityEnabled: options.securityEnabled,
  		evalPreludes: options.evalPreludes,
-@@ -4232,7 +4234,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+@@ -4425,7 +4427,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
  				skillsSettings: cfgSkills.get(settings),
  				inlineToolDescriptors,
  				nativeTools,
 -				programmatic: cfgTokenOptimizationProgrammatic.get(settings),
 +				promptGuidance: cfgTokenOptimizationPromptGuidance.get(settings),
  				intentField: cfgToolsIntentTracing.get(settings) ? INTENT_FIELD : undefined,
- 				eagerTasks: cfgTaskEager.get(settings) !== "default",
- 				eagerTasksAlways: cfgTaskEager.get(settings) === "always",
-@@ -4459,7 +4461,10 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+ 				// Spotlight ranks output against the call's intent: experiment sessions ask what each call's output is for.
+ 				intentGuidance: spotlightExperiment ? SPOTLIGHT_INTENT_GUIDANCE : undefined,
+@@ -4655,7 +4657,10 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
  		// Final convertToLlm: live provider replay drops API-level refusal errors,
  		// then applies secret obfuscation to the remaining outbound context.
  		const convertToLlmFinal = (messages: AgentMessage[]): Message[] => {
@@ -186,7 +186,7 @@ index 7bd2edc..0888cb0 100644
  			return obfuscateMessages(obfuscator, converted);
  		};
 diff --git a/packages/coding-agent/src/session/context-settings.ts b/packages/coding-agent/src/session/context-settings.ts
-index 51f19ed..0e58955 100644
+index 51f19ed16b..0e589558ab 100644
 --- a/packages/coding-agent/src/session/context-settings.ts
 +++ b/packages/coding-agent/src/session/context-settings.ts
 @@ -29,9 +29,21 @@ export const cfgTokenOptimizationProgrammatic = register({
@@ -214,7 +214,7 @@ index 51f19ed..0e58955 100644
  });
  
 diff --git a/packages/coding-agent/src/session/todo-tracker.ts b/packages/coding-agent/src/session/todo-tracker.ts
-index e1d85b4..a72df74 100644
+index e1d85b42e1..a72df7453f 100644
 --- a/packages/coding-agent/src/session/todo-tracker.ts
 +++ b/packages/coding-agent/src/session/todo-tracker.ts
 @@ -2,6 +2,7 @@ import type { Agent, AgentMessage, AgentTool } from "@oh-my-pi/pi-agent-core";
@@ -234,7 +234,7 @@ index e1d85b4..a72df74 100644
  			incompleteCount: incomplete.length,
  			plural: incomplete.length !== 1,
 diff --git a/packages/coding-agent/src/system-prompt.ts b/packages/coding-agent/src/system-prompt.ts
-index 31a0560..3e43a7e 100644
+index 7cffb1ab00..32c29a32cb 100644
 --- a/packages/coding-agent/src/system-prompt.ts
 +++ b/packages/coding-agent/src/system-prompt.ts
 @@ -38,7 +38,6 @@ import pragmaticPersonality from "./prompts/system/personalities/pragmatic.md" w
@@ -273,7 +273,7 @@ index 31a0560..3e43a7e 100644
  	intentTracing: cfgToolsIntentTracing,
  	xdevDocs: cfgToolsXdevDocs,
  	xdevInlineDevices: cfgToolsXdevInlineDevices,
-@@ -529,8 +534,8 @@ export interface BuildSystemPromptOptions {
+@@ -531,8 +536,8 @@ export interface BuildSystemPromptOptions {
  	 * `namespace functions { … }` catalog. Default: true
  	 */
  	nativeTools?: boolean;
@@ -284,7 +284,7 @@ index 31a0560..3e43a7e 100644
  	/** Skills settings for discovery. */
  	skillsSettings?: SkillsSettings;
  	/** Working directory. Default: getProjectDir() */
-@@ -992,6 +997,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
+@@ -1001,6 +1006,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
  
  	const environment = getEnvironmentInfo();
  	const data = {
@@ -292,7 +292,7 @@ index 31a0560..3e43a7e 100644
  		systemPromptCustomization: effectiveSystemPromptCustomization,
  		customPrompt: resolvedCustomPrompt,
  		appendPrompt: resolvedAppendPrompt ?? "",
-@@ -1060,9 +1066,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
+@@ -1069,9 +1075,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
  		rendered = prompt.render(systemPromptTemplate, data);
  	}
  	const systemPrompt = [rendered];
@@ -303,7 +303,7 @@ index 31a0560..3e43a7e 100644
  		const guidance = prelude.guidance?.trim();
  		if (guidance) systemPrompt.push(guidance);
 diff --git a/packages/coding-agent/src/tools/todo.ts b/packages/coding-agent/src/tools/todo.ts
-index 17acdf6..b49e82c 100644
+index 17acdf6ca6..b49e82cffa 100644
 --- a/packages/coding-agent/src/tools/todo.ts
 +++ b/packages/coding-agent/src/tools/todo.ts
 @@ -12,6 +12,7 @@ import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallb

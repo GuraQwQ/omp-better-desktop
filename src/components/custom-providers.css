@@ -42,6 +42,10 @@
 .provider-model-options h4 { margin: 0; font-size: 13px; font-weight: var(--weight-strong); }
 .provider-model-options > p { margin: 0; }
 .provider-model-options > button { justify-self: start; }
+.provider-compaction { display: grid; gap: 10px; }
+.provider-compaction h4, .provider-compaction p { margin: 0; }
+.provider-model-capabilities { min-width: 0; overflow-wrap: anywhere; }
+.provider-model-capabilities a { color: var(--accent); }
 .provider-model-numbers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .provider-costs { display: grid; gap: 8px; color: var(--secondary); font-size: 12px; }
 .provider-costs small { font-size: 12px; }

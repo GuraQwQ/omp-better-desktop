@@ -4,7 +4,10 @@ use std::{
     io::Write,
     path::Path,
     process::{Command, Stdio},
+    sync::Mutex,
 };
+
+static HELPER_WRITE: Mutex<()> = Mutex::new(());
 
 fn config_path(agent_dir: &Path) -> std::path::PathBuf {
     let file = agent_dir.join("models.yml");
@@ -18,19 +21,33 @@ fn config_path(agent_dir: &Path) -> std::path::PathBuf {
 
 fn invoke(root: &Path, request: Value) -> Result<Value, String> {
     let executable = storage::current_runtime(root)?.ok_or("Install the OMP runtime first.")?;
-    // 内嵌脚本没有独立 JSON 文件，将同源字段数据展开到执行文本。
+    // 内嵌脚本没有独立模块文件，将同源能力目录和字段数据展开到执行文本。
     let script = format!(
-        "const modelFields = {};\n{}\nawait run();",
+        "const modelFields = {};\nconst bundledCapabilities = {};\nconst officialCapabilities = {};\n{}\n{}\nawait run();",
         include_str!("provider-model-fields.json"),
+        include_str!("model-capabilities.json"),
+        include_str!("model-capabilities-overrides.json"),
+        include_str!("model-metadata.mjs")
+            .replace("import bundledCapabilities from './model-capabilities.json' with { type: 'json' };", "")
+            .replace("import officialCapabilities from './model-capabilities-overrides.json' with { type: 'json' };", ""),
         include_str!("provider-config.mjs").replace(
             "import modelFields from './provider-model-fields.json' with { type: 'json' };",
             ""
         )
+        .replace("import { inferredModelCapabilities } from './model-metadata.mjs';", "")
     );
+    let helper = root.join("cache/providers-helper.mjs");
+    {
+        let _write = HELPER_WRITE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if !std::fs::read(&helper).is_ok_and(|bytes| bytes == script.as_bytes()) {
+            storage::atomic_write(&helper, script.as_bytes())?;
+        }
+    }
     let mut command = Command::new(executable);
     command
-        .arg("--eval")
-        .arg(script)
+        .arg(helper)
         .current_dir(root)
         .env("BUN_BE_BUN", "1")
         .env("BUN_INSTALL_CACHE_DIR", root.join("cache/bun"))

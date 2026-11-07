@@ -1,17 +1,17 @@
 diff --git a/packages/coding-agent/src/exec/bash-executor.ts b/packages/coding-agent/src/exec/bash-executor.ts
-index 5977e2f..b4fc226 100644
+index 74d23c6de8..8f13bb6d1c 100644
 --- a/packages/coding-agent/src/exec/bash-executor.ts
 +++ b/packages/coding-agent/src/exec/bash-executor.ts
-@@ -13,7 +13,7 @@ import {
- 	type ShellRunResult,
- } from "@oh-my-pi/pi-natives";
+@@ -17,7 +17,7 @@ import {
+ import { isShellTrace, type ShellTrace } from "@oh-my-pi/pi-wire";
+ import { logger } from "@oh-my-pi/pi-utils";
  import { $env } from "@oh-my-pi/pi-utils/env";
 -import { isCmdShell, isExecutable, type ShellConfig } from "@oh-my-pi/pi-utils/procmgr";
 +import { isCmdShell, isExecutable, isPosixShell, isPowerShell, type ShellConfig } from "@oh-my-pi/pi-utils/procmgr";
  import { Settings } from "../config/settings";
- import { type OutputArtifactError, OutputSink, type OutputSummary } from "@oh-my-pi/pi-tui/tools/streaming-output";
- import {
-@@ -460,6 +460,39 @@ function resolveUserShellConfig(settings: Settings, baseConfig: ShellConfig): Sh
+ import type { MinimizedMeta } from "@oh-my-pi/pi-tui/tools/output-meta";
+ import { OutputSink, type OutputSummary } from "@oh-my-pi/pi-tui/tools/streaming-output";
+@@ -513,6 +513,39 @@ function resolveUserShellConfig(settings: Settings, baseConfig: ShellConfig): Sh
  	};
  }
  
@@ -51,7 +51,7 @@ index 5977e2f..b4fc226 100644
  /**
   * Env for the user-shell PTY path: keep the non-interactive guards (pagers,
   * editors, credential prompts) but restore color — the PTY makes stdout a
-@@ -554,11 +587,11 @@ async function executeUserShellPty(run: {
+@@ -607,11 +640,11 @@ async function executeUserShellPty(run: {
  
  export async function executeBash(command: string, options?: BashExecutorOptions): Promise<BashResult> {
  	const settings = await Settings.init();
@@ -67,9 +67,9 @@ index 5977e2f..b4fc226 100644
  	// `!` hotkey commands on zsh/fish run in a real PTY: interactive shell
  	// startup (zle, job control, gitstatus) needs a TTY, and tools only emit
  	// color when stdout is one. bash keeps the snapshot + embedded-shell path;
-@@ -601,7 +634,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
+@@ -654,7 +687,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
  	// Never wrap in cmd.exe: it is only the Windows no-bash fallback for spawn
- 	// paths, and the embedded brush shell runs the POSIX line better directly.
+ 	// paths, and the embedded shell runs the POSIX line better directly.
  	const finalCommand =
 -		options?.useUserShell === true && !bashShell && !isCmdShell(shell) && !runCdInPersistentShell
 +		wrapUserCommand && !runCdInPersistentShell
@@ -77,7 +77,7 @@ index 5977e2f..b4fc226 100644
  			: preflight.command;
  
 diff --git a/packages/coding-agent/src/exec/settings.ts b/packages/coding-agent/src/exec/settings.ts
-index f2da183..2f93e13 100644
+index f2da183bf9..2f93e13710 100644
 --- a/packages/coding-agent/src/exec/settings.ts
 +++ b/packages/coding-agent/src/exec/settings.ts
 @@ -97,10 +97,31 @@ export const DEFAULT_BASH_INTERCEPTOR_RULES: BashInterceptorRule[] = [
@@ -114,8 +114,19 @@ index f2da183..2f93e13 100644
  
  export const cfgBashEnabled = register({
  	id: "bash.enabled",
+diff --git a/packages/coding-agent/src/prompts/tools/bash.md b/packages/coding-agent/src/prompts/tools/bash.md
+index 2319d2bf65..6a2a404603 100644
+--- a/packages/coding-agent/src/prompts/tools/bash.md
++++ b/packages/coding-agent/src/prompts/tools/bash.md
+@@ -1,4 +1,5 @@
+-Persistent shell: one fact command/pipeline; dependencies use `&&`.
++{{#if shellContract}}{{shellContract}}
++{{/if}}Persistent shell: one fact command/pipeline; dependencies use `&&`.
+ {{#if hasEval}}Scripts/heredocs/`$(…)`/complex pipelines → `eval`.{{else}}Scripts/heredocs/`$(…)`/complex flow → dedicated tool or checked-in script.{{/if}}
+ `cwd`, not `cd`; `pty` only interactive.
+ Internal URIs work as paths for builtins/coreutils, redirects, globs.
 diff --git a/packages/coding-agent/src/tools/bash.ts b/packages/coding-agent/src/tools/bash.ts
-index 550b71e..925a558 100644
+index 9e01fc2bcf..6eb0ce6fa1 100644
 --- a/packages/coding-agent/src/tools/bash.ts
 +++ b/packages/coding-agent/src/tools/bash.ts
 @@ -21,7 +21,7 @@ import { isEnoent, logger, prompt } from "@oh-my-pi/pi-utils";
@@ -127,15 +138,15 @@ index 550b71e..925a558 100644
  import { InternalUrlRouter } from "../internal-urls";
  import { sessionResolveContext } from "../internal-urls/context";
  import { InternalUrlFilesystem, UrlFsError } from "../internal-urls/url-filesystem";
-@@ -76,6 +76,7 @@ import {
- 	cfgBashPatterns,
+@@ -78,6 +78,7 @@ import {
  } from "../exec/settings";
+ import { cfgDisplayShellVisualization } from "../modes/settings";
  import { cfgSkillful } from "../session/settings";
 +import { cfgTokenOptimizationPromptGuidance } from "../session/context-settings";
- import { cfgWorktreeClone } from "../task/settings";
- 
- const BASH_APPROVAL_SHELL_CONTROL_CHARS: Record<string, true> = {
-@@ -610,6 +611,9 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
+ import { cfgWorktreeClone, ovnfsCommand } from "../task/settings";
+ import { nativeShapingOff, shapeToolText, shapingExperiment } from "../spotlight";
+ import { SPOTLIGHT_FULL_OUTPUT_MAX_BYTES } from "../spotlight/types";
+@@ -643,6 +644,9 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
  		const evalBackends = resolveEvalBackends(this.session);
  		const isToolActive = (name: string, fallback: boolean): boolean => this.session.isToolActive?.(name) ?? fallback;
  		return prompt.render(bashDescription, {
@@ -145,14 +156,3 @@ index 550b71e..925a558 100644
  			asyncEnabled: cfgAsyncEnabled.get(this.session.settings),
  			// The deadline an omitted `timeout` resolves to, after the `tools.maxTimeout` cap.
  			defaultTimeoutSec: clampTimeout("bash", undefined, cfgToolsMaxTimeout.get(this.session.settings)),
-diff --git a/packages/coding-agent/src/prompts/tools/bash.md b/packages/coding-agent/src/prompts/tools/bash.md
-index 2319d2b..6a2a404 100644
---- a/packages/coding-agent/src/prompts/tools/bash.md
-+++ b/packages/coding-agent/src/prompts/tools/bash.md
-@@ -1,4 +1,5 @@
--Persistent shell: one fact command/pipeline; dependencies use `&&`.
-+{{#if shellContract}}{{shellContract}}
-+{{/if}}Persistent shell: one fact command/pipeline; dependencies use `&&`.
- {{#if hasEval}}Scripts/heredocs/`$(…)`/complex pipelines → `eval`.{{else}}Scripts/heredocs/`$(…)`/complex flow → dedicated tool or checked-in script.{{/if}}
- `cwd`, not `cd`; `pty` only interactive.
- Internal URIs work as paths for builtins/coreutils, redirects, globs.

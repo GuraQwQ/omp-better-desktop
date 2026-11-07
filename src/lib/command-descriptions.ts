@@ -240,13 +240,20 @@ const englishFallbacks: Record<string, string> = {
 };
 
 const dynamicSources = new Set(['skill', 'extension', 'custom', 'mcp_prompt', 'file']);
+const extensionDescriptions: Record<string, string> = {
+  'Annotate a diff or text from a file, prompt, latest reply, or session': '批注文件差异、提示词、最新回复或会话中的文本',
+  'Toggle builtin autoresearch mode, or pass off / clear, or a goal message.': '开启自动研究模式；也可关闭、清空或指定研究目标',
+  'Generate a prompt to iterate on CI failures until the branch is green': '生成修复提示，持续处理 CI 失败直至检查通过',
+  'Generate AGENTS.md for current codebase': '为当前代码库生成 AGENTS.md 项目指南',
+  'Launch interactive code review': '开始交互式代码评审',
+};
 
 export function describeCommand(entry: CatalogEntry, language: Language): string {
   const localized = entry.descriptions?.[language];
   if (typeof localized === 'string' && localized) return localized;
   const description = entry.description ?? '';
-  // 扩展与技能的命令可能和内置命令同名，描述始终由其来源提供。
-  if (dynamicSources.has(entry.source ?? '') || dynamicSources.has(entry.kind ?? '')) return description;
+  // 按来源描述翻译，避免同名第三方命令套用内置命令的含义。
+  if (dynamicSources.has(entry.source ?? '') || dynamicSources.has(entry.kind ?? '')) return language === 'zh' ? extensionDescriptions[description.trim()] ?? description : description;
   const name = entry.name.replace(/^\//, '');
   const kind = entry.kind ?? 'slash';
   if (language === 'en') return englishFallbacks[`${kind}:${name}`] && (!description || /[\u3400-\u9fff]/u.test(description)) ? englishFallbacks[`${kind}:${name}`] : description;

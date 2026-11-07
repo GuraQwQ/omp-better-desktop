@@ -1,0 +1,51 @@
+diff --git a/packages/coding-agent/src/config/custom-models.ts b/packages/coding-agent/src/config/custom-models.ts
+index 5b507e0..b86943b 100644
+--- a/packages/coding-agent/src/config/custom-models.ts
++++ b/packages/coding-agent/src/config/custom-models.ts
+@@ -12,6 +12,7 @@ import { type ConfigHeaderResolver, type ConfigHeaderSource, createConfigHeaderR
+ import { type ModelPatch, mergeCompat, mergeRemoteCompactionConfig } from "./model-patch";
+ import { parseModelString } from "@oh-my-pi/pi-tui/overlays/model-selector";
+ import type { ModelOverride, ProviderAuthMode } from "./models-config-schema";
++import { inferredModelCapabilities } from "./desktop-model-metadata.mjs";
+ export interface CustomModelDefinitionLike extends ModelPatch {
+ 	id: string;
+ 	api?: Api;
+@@ -109,6 +110,13 @@ export function buildCustomModelOverlay(
+ }
+ 
+ export function finalizeCustomModel(resolvedModel: CustomModelOverlay, options: CustomModelBuildOptions): Model<Api> {
++	if (options.useDefaults) {
++		const inferred = inferredModelCapabilities(resolvedModel.id).fields;
++		resolvedModel = {
++			...inferred,
++			...Object.fromEntries(Object.entries(resolvedModel).filter(([, value]) => value !== undefined)),
++		} as CustomModelOverlay;
++	}
+ 	const reference = options.useDefaults
+ 		? resolveModelReference(resolvedModel.id, getBundledModelReferenceIndex())
+ 		: undefined;
+diff --git a/packages/coding-agent/test/desktop-model-capabilities.test.ts b/packages/coding-agent/test/desktop-model-capabilities.test.ts
+new file mode 100644
+index 0000000..0327174
+--- /dev/null
++++ b/packages/coding-agent/test/desktop-model-capabilities.test.ts
+@@ -0,0 +1,19 @@
++import { expect, test } from "bun:test";
++import { finalizeCustomModel } from "../src/config/custom-models";
++
++test("仅含型号的模型配置自动补全，并保留显式覆盖", () => {
++	const base = { provider: "proxy", api: "openai-responses" as const, baseUrl: "https://example.invalid/v1" };
++	for (const id of ["GPT 6.1 SOL", "openai/GPT-6.1-sol", "gpt-6-1-sol"]) {
++		const model = finalizeCustomModel({ ...base, id }, { useDefaults: true });
++		expect(model.contextWindow).toBe(1050000);
++		expect(model.input).toEqual(["text", "image"]);
++		expect(model.id).toBe(id);
++	}
++	const explicit = finalizeCustomModel({ ...base, id: "GPT 6.1 SOL", contextWindow: 128000, maxTokens: 4096, input: ["text"] }, { useDefaults: true });
++	expect(explicit.contextWindow).toBe(128000);
++	expect(explicit.maxTokens).toBe(4096);
++	expect(explicit.input).toEqual(["text"]);
++	const latest = finalizeCustomModel({ ...base, id: "Kimi K3.1 Pro" }, { useDefaults: true });
++	expect(latest.contextWindow).toBe(1048576);
++	expect(latest.input).toEqual(["text", "image"]);
++});

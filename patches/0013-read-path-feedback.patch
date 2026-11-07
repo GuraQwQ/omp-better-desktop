@@ -1,5 +1,6 @@
 diff --git a/packages/coding-agent/src/session/read-path-feedback.ts b/packages/coding-agent/src/session/read-path-feedback.ts
 new file mode 100644
+index 0000000000..39ff7d6aa9
 --- /dev/null
 +++ b/packages/coding-agent/src/session/read-path-feedback.ts
 @@ -0,0 +1,52 @@
@@ -56,7 +57,7 @@ new file mode 100644
 +	return output ?? messages;
 +}
 diff --git a/packages/coding-agent/src/session/session-provider-boundary.ts b/packages/coding-agent/src/session/session-provider-boundary.ts
-index 4c6d9b3..aa10e66 100644
+index 5c96d6eb78..f3dd04acb3 100644
 --- a/packages/coding-agent/src/session/session-provider-boundary.ts
 +++ b/packages/coding-agent/src/session/session-provider-boundary.ts
 @@ -17,6 +17,8 @@ import { imageAttachmentSource } from "@oh-my-pi/pi-tui/prompt/image-source";
@@ -67,7 +68,7 @@ index 4c6d9b3..aa10e66 100644
 +import { withReadPathFeedback } from "./read-path-feedback";
  import { IMAGE_ATTACHMENT_DESCRIPTION_TYPE } from "./queued-messages";
  import type { SessionContext, TranscriptSessionContextOptions } from "./session-context";
- import type { CostGate } from "./cost-gate";
+ import type { CostGateApi } from "./cost-gate";
 @@ -203,7 +205,10 @@ export class SessionProviderBoundary {
  
  	/** Converts side-request messages through the session's secret boundary. */
