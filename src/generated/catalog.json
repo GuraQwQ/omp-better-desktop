@@ -718,7 +718,7 @@
   {
     "name": "restart",
     "kind": "slash",
-    "description": "Restart omp with the same launch flags, resuming this session",
+    "description": "Restart omp with the same launch flags, resuming this session and its running subagents",
     "surface": "terminal",
     "rpc": false,
     "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
@@ -1707,7 +1707,7 @@
   {
     "name": "bash",
     "kind": "rpc",
-    "description": "Run a shell command.",
+    "description": "Run a shell command. Before excluding output, require ready.supportsBashExcludeFromContext to be true.",
     "surface": "rpc",
     "source": "packages/coding-agent/src/modes/rpc/wire/commands.ts"
   },
