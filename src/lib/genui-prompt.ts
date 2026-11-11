@@ -1,4 +1,5 @@
 import { buildGenUIInstructions, normalizeGenUIConfiguration } from './genui-config';
+import { questionResponseText, readQuestionResponse } from './question-response';
 const applied = new Map<string, string>();
 const start = '[omp-desktop-genui]\n';
 const end = '\n[/omp-desktop-genui]\n\n';
@@ -17,4 +18,9 @@ export async function sendGenUIPrompt<T>(id: string, message: string, configurat
   acknowledgeGenUIPrompt(id, prompt.key);
   return result;
 }
-export function displayUserPrompt(message: string) { if (!message.startsWith(start)) return message; const index = message.indexOf(end); return index < 0 ? message : message.slice(index + end.length); }
+export function displayUserPrompt(message: string) {
+  const index = message.startsWith(start) ? message.indexOf(end) : -1;
+  const text = index < 0 ? message : message.slice(index + end.length);
+  const response = readQuestionResponse({ id: '', role: 'user', content: text });
+  return response ? questionResponseText(response) : text;
+}

@@ -25,6 +25,11 @@ for (const source of [live.messages, history]) {
 console.log('消息实时与历史展示遵守上游标记，并保留用户、助手及原始上下文');
 
 const update = (assistantMessageEvent: object) => ({ type: 'message_update', messageId: 'stream', message: { role: 'assistant' }, assistantMessageEvent });
+const transient = applyEvents(session, [
+  { type: 'message_start', messageId: 'stream', message: { role: 'assistant', content: [{ type: 'text', text: '.' }] } },
+  update({ type: 'text_start', contentIndex: 0, block: { type: 'text', text: '' } }),
+]);
+assert.deepEqual(transient.messages[0].content, [{ type: 'text', text: '' }]);
 const started = applyEvents(session, [
   { type: 'message_start', messageId: 'stream', message: { role: 'assistant', content: [] } },
   update({ type: 'start', message: { role: 'assistant', content: [], model: 'test' } }),
@@ -53,10 +58,15 @@ const completed = applyEvents(started, [
 assert.equal(blocks[2].argumentsText, '{"path":');
 assert(Array.isArray(completed.messages[0].content));
 assert.equal(completed.messages[0].content[2].argumentsText, undefined);
+assert.deepEqual(completed.messages[0].content[2], { type: 'toolCall', id: 'call', name: 'read', arguments: { path: '中文.ts' } });
 assert.equal(completed.messages[0].content[3].data, 'test-image');
 const final = { ...completed.messages[0], stopReason: 'toolUse', usage: { totalTokens: 123 } };
-const ended = applyEvents(completed, [update({ type: 'done', message: final }), { type: 'message_end', messageId: 'stream', message: final }]);
+const done = applyEvents(completed, [update({ type: 'done', message: final })]);
+assert.deepEqual(done.messages, [final]);
+const ended = applyEvents(done, [{ type: 'message_end', messageId: 'stream', message: final }]);
 assert.deepEqual(ended.messages, [final]);
+const snapshotUpdate = applyEvents(session, [{ type: 'message_update', messageId: 'stream', message: final, assistantMessageEvent: { type: 'toolcall_delta', contentIndex: 2, delta: '"中文.ts"}', partial: final } }]);
+assert.deepEqual(snapshotUpdate.messages, [final]);
 const failed = applyEvents(started, [update({ type: 'error', error: { ...final, stopReason: 'error', errorMessage: '连接中断' } })]);
 assert.equal(failed.messages[0].errorMessage, '连接中断');
 console.log('官方增量事件保留工具参数流、签名、图片与最终消息，重复开始不会累加旧内容');

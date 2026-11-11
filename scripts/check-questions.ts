@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { answerableQuestion, completeQuestion, createQuestionDraft, questionAnswersComplete, questionDraft, updateQuestionDraft } from '../src/lib/question-draft';
 import { readQuestionResponse } from '../src/lib/question-response';
+import { displayUserPrompt } from '../src/lib/genui-prompt';
 import { applyEvent, isSessionRunning } from '../src/lib/session-state';
 import type { Json, SessionView } from '../src/lib/types';
 
@@ -40,4 +41,5 @@ assert.deepEqual(readQuestionResponse({ id: 'history', role: 'user', content: [{
 assert.equal(readQuestionResponse({ id: 'assistant', role: 'assistant', content }), undefined);
 assert.equal(readQuestionResponse({ id: 'quote', role: 'user', content: '这是格式示例：\n' + content }), undefined);
 assert.equal(readQuestionResponse({ id: 'broken', role: 'user', content: content.replace('selectedOptions', 'invalidOptions') }), undefined);
+assert.equal(displayUserPrompt(content), '需要哪些结果？\n第一行\n第二行');
 console.log('提问草稿、失败重试、纯输入确认与历史问答展示检查通过');

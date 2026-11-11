@@ -67,7 +67,7 @@ function CollapsedBlock({ block, t, active, stopped, live, onReference }: { bloc
 }
 
 const MessageView = memo(function MessageView({ message, t, disabled, active, live, turn, edit, retry, genui, repairs, onReference, sideQuestionThreads, onSideQuestionThread }: { message: Message; t: CopyText; disabled: boolean; active: boolean; live: boolean; turn?: number; edit?: (message: Message) => void; retry?: () => void; genui?: GenUIContext; repairs?: GenUIRepairs; onReference?: (message: Message, block?: ContentBlock) => void; sideQuestionThreads?: SideQuestionThreadSummary[]; onSideQuestionThread?: (id: string) => void }) {
-  const text = messageText(message);
+  const text = message.role === 'user' ? displayUserPrompt(messageText(message)) : messageText(message);
   const stopped = isStoppedMessage(message);
   const notice = isSessionNotice(message);
   const response = readQuestionResponse(message);

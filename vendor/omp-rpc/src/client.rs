@@ -715,6 +715,37 @@ impl Drop for Collector<'_> {
 	}
 }
 
+/// 等待超时仍保留同一次请求；调用方可以继续等待，避免重复发送已接收的提示。
+pub struct PendingResponse {
+	shared: Arc<Shared>,
+	id: String,
+	response: Mutex<Receiver<Result<RpcResponse, Error>>>,
+}
+
+impl PendingResponse {
+	pub fn wait(&self, timeout: Duration) -> Result<Option<Value>, Error> {
+		let response = match self.response.lock().unwrap_or_else(PoisonError::into_inner).recv_timeout(timeout) {
+			Ok(response) => response?,
+			Err(RecvTimeoutError::Timeout) => return Ok(None),
+			Err(RecvTimeoutError::Disconnected) => return Err(Error::Closed),
+		};
+		if !response.success {
+			return Err(command_error(response));
+		}
+		Ok(Some(response.data.unwrap_or(Value::Null)))
+	}
+
+	pub fn cancel(&self) {
+		self.shared.state().pending.remove(&self.id);
+	}
+}
+
+impl Drop for PendingResponse {
+	fn drop(&mut self) {
+		self.cancel();
+	}
+}
+
 /// A connected `omp --mode rpc` server.
 pub struct Client {
 	shared:           Arc<Shared>,
@@ -921,6 +952,19 @@ impl Client {
 		frame["id"] = Value::String(id.clone());
 		let response = self.request(&id, &name, &frame, self.default_timeout)?;
 		Ok(response.data.unwrap_or(Value::Null))
+	}
+
+	/// 发送一次命令并保留其响应句柄；等待超时不代表命令未被接收。
+	pub fn begin_raw(&self, mut frame: Value) -> Result<PendingResponse, Error> {
+		let name = frame.get("type").and_then(Value::as_str)
+			.ok_or_else(|| Error::InvalidArgument("Missing command type".into()))?.to_owned();
+		let id = self.next_id();
+		frame["id"] = Value::String(id.clone());
+		let (tx, rx) = mpsc::sync_channel(1);
+		self.shared.state().pending.insert(id.clone(), (name, tx));
+		let pending = PendingResponse { shared: self.shared.clone(), id, response: Mutex::new(rx) };
+		self.shared.enqueue(&frame, None)?;
+		Ok(pending)
 	}
 
 	/// Queues `frame` and waits for its successful response.

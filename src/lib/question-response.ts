@@ -9,6 +9,10 @@ export interface QuestionResponseRow {
 }
 export interface QuestionResponseRecord { questionId: string; answers: QuestionResponseRow[] }
 
+export function questionResponseText(record: QuestionResponseRecord): string {
+  return record.answers.map(answer => `${answer.question}\n${[...answer.selectedOptions, answer.customInput].filter(Boolean).join('\n')}`).join('\n\n');
+}
+
 const start = '[omp-desktop-question-response]\n';
 const end = '\n[/omp-desktop-question-response]';
 

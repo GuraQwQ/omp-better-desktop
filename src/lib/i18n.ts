@@ -1,6 +1,7 @@
 import type { Language } from './types';
 
 const en = {
+  checkConfirmation: 'Check confirmation',
   product: 'Better OMP Desktop', newSession: 'New conversation', addProject: 'Add project', projects: 'Projects',
   settings: 'Settings', commands: 'Commands', review: 'Changes', context: 'Context', agents: 'Agents', terminal: 'Terminal',
   files: 'Files', history: 'History', runtime: 'Runtime', ready: 'Ready', connecting: 'Connecting', running: 'Working',
@@ -63,6 +64,7 @@ const en = {
   reviewScope: 'Review scope', workspaceChanges: 'Working tree', turnChanges: 'Turn tool changes', turnLabel: 'Turn', earlierTurn: 'Earlier turn records', noTurnChanges: 'No file operations recorded for this turn.', changeRecord: 'Operation record', proposedChange: 'Preview',
 };
 const zh: typeof en = {
+  checkConfirmation: '检查确认',
   product: 'Better OMP Desktop', newSession: '新建对话', addProject: '添加项目', projects: '项目',
   settings: '设置', commands: '命令', review: '更改', context: '上下文', agents: '代理', terminal: '终端',
   files: '文件', history: '历史记录', runtime: '运行时', ready: '就绪', connecting: '连接中', running: '正在工作',
@@ -130,6 +132,8 @@ export const copy = (language: Language): Copy => language === 'zh' ? zh : en;
 export const statusText = (status: string, t: Copy): string => t.statusLabels[status as keyof Copy['statusLabels']] ?? status;
 
 const errorTranslations: Record<string, string> = {
+  'Answer confirmation is still pending. Retry to check the same submission.': '答案仍在等待确认，可再次检查提交状态。',
+  'Session is closed or interrupted.': '对话已关闭或中止。',
   'Git is required to review project changes.': '查看项目差异需要安装 Git；文件浏览和对话仍可使用。',
   'This project is not a Git working tree.': '此文件夹尚未初始化 Git 仓库，可在回合工具改动中查看本次文件操作。',
   'Install a matching OMP runtime in Settings first.': '请先在设置中安装匹配的 OMP 运行时。',

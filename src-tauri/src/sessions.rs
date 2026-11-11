@@ -346,6 +346,16 @@ impl Sessions {
     }
 
     pub fn rpc(&self, app: AppHandle, id: &str, frame: Value) -> Result<Value, String> {
+        self.rpc_request(app, id, frame, None)
+    }
+
+    fn rpc_request(
+        &self,
+        app: AppHandle,
+        id: &str,
+        frame: Value,
+        question_id: Option<&str>,
+    ) -> Result<Value, String> {
         let (client, settled, side_running, path_cell, capture_context, questions) = {
             let sessions = self.sessions.lock().unwrap();
             let session = sessions
@@ -384,7 +394,14 @@ impl Sessions {
                 | "open_session"
                 | "switch_session"
         );
-        let send = || client.call_raw(frame).map_err(|e| e.to_string());
+        let send = || match question_id {
+            Some(question_id) => {
+                questions.wait_response(question_id, Duration::from_secs(30), || {
+                    client.begin_raw(frame).map_err(|e| e.to_string())
+                })
+            }
+            None => client.call_raw(frame).map_err(|e| e.to_string()),
+        };
         let result = if clears_questions {
             questions.interrupt(send)
         } else {
@@ -467,10 +484,11 @@ impl Sessions {
             (session.client.clone(), session.questions.clone())
         };
         if let Some(result) = questions.respond(&response, |message| {
-            self.rpc(
+            self.rpc_request(
                 app.clone(),
                 id,
                 json!({"type":"prompt","message":message,"streamingBehavior":"steer"}),
+                response["id"].as_str(),
             )
         }) {
             drop(client);

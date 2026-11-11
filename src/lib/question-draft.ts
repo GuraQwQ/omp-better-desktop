@@ -1,5 +1,7 @@
 import type { Json, QuestionDraft, SessionView } from './types';
 
+export const QUESTION_CONFIRMATION_PENDING = 'Answer confirmation is still pending. Retry to check the same submission.';
+
 export function createQuestionDraft(question: Json): QuestionDraft {
   return { value: String(question.prefill ?? question.defaultValue ?? ''), answers: {} };
 }

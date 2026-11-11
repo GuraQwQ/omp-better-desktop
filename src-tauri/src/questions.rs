@@ -1,3 +1,4 @@
+use omp_rpc::client::PendingResponse;
 use omp_rpc::{HostTool, ToolLoadMode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -6,6 +7,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
 const PREFIX: &str = "desktop-ask-";
@@ -57,6 +59,8 @@ struct Answer {
 struct State {
     pending: HashMap<String, Vec<Question>>,
     finished: HashSet<String>,
+    inflight: HashMap<String, Arc<PendingResponse>>,
+    interrupting: bool,
     closed: bool,
 }
 
@@ -164,11 +168,19 @@ impl Questions {
         if !id.starts_with(PREFIX) {
             return None;
         }
+        if response["cancelled"] == true {
+            if let Some(pending) = self.state.lock().unwrap().inflight.get(id) {
+                pending.cancel();
+            }
+        }
         let _delivery = self.delivery.lock().unwrap();
         let questions = {
             let state = self.state.lock().unwrap();
             if state.finished.contains(id) {
                 return Some(Ok(json!({"accepted":true,"duplicate":true})));
+            }
+            if state.closed || state.interrupting {
+                return Some(Err("Session is closed or interrupted.".into()));
             }
             let Some(questions) = state.pending.get(id) else {
                 return Some(Err(
@@ -191,12 +203,47 @@ impl Questions {
         }))
     }
 
+    pub fn wait_response(
+        &self,
+        id: &str,
+        timeout: Duration,
+        start: impl FnOnce() -> Result<PendingResponse, String>,
+    ) -> Result<Value, String> {
+        let pending = {
+            let mut state = self.state.lock().unwrap();
+            if state.closed || state.interrupting {
+                return Err("Session is closed or interrupted.".into());
+            }
+            if let Some(pending) = state.inflight.get(id) {
+                pending.clone()
+            } else {
+                let pending = Arc::new(start()?);
+                state.inflight.insert(id.to_owned(), pending.clone());
+                pending
+            }
+        };
+        match pending.wait(timeout) {
+            Ok(None) => Err(
+                "Answer confirmation is still pending. Retry to check the same submission.".into(),
+            ),
+            result => {
+                self.state.lock().unwrap().inflight.remove(id);
+                result
+                    .map(|value| value.unwrap_or(Value::Null))
+                    .map_err(|error| error.to_string())
+            }
+        }
+    }
+
     fn finish(&self, id: &str, cancelled: bool) {
         let mut state = self.state.lock().unwrap();
         if state.pending.remove(id).is_none() {
             return;
         }
         state.finished.insert(id.to_owned());
+        if let Some(pending) = state.inflight.remove(id) {
+            pending.cancel();
+        }
         drop(state);
         if cancelled {
             (self.emit)(
@@ -206,21 +253,36 @@ impl Questions {
     }
 
     fn cancel_one(&self, id: &str) {
+        if let Some(pending) = self.state.lock().unwrap().inflight.get(id) {
+            pending.cancel();
+        }
         let _delivery = self.delivery.lock().unwrap();
         self.finish(id, true);
     }
 
     pub fn interrupt<T>(&self, send: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+        self.cancel_waiters(false);
         let _delivery = self.delivery.lock().unwrap();
         self.clear_locked(false);
         let result = send();
         self.clear_locked(false);
+        self.state.lock().unwrap().interrupting = false;
         result
     }
 
     pub fn close(&self) {
+        self.cancel_waiters(true);
         let _delivery = self.delivery.lock().unwrap();
         self.clear_locked(true);
+    }
+
+    fn cancel_waiters(&self, closed: bool) {
+        let mut state = self.state.lock().unwrap();
+        state.closed |= closed;
+        state.interrupting = true;
+        for pending in state.inflight.values() {
+            pending.cancel();
+        }
     }
 
     fn clear_locked(&self, closed: bool) {
@@ -508,6 +570,8 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let peer = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
         let (received, pending) = mpsc::sync_channel(1);
+        let (acknowledge, wait_to_acknowledge) = mpsc::sync_channel(1);
+        let (finish_server, wait_to_finish) = mpsc::sync_channel(1);
         let server = thread::spawn(move || {
             let (mut socket, _) = listener.accept().unwrap();
             socket
@@ -538,11 +602,17 @@ mod tests {
             let prompt = read(&mut reader);
             assert_eq!(prompt["type"], "prompt");
             assert_eq!(prompt["streamingBehavior"], "steer");
+            wait_to_acknowledge
+                .recv_timeout(Duration::from_secs(3))
+                .unwrap();
             send(
                 &mut socket,
                 json!({"type":"response","id":prompt["id"],"command":"prompt","success":true,"data":{"queued":true}}),
             );
             // 刻意不发 prompt_result，证明宿主仅等待接收确认。
+            let cancelled = read(&mut reader);
+            assert_eq!(cancelled["type"], "prompt");
+            wait_to_finish.recv_timeout(Duration::from_secs(3)).unwrap();
         });
         let (questions, _) = collector();
         let options = ClientOptions {
@@ -553,17 +623,77 @@ mod tests {
         let (client, _) = Client::from_io(peer.try_clone().unwrap(), peer, options).unwrap();
         let id = pending.recv_timeout(Duration::from_secs(3)).unwrap();
         assert!(questions.has_pending());
+        assert!(
+            questions
+                .respond(&answer(&id), |message| {
+                    questions.wait_response(&id, Duration::ZERO, || {
+                        client
+                            .begin_raw(json!({"type":"prompt","message":message,"streamingBehavior":"steer"}))
+                            .map_err(|error| error.to_string())
+                    })
+                })
+                .unwrap()
+                .is_err()
+        );
+        assert!(
+            questions
+                .respond(&answer(&id), |_| {
+                    questions
+                        .wait_response(&id, Duration::ZERO, || panic!("等待超时后不能重发答案"))
+                })
+                .unwrap()
+                .is_err()
+        );
+        assert!(questions.has_pending());
+        acknowledge.send(()).unwrap();
         questions
-            .respond(&answer(&id), |message| {
-                client
-                    .call_raw(
-                        json!({"type":"prompt","message":message,"streamingBehavior":"steer"}),
-                    )
-                    .map_err(|error| error.to_string())
+            .respond(&answer(&id), |_| {
+                questions.wait_response(&id, Duration::from_secs(3), || {
+                    panic!("迟到确认应复用原请求")
+                })
             })
             .unwrap()
             .unwrap();
         assert!(!questions.has_pending());
+        assert!(questions.state.lock().unwrap().inflight.is_empty());
+
+        let cancelled_id = questions.enqueue(input()).unwrap();
+        assert!(
+            questions
+                .respond(&answer(&cancelled_id), |message| {
+                    questions.wait_response(&cancelled_id, Duration::ZERO, || {
+                        client
+                            .begin_raw(json!({"type":"prompt","message":message}))
+                            .map_err(|error| error.to_string())
+                    })
+                })
+                .unwrap()
+                .is_err()
+        );
+        let (waiting, wait_started) = mpsc::sync_channel(1);
+        let waiter_questions = questions.clone();
+        let waiter_id = cancelled_id.clone();
+        let waiter = thread::spawn(move || {
+            waiter_questions
+                .respond(&answer(&waiter_id), |_| {
+                    waiting.send(()).unwrap();
+                    waiter_questions.wait_response(&waiter_id, Duration::from_secs(3), || {
+                        panic!("取消前不得重发")
+                    })
+                })
+                .unwrap()
+        });
+        wait_started.recv_timeout(Duration::from_secs(3)).unwrap();
+        questions
+            .respond(&json!({"id":cancelled_id,"cancelled":true}), |_| {
+                panic!("取消不得发送")
+            })
+            .unwrap()
+            .unwrap();
+        assert!(waiter.join().unwrap().is_err());
+        assert!(!questions.has_pending());
+        assert!(questions.state.lock().unwrap().inflight.is_empty());
+        finish_server.send(()).unwrap();
         server.join().unwrap();
     }
 }
