@@ -1,11 +1,13 @@
 import { useLayoutEffect, useMemo, useRef, type ComponentPropsWithoutRef } from 'react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
+import ZoomableImage from './ZoomableImage';
+import { TargetLink } from './LinkTargets';
 import remarkGfm from 'remark-gfm';
 import CopyButton from './CopyButton';
 import type { Copy } from '../lib/i18n';
 import { revealStreamText } from '../lib/stream-reveal';
 
-type WithNode<T extends 'a' | 'pre'> = ComponentPropsWithoutRef<T> & { node?: unknown };
+type WithNode<T extends 'a' | 'pre' | 'img'> = ComponentPropsWithoutRef<T> & { node?: unknown };
 
 // 代码块右上角的复制按钮，悬停或聚焦时才显示。
 function CodeBlock({ t, children, ...props }: ComponentPropsWithoutRef<'pre'> & { t: Copy }) {
@@ -20,8 +22,9 @@ export default function MarkdownBody({ text, t, live = false }: { text: string; 
   const reveal = live && text.startsWith(previous.current) && from < text.length && document.documentElement.dataset.motion === 'rich' && !matchMedia('(prefers-reduced-motion: reduce)').matches;
   useLayoutEffect(() => { previous.current = text; }, [text]);
   const components = useMemo(() => ({
-    a: ({ node: _node, ...props }: WithNode<'a'>) => <a {...props} target="_blank" rel="noreferrer" />,
+    a: ({ node: _node, ...props }: WithNode<'a'>) => <TargetLink {...props} target="_blank" rel="noreferrer" />,
+    img: ({ node: _node, ...props }: WithNode<'img'>) => <ZoomableImage {...props} />,
     pre: ({ node: _node, ...props }: WithNode<'pre'>) => <CodeBlock t={t} {...props} />,
   }), [t]);
-  return <ReactMarkdown remarkPlugins={reveal ? [remarkGfm, () => tree => revealStreamText(tree, from, text)] : [remarkGfm]} components={components}>{text}</ReactMarkdown>;
+  return <ReactMarkdown urlTransform={(url, key) => key === 'href' && /^(?:file:|[a-z]:[\\/])/i.test(url) ? url : defaultUrlTransform(url)} remarkPlugins={reveal ? [remarkGfm, () => tree => revealStreamText(tree, from, text)] : [remarkGfm]} components={components}>{text}</ReactMarkdown>;
 }

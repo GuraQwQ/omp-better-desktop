@@ -1,11 +1,12 @@
 import { action, createLibrary, defineComponent, FormNameContext, reactive, useFormName, useIsStreaming, useStateField, useTriggerAction, type ActionPlan, type ComponentRenderProps } from '@openuidev/react-lang';
-import { lazy, Suspense, useState, type ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { z } from 'zod/v4';
 import { GENUI_COMPONENTS, exposedGenUIFields, type GenUIConfiguration, type GenUIField } from '../lib/genui-config';
-import { request } from '../lib/bridge';
+import { TargetLink } from './LinkTargets';
 import { safeGenUIUrl } from '../lib/genui';
+import ZoomableImage from './ZoomableImage';
 
 const MathView = lazy(() => import('./genui-heavy').then(module => ({ default: module.GenUIMath })));
 const MapView = lazy(() => import('./genui-heavy').then(module => ({ default: module.GenUIMap })));
@@ -68,9 +69,8 @@ function ActionButton({ props, config }: { props: Record<string, unknown>; confi
 }
 
 function ExternalLink({ url, label }: { url: unknown; label: ReactNode }) {
-  const [error, setError] = useState('');
   const target = safeGenUIUrl(url);
-  return <><button type="button" className="genui-link" disabled={!target} onClick={() => { if (target) void request('system.open_url', { url: target }).then(() => setError('')).catch(error => setError(String(error))); }}>{label}</button>{error && <small role="alert">{error}</small>}</>;
+  return target ? <TargetLink className="genui-link" href={target} target="_blank" rel="noreferrer">{label}</TargetLink> : <span>{label}</span>;
 }
 
 function renderComponent(name: string, { props, renderNode, statementId }: ComponentRenderProps, config: GenUIConfiguration): ReactNode {
@@ -87,7 +87,7 @@ function renderComponent(name: string, { props, renderNode, statementId }: Compo
     case 'Caption': return <small>{String(props.text)}</small>;
     case 'Badge': return <span className={`genui-badge genui-tone-${props.tone || 'neutral'}`}>{String(props.text)}</span>;
     case 'Code': return <pre><code>{String(props.text)}</code></pre>;
-    case 'Markdown': return <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ href, children }) => <ExternalLink url={href} label={children} /> }}>{String(props.text)}</ReactMarkdown>;
+    case 'Markdown': return <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ href, children }) => <ExternalLink url={href} label={children} />, img: ({ src, alt }) => <ZoomableImage src={safeGenUIUrl(src, true)} alt={alt} /> }}>{String(props.text)}</ReactMarkdown>;
     case 'Link': return <ExternalLink url={props.url} label={String(props.label)} />;
     case 'List': return <ul>{(props.items as string[]).map((item, index) => <li key={index}>{item}</li>)}</ul>;
     case 'Button': return <ActionButton props={props} config={config} />;
@@ -96,7 +96,7 @@ function renderComponent(name: string, { props, renderNode, statementId }: Compo
     case 'LineChart': case 'BarChart': case 'PieChart': return <Chart type={name} labels={props.labels as string[]} values={props.values as number[]} title={props.title as string | undefined} />;
     case 'Math': return <Suspense fallback={<code>{String(props.expression)}</code>}><MathView expression={String(props.expression)} display={props.display as boolean | undefined} /></Suspense>;
     case 'Map': return <Suspense fallback={<p role="status">正在载入地图…</p>}><MapView longitude={Number(props.longitude)} latitude={Number(props.latitude)} zoom={props.zoom as number | undefined} label={props.label as string | undefined} /></Suspense>;
-    case 'Image': return <img loading="lazy" src={safeGenUIUrl(props.url,true)} alt={String(props.alt)} />;
+    case 'Image': return <ZoomableImage loading="lazy" src={safeGenUIUrl(props.url,true)} alt={String(props.alt)} />;
     case 'Video': return <video controls preload="none" src={safeGenUIUrl(props.url)} aria-label={String(props.title)} />;
     case 'Audio': return <audio controls preload="none" src={safeGenUIUrl(props.url)} aria-label={String(props.title)} />;
     default: return null;

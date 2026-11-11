@@ -18,6 +18,7 @@ const workspaceTabs = ['search', 'git', 'worktrees', 'editor', 'terminals'] as c
 export type DesktopTab = typeof workspaceTabs[number] | 'library' | 'artifacts' | 'notes' | 'side-questions' | 'schedules' | 'structured-review' | 'browser';
 const titles: Record<DesktopTab, string> = { search: '项目搜索', git: 'Git', worktrees: '工作树', editor: '文件编辑', terminals: '终端', library: '会话库', artifacts: '工具与产物', notes: '选段批注', 'side-questions': '连续旁问', schedules: '定时任务', 'structured-review': '结构化评审', browser: '浏览器' };
 interface Props {
+  openFile?: { path: string; line?: number; nonce?: number };
   tab: DesktopTab; cwd: string; language: Language; preferences: Preferences; session?: SessionView; selection?: string; selectionNonce?: number;
   onEnsureSession: () => Promise<SessionView>;
   sideQuestionSource?: SideQuestionSource; sideQuestionThreadId?: string; onSideQuestionThreadsChange?: (threads: SideQuestionThreadSummary[]) => void;
@@ -49,7 +50,7 @@ export default function DesktopTools(props: Props) {
     {error && <p className="desktop-error" role="alert">{error}<button className="icon-button" aria-label="关闭错误" onClick={() => setError('')}><X size={12} /></button></p>}
     <div className={`desktop-tools-content${props.tab === 'side-questions' ? ' desktop-tools-side-questions' : ''}`}><Suspense fallback={<p role="status">正在加载…</p>}>{!native ? <p>在桌面应用中使用本地工具。</p> : !allowed(props.tab) ? <p>此功能可在应用设置中开启。</p>
       : connecting ? error ? <button className="quiet-button" onClick={() => setConnectionRetry(value => value + 1)}>重试连接</button> : <p role="status">正在连接会话…</p>
-      : workspaceTabs.includes(props.tab as typeof workspaceTabs[number]) ? <WorkspaceTools cwd={props.cwd} language={props.language} initialTab={props.tab as typeof workspaceTabs[number]} onProject={props.onProject} />
+      : workspaceTabs.includes(props.tab as typeof workspaceTabs[number]) ? <WorkspaceTools openFile={props.openFile} cwd={props.cwd} language={props.language} initialTab={props.tab as typeof workspaceTabs[number]} onProject={props.onProject} />
         : props.tab === 'library' ? <SessionLibrary language={props.language} cwd={props.cwd || undefined} externalEnabled={props.preferences.features?.externalSessions === true} onOpen={props.onOpen} onReference={props.onReference} onArchiveChange={props.onArchiveChange} />
           : props.tab === 'artifacts' ? <Artifacts key={props.cwd} cwd={props.cwd} onError={onError} />
             : props.tab === 'notes' ? <Notes key={sessionKey} session={props.session} selection={props.selection} selectionNonce={props.selectionNonce} onReference={props.onReference} onError={onError} />

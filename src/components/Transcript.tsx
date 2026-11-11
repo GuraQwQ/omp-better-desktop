@@ -22,6 +22,8 @@ import { readReferenceSelection } from '../lib/reference-selection';
 import type { SideQuestionThreadSummary } from '../lib/side-questions';
 import { ReferenceCards } from './ComposerReferences';
 import SideQuestionMarkers from './SideQuestionMarkers';
+import ZoomableImage from './ZoomableImage';
+import ToolReferenceMenu from './ToolReferenceMenu';
 import QuestionResponse from './QuestionResponse';
 import { readQuestionResponse } from '../lib/question-response';
 
@@ -61,7 +63,7 @@ function CollapsedBlock({ block, t, active, stopped, live, onReference }: { bloc
   const [open, setOpen] = useState(false);
   const thinking = block.type === 'thinking';
   return <details className={thinking ? 'thinking' : 'tool-call'} onToggle={event => setOpen(event.currentTarget.open)}>
-    <summary><ChevronRight size={12} aria-hidden="true" /><span className={live ? 'shimmer-text' : undefined}>{thinking ? t.thinking : toolLabel(block.name, t)}</span>{!thinking && active && !stopped && <ToolGenerationRate callId={block.id} />}{!thinking && <span className="tool-call-state">{stopped ? t.stopped : active ? t.running : t.statusLabels.pending}</span>}{!thinking && onReference && <span className="tool-reference-actions"><button type="button" aria-label="引用工具调用" onClick={event => { event.preventDefault(); event.stopPropagation(); onReference(); }}>引用调用</button></span>}</summary>
+    <summary><ChevronRight size={12} aria-hidden="true" /><span className={live ? 'shimmer-text' : undefined}>{thinking ? t.thinking : toolLabel(block.name, t)}</span>{!thinking && active && !stopped && <ToolGenerationRate callId={block.id} />}{!thinking && <span className="tool-call-state">{stopped ? t.stopped : active ? t.running : t.statusLabels.pending}</span>}{!thinking && onReference && <ToolReferenceMenu t={t} onReference={() => onReference()} canReferenceResult={false} />}</summary>
     <Collapse open={open}>{thinking ? <div className="thinking-body" data-reference-kind="text"><Markdown text={block.thinking ?? block.text ?? ''} t={t} live={live} /></div> : <pre data-reference-kind="tool-call" data-reference-call-id={block.id}>{block.argumentsText ?? JSON.stringify(block.arguments, null, 2)}</pre>}</Collapse>
   </details>;
 }
@@ -82,7 +84,7 @@ const MessageView = memo(function MessageView({ message, t, disabled, active, li
     {notice && <div className="message-label">{t.sessionNotice}</div>}
     <div className="message-body" data-reference-message-id={message.id}>{response ? <QuestionResponse record={response} t={t} /> : typeof message.content === 'string' ? renderText(message.content) : message.content?.filter(Boolean).map((block, i, blocks) => {
       if (block.type === 'thinking' || block.type === 'toolCall') return <CollapsedBlock block={block} t={t} active={active} stopped={stopped} live={live && block.type === 'thinking' && i === blocks.length - 1} onReference={onReference ? () => onReference(message, block) : undefined} key={block.id ?? i} />;
-      if (block.type === 'image') return block.data ? <img className="message-image" key={i} src={`data:${block.mimeType};base64,${block.data}`} alt={t.addImage} /> : null;
+      if (block.type === 'image') return block.data ? <ZoomableImage className="message-image" key={i} src={`data:${block.mimeType};base64,${block.data}`} alt={t.addImage} /> : null;
       return block.text ? renderText(block.text, i) : null;
     })}</div>
     {(message.errorMessage || stopped) && <p className="message-error" role="status">{message.errorMessage || (message.stopReason === 'aborted' ? t.stopped : t.error)}</p>}
@@ -223,7 +225,10 @@ export default function Transcript({ restoreKey, pinNonce = 0, showTurns = true,
         <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
           {virtualizer.getVirtualItems().map(item => {
             const row = rows[item.index];
-            return <div key={item.key} data-index={item.index} className={row.kind === 'message' && row.message.id === targetMessageId ? 'message-search-target' : undefined} ref={virtualizer.measureElement} style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${item.start}px)` }}>{row.kind === 'tools' ? <ToolSteps messages={row.messages} t={t} active={busy} onReference={onReference ? referenceTool : undefined} canReferenceCall={message => toolCalls.has(message.id) || message.args !== undefined} sideQuestionThreads={questionMap} onSideQuestionThread={onSideQuestionThread} /> : row.kind === 'working' ? <Working key={activity?.kind ?? 'run'} t={t} activity={activity} runStartedAt={runStartedAt} /> : <MessageView message={row.message} t={t} disabled={busy || actionsDisabled} active={busy} live={row.message.id === liveId} turn={showTurns && !loadEarlier ? turns.get(row.message.id) : undefined} edit={row.message.role === 'user' ? onEdit : undefined} retry={row.message.id === retryId ? onRetry : undefined} genui={genui} repairs={repairs} onReference={onReference ? referenceMessage : undefined} sideQuestionThreads={questionMap.get(row.message.id)} onSideQuestionThread={onSideQuestionThread} />}</div>;
+            const next = rows[item.index + 1];
+            const followedByActivity = next?.kind === 'tools' || next?.kind === 'message' && next.message.role === 'assistant' && Array.isArray(next.message.content) && ['thinking', 'toolCall'].includes(next.message.content[0]?.type);
+            const rowClass = [row.kind === 'message' && row.message.id === targetMessageId ? 'message-search-target' : '', row.kind === 'message' && row.message.role === 'assistant' && followedByActivity ? 'transcript-before-activity' : ''].filter(Boolean).join(' ');
+            return <div key={item.key} data-index={item.index} className={rowClass || undefined} ref={virtualizer.measureElement} style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${item.start}px)` }}>{row.kind === 'tools' ? <ToolSteps messages={row.messages} t={t} active={busy} onReference={onReference ? referenceTool : undefined} canReferenceCall={message => toolCalls.has(message.id) || message.args !== undefined} sideQuestionThreads={questionMap} onSideQuestionThread={onSideQuestionThread} /> : row.kind === 'working' ? <Working key={activity?.kind ?? 'run'} t={t} activity={activity} runStartedAt={runStartedAt} /> : <MessageView message={row.message} t={t} disabled={busy || actionsDisabled} active={busy} live={row.message.id === liveId} turn={showTurns && !loadEarlier ? turns.get(row.message.id) : undefined} edit={row.message.role === 'user' ? onEdit : undefined} retry={row.message.id === retryId ? onRetry : undefined} genui={genui} repairs={repairs} onReference={onReference ? referenceMessage : undefined} sideQuestionThreads={questionMap.get(row.message.id)} onSideQuestionThread={onSideQuestionThread} />}</div>;
           })}
         </div>
         {loadLater && <button className="quiet-button history-more" disabled={loadingEarlier} onClick={loadLater}>{loadingEarlier ? t.loading : '加载后续消息'}</button>}

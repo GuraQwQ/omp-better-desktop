@@ -422,6 +422,8 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
             )
         }
         "system.open_url" => desktop_extras::open_url(text(&request, "url")?),
+        "system.path_info" => desktop_extras::path_info(text(&request, "path")?),
+        "system.reveal_path" => desktop_extras::reveal_path(text(&request, "path")?),
         other => Err(format!("Unknown desktop command: {other}")),
     }
 }

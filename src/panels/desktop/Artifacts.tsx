@@ -4,6 +4,7 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { native, pickPath, request } from '../../lib/bridge';
 import { copy } from '../../lib/i18n';
 import type { Json } from '../../lib/types';
+import ZoomableImage from '../../components/ZoomableImage';
 
 const Markdown = lazy(() => import('../../components/MarkdownBody'));
 
@@ -73,7 +74,7 @@ export default function Artifacts({ cwd, onError }: { cwd: string; onError: (err
     {!items.length && <p>尚未登记文件。</p>}{loading && <p role="status">正在读取…</p>}
     {selected && <section className="artifact-preview"><h3>{selected.name}</h3><code>{selected.path}</code>{selected.kind === 'html'
       ? <iframe title={selected.name} sandbox="allow-scripts" src={native ? convertFileSrc(selected.id, 'artifact') : `data:text/html;charset=utf-8,${encodeURIComponent(`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none';">${selected.content}`)}`} />
-      : selected.kind === 'image' ? <img src={selected.content} alt={selected.name} />
+      : selected.kind === 'image' ? <ZoomableImage src={selected.content} alt={selected.name} />
         : selected.kind === 'markdown' ? <Suspense fallback={<pre>{selected.content}</pre>}><Markdown text={selected.content} t={copy('zh')} /></Suspense>
           : <pre>{selected.content}</pre>}</section>}
   </>;
