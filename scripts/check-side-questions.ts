@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { applySideQuestionRecord, createSideQuestionThread, emptySideQuestions, exportSideQuestions, isSideQuestionUnread, markSideQuestionThreadRead, mergeSideQuestionHistory, readSideQuestions, rememberSideQuestionNativeTurns, sideQuestionPrompt, sideQuestionSourceKey, sideQuestionThreadSummaries, type SideQuestionRecord, type SideQuestionSource } from '../src/lib/side-questions';
 import { SideQuestionStorage } from '../src/lib/side-question-storage';
+import { SideQuestionSession } from '../src/lib/side-question-session';
 import type { BtwHistoryRecord } from '../src/generated/rpc-wire';
 
 const record: SideQuestionRecord = { id: 'local-1', nativeId: 'native-1', question: '解释这个结果', quote: '具体选段', answer: '已收到回答', status: 'running', createdAt: 1, updatedAt: 2 };
@@ -120,3 +121,70 @@ await thirdMount.change('冷加载侧栏', value => mergeSideQuestionHistory(val
 assert.equal(thirdMount.peek('冷加载侧栏')!.threads[0].records.length, 0);
 assert.deepEqual(thirdMount.peek('冷加载侧栏')!.knownNativeTurns, continued.knownNativeTurns);
 console.log('旁问讨论：精确来源、幂等迁移、逐轮原生话题、未读持久化、原生导入、清空不复现、完整导出和共享串行存储检查通过。');
+
+// 同一入口覆盖终态早于 ACK、清空后的迟到回包，以及卸载后的取消重试。
+const lifecycleStore = new SideQuestionStorage({ read: async () => null, write: async () => null });
+const lifecycle = new SideQuestionSession('生命周期', lifecycleStore, {
+  prepare: async value => ({ message: value.message, images: [] }), history: async () => ({ records: [] }),
+});
+let sent = '', acknowledgement = deferred<{ record: BtwHistoryRecord; desktopSessionId: string }>();
+let cancelFails = false, cancelCount = 0;
+lifecycle.configure({
+  session: { id: '运行会话', cwd: 'D:/项目', path: 'D:/会话.jsonl', title: '会话', messages: [], state: {}, status: 'ready', pending: [] },
+  send: async prompt => { sent = prompt; return acknowledgement.promise; },
+  cancel: async () => { cancelCount++; if (cancelFails) throw new Error('取消需要重试'); return { cancelled: true }; },
+});
+await lifecycle.load(); lifecycle.edit('whole', { draft: '第一问' });
+const firstAsk = lifecycle.ask(); await Promise.resolve(); await Promise.resolve();
+assert.ok(sent);
+const firstNative = { ...native, id: '生命周期-1', question: sent };
+lifecycle.event({ sessionId: '运行会话', event: { type: 'btw_record', record: { ...firstNative, status: 'complete', answer: '完整终态' } } });
+lifecycle.edit('whole', { draft: '正在编辑的新问题' });
+acknowledgement.resolve({ record: firstNative, desktopSessionId: '运行会话' }); await firstAsk;
+await lifecycle.mergeHistory([firstNative], '运行会话');
+assert.equal(lifecycle.current.records[0].answer, '完整终态');
+assert.equal(lifecycle.current.records[0].status, 'complete');
+assert.equal(lifecycle.current.draft, '正在编辑的新问题');
+assert.equal(lifecycle.getSnapshot().busy, false);
+
+acknowledgement = deferred(); sent = ''; const clearingAsk = lifecycle.ask(); await Promise.resolve(); await Promise.resolve();
+const clearedNative = { ...firstNative, followUps: [{ question: sent, answer: '', status: 'running' as const, createdAt: 5, updatedAt: 5 }] };
+lifecycle.clear('whole');
+acknowledgement.resolve({ record: clearedNative, desktopSessionId: '运行会话' }); await clearingAsk;
+await lifecycle.mergeHistory([{ ...clearedNative, followUps: [{ ...clearedNative.followUps[0], answer: '迟到回答', status: 'complete' }] }], '运行会话');
+assert.equal(lifecycle.current.records.length, 0); assert.equal(lifecycle.current.draft, '');
+
+acknowledgement = deferred(); lifecycle.edit('whole', { draft: '卸载前的问题' });
+const detachedAsk = lifecycle.ask(); await Promise.resolve(); await Promise.resolve();
+const detachedNative = { ...native, id: '生命周期-2', question: sent };
+acknowledgement.resolve({ record: detachedNative, desktopSessionId: '运行会话' }); await detachedAsk;
+cancelFails = true; lifecycle.detach(); await Promise.resolve(); await Promise.resolve();
+assert.match(lifecycle.getSnapshot().cancelFailure!.message, /取消需要重试/);
+cancelFails = false; await lifecycle.retryCancel();
+assert.equal(lifecycle.getSnapshot().cancelFailure, null); assert.equal(lifecycle.getSnapshot().busy, false);
+assert.equal(lifecycle.current.records[0].status, 'cancelled'); assert.equal(lifecycle.current.draft, '卸载前的问题');
+assert.ok(cancelCount >= 3); await lifecycle.flush();
+// 删除旧轮次会重置后续上下文，但不能阻止当前请求结束。
+const retained = lifecycle.current.records[0].id;
+acknowledgement = deferred();
+lifecycle.configure({ send: async prompt => { sent = prompt; return acknowledgement.promise; }, cancel: async () => ({ cancelled: true }) });
+const removingAsk = lifecycle.ask(); await Promise.resolve(); await Promise.resolve();
+lifecycle.remove('whole', retained);
+const removingNative = { ...detachedNative, followUps: [{ question: sent, answer: '保留本轮', status: 'complete' as const, createdAt: 8, updatedAt: 9 }] };
+acknowledgement.resolve({ record: removingNative, desktopSessionId: '运行会话' }); await removingAsk;
+assert.equal(lifecycle.current.records.length, 1); assert.equal(lifecycle.current.records[0].status, 'complete');
+assert.equal(lifecycle.current.records[0].answer, '保留本轮'); assert.equal(lifecycle.current.nativeTopicId, undefined);
+await lifecycle.flush();
+let releases = 0;
+const mounting = new SideQuestionSession('反复挂载', lifecycleStore, undefined, () => { releases++; });
+const mountingContext = { send: async () => ({}), cancel: async () => ({ cancelled: true }) };
+mounting.configure(mountingContext);
+const unsubscribeFirst = mounting.subscribe(() => {});
+mounting.detach(); unsubscribeFirst();
+mounting.configure(mountingContext);
+const unsubscribeSecond = mounting.subscribe(() => {});
+await Promise.resolve();
+assert.equal(releases, 0);
+mounting.detach(); unsubscribeSecond(); await Promise.resolve();
+assert.equal(releases, 1);
+console.log('旁问生命周期：终态与 ACK 交错、编辑保留、清空不复现、卸载取消失败重试检查通过。');

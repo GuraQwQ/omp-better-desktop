@@ -1,4 +1,5 @@
 use std::{
+    io::{Read, Write},
     path::{Path, PathBuf},
     process::Command,
 };
@@ -48,15 +49,99 @@ pub fn hidden(command: &mut Command) -> &mut Command {
 }
 
 pub struct ManagedPty {
-    pub pair: Option<portable_pty::PtyPair>,
-    pub host_job: Option<ProcessJob>,
+    master: Option<Box<dyn portable_pty::MasterPty + Send>>,
+    slave: Option<Box<dyn portable_pty::SlavePty + Send>>,
+    writer: Option<Box<dyn Write + Send>>,
+    child: Option<Box<dyn portable_pty::Child + Send + Sync>>,
+    child_job: Option<ProcessJob>,
+    host_job: Option<ProcessJob>,
+}
+
+impl ManagedPty {
+    pub fn reader(&self) -> Result<Box<dyn Read + Send>, String> {
+        self.master
+            .as_ref()
+            .ok_or("终端已关闭。")?
+            .try_clone_reader()
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn spawn(
+        &mut self,
+        commands: impl IntoIterator<Item = portable_pty::CommandBuilder>,
+    ) -> Result<(), String> {
+        let slave = self.slave.as_ref().ok_or("终端已启动或已关闭。")?;
+        let mut failure = "未指定终端程序。".to_owned();
+        for command in commands {
+            let mut child = match slave.spawn_command(command) {
+                Ok(child) => child,
+                Err(error) => {
+                    failure = error.to_string();
+                    continue;
+                }
+            };
+            match child
+                .process_id()
+                .ok_or("终端未启动。".to_owned())
+                .and_then(ProcessJob::attach)
+            {
+                Ok(job) => {
+                    self.child_job = Some(job);
+                    self.child = Some(child);
+                }
+                Err(error) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(error);
+                }
+            }
+            drop(self.slave.take());
+            return Ok(());
+        }
+        Err(format!("无法启动终端：{failure}"))
+    }
+
+    pub fn write(&mut self, data: &[u8]) -> Result<(), String> {
+        let writer = self.writer.as_mut().ok_or("终端已关闭。")?;
+        writer
+            .write_all(data)
+            .and_then(|_| writer.flush())
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn resize(&self, size: portable_pty::PtySize) -> Result<(), String> {
+        let master = self.master.as_ref().ok_or("终端已关闭。")?;
+        if master.get_size().map_err(|error| error.to_string())? != size {
+            master.resize(size).map_err(|error| error.to_string())?;
+        }
+        Ok(())
+    }
+
+    pub fn close(&mut self) -> Result<(), String> {
+        let mut result = Ok(());
+        if let Some(mut child) = self.child.take() {
+            if child.try_wait().ok().flatten().is_none() {
+                result = child.kill().map_err(|error| error.to_string());
+            }
+            drop(self.child_job.take());
+            if let Err(error) = child.wait() {
+                if result.is_ok() {
+                    result = Err(error.to_string());
+                }
+            }
+        }
+        // 待光标回复的 ConPTY 必须先结束主机，再关闭控制句柄。
+        drop(self.host_job.take());
+        drop(self.writer.take());
+        drop(self.slave.take());
+        drop(self.master.take());
+        result
+    }
 }
 
 impl Drop for ManagedPty {
     fn drop(&mut self) {
-        // 待光标回复的 ConPTY 必须先结束主机，再关闭控制句柄。
-        drop(self.host_job.take());
-        drop(self.pair.take());
+        let _ = self.close();
     }
 }
 
@@ -108,7 +193,11 @@ pub fn open_pty(size: portable_pty::PtySize) -> Result<ManagedPty, String> {
         .openpty(size)
         .map_err(|error| error.to_string())?;
     let mut managed = ManagedPty {
-        pair: Some(pair),
+        master: Some(pair.master),
+        slave: Some(pair.slave),
+        writer: None,
+        child: None,
+        child_job: None,
         host_job: None,
     };
     #[cfg(windows)]
@@ -138,6 +227,14 @@ pub fn open_pty(size: portable_pty::PtySize) -> Result<ManagedPty, String> {
             }
         };
     }
+    managed.writer = Some(
+        managed
+            .master
+            .as_ref()
+            .unwrap()
+            .take_writer()
+            .map_err(|error| error.to_string())?,
+    );
     Ok(managed)
 }
 
@@ -235,7 +332,37 @@ mod tests {
         if start.trim() != "go" {
             return;
         }
-        let _managed = open_pty(portable_pty::PtySize::default()).unwrap();
+        let waiting_command = || {
+            let mut command = portable_pty::CommandBuilder::new("cmd.exe");
+            command.args(["/d", "/c", "pause"]);
+            command
+        };
+        let before = console_hosts(std::process::id()).unwrap();
+        let mut managed = open_pty(portable_pty::PtySize::default()).unwrap();
+        assert!(
+            managed
+                .spawn([portable_pty::CommandBuilder::new(
+                    "omp-missing-pty-test.exe"
+                )])
+                .is_err()
+        );
+        managed.spawn([waiting_command()]).unwrap();
+        managed.close().unwrap();
+        managed.close().unwrap();
+        assert!(managed.write(b"closed").is_err());
+        let started = Instant::now();
+        while !console_hosts(std::process::id())
+            .unwrap()
+            .is_subset(&before)
+        {
+            assert!(
+                started.elapsed() < Duration::from_secs(5),
+                "关闭后终端主机仍存活"
+            );
+            thread::sleep(Duration::from_millis(20));
+        }
+        managed = open_pty(portable_pty::PtySize::default()).unwrap();
+        managed.spawn([waiting_command()]).unwrap();
         println!("OMP_PTY_READY");
         std::io::stdout().flush().unwrap();
         loop {

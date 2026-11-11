@@ -1,9 +1,9 @@
-use crate::platform::{ProcessJob, external_path};
-use portable_pty::{CommandBuilder, MasterPty, PtySize};
+use crate::platform::{ManagedPty, external_path};
+use portable_pty::{CommandBuilder, PtySize};
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
-    io::{Read, Write},
+    io::Read,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     thread,
@@ -39,23 +39,8 @@ impl Output {
 struct Shell {
     name: String,
     cwd: PathBuf,
-    master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
-    child: Box<dyn portable_pty::Child + Send + Sync>,
+    terminal: ManagedPty,
     output: Arc<Mutex<Output>>,
-    host_job: Option<ProcessJob>,
-    _job: ProcessJob,
-}
-
-impl Drop for Shell {
-    fn drop(&mut self) {
-        // ConPTY 关闭等待子进程，先终止进程再释放终端句柄。
-        if self.child.try_wait().ok().flatten().is_none() {
-            let _ = self.child.kill();
-        }
-        let _ = self.child.wait();
-        drop(self.host_job.take());
-    }
 }
 
 #[derive(Default)]
@@ -110,15 +95,7 @@ impl Shells {
         let temporary = root.join("cache/tmp");
         std::fs::create_dir_all(&temporary).map_err(|error| error.to_string())?;
         let mut managed = crate::platform::open_pty(size(request))?;
-        let pair = managed.pair.as_ref().unwrap();
-        let mut reader = pair
-            .master
-            .try_clone_reader()
-            .map_err(|error| error.to_string())?;
-        let writer = pair
-            .master
-            .take_writer()
-            .map_err(|error| error.to_string())?;
+        let mut reader = managed.reader()?;
         let requested = request["shell"]
             .as_str()
             .filter(|value| !value.trim().is_empty());
@@ -130,9 +107,7 @@ impl Shells {
         let candidates = requested
             .map(|shell| vec![shell])
             .unwrap_or_else(|| vec!["/bin/sh"]);
-        let mut child = None;
-        let mut failure = String::new();
-        for executable in candidates {
+        let commands = candidates.into_iter().map(|executable| {
             let mut command = CommandBuilder::new(executable);
             command.cwd(external_path(&cwd));
             command.env("TEMP", external_path(&temporary));
@@ -144,31 +119,13 @@ impl Shells {
             {
                 command.arg("-NoLogo");
             }
-            match pair.slave.spawn_command(command) {
-                Ok(process) => {
-                    child = Some(process);
-                    break;
-                }
-                Err(error) => failure = error.to_string(),
-            }
-        }
-        let mut child = child.ok_or_else(|| format!("无法启动终端：{failure}"))?;
-        let job = child
-            .process_id()
-            .ok_or("终端未启动。".to_owned())
-            .and_then(ProcessJob::attach)
-            .map_err(|error| {
-                let _ = child.kill();
-                let _ = child.wait();
-                error
-            })?;
+            command
+        });
+        managed.spawn(commands)?;
         let output = Arc::new(Mutex::new(Output {
             running: true,
             ..Output::default()
         }));
-        let pair = managed.pair.take().unwrap();
-        let host_job = managed.host_job.take();
-        drop(pair.slave);
         let shell = Shell {
             name: request["name"]
                 .as_str()
@@ -176,12 +133,8 @@ impl Shells {
                 .unwrap_or("终端")
                 .to_owned(),
             cwd,
-            master: pair.master,
-            writer,
-            child,
+            terminal: managed,
             output: output.clone(),
-            host_job,
-            _job: job,
         };
         let description = describe(&id, &shell);
         items.insert(id.clone(), shell);
@@ -257,15 +210,7 @@ impl Shells {
         if command == "shell.close" {
             let shell = self.items.lock().unwrap().remove(id);
             if let Some(mut shell) = shell {
-                if shell
-                    .child
-                    .try_wait()
-                    .map_err(|error| error.to_string())?
-                    .is_none()
-                {
-                    shell.child.kill().map_err(|error| error.to_string())?;
-                }
-                let _ = shell.child.wait();
+                shell.terminal.close()?;
             }
             return Ok(Value::Null);
         }
@@ -288,20 +233,11 @@ impl Shells {
                 if !shell.output.lock().unwrap().running {
                     return Err("终端已退出，请创建新终端。".into());
                 }
-                shell
-                    .writer
-                    .write_all(text(request, "data")?.as_bytes())
-                    .map_err(|error| error.to_string())?;
+                shell.terminal.write(text(request, "data")?.as_bytes())?;
                 Ok(Value::Null)
             }
             "shell.resize" => {
-                let size = size(request);
-                if shell.master.get_size().map_err(|error| error.to_string())? != size {
-                    shell
-                        .master
-                        .resize(size)
-                        .map_err(|error| error.to_string())?;
-                }
+                shell.terminal.resize(size(request))?;
                 Ok(Value::Null)
             }
             _ => Err("未知终端操作。".into()),
@@ -316,10 +252,7 @@ impl Shells {
             .drain()
             .map(|(_, shell)| shell)
             .collect();
-        for mut shell in shells {
-            let _ = shell.child.kill();
-            let _ = shell.child.wait();
-        }
+        drop(shells);
     }
 }
 

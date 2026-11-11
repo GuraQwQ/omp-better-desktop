@@ -1,7 +1,8 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
-import { lock, modelCapabilitySources, projectRoot, upstreamRoot } from './prepare-upstream';
+import { lock, projectRoot, upstreamRoot } from './prepare-upstream';
+import { modelCapabilitySources } from './build-inputs';
 
 export async function packageRuntime(): Promise<string> {
   const output = path.resolve(process.env.OMP_DESKTOP_OUTPUT_ROOT ?? path.join(projectRoot, 'artifacts'), 'runtime-windows-x64');
