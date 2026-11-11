@@ -1,17 +1,17 @@
 use crate::{
     history,
-    platform::{ProcessJob, hidden, runtime_environment},
+    platform::{ManagedPty, ProcessJob, hidden, runtime_environment},
     questions::Questions,
     request_capture,
     runtime_diagnostics::RuntimeDiagnostics,
     storage,
 };
 use omp_rpc::{Client, ClientOptions, Event, RpcInbound};
-use portable_pty::{CommandBuilder, MasterPty, PtySize};
+use portable_pty::{CommandBuilder, PtySize};
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
-    io::{Read, Write},
+    io::Read,
     path::{Path, PathBuf},
     process::Command,
     sync::{
@@ -45,27 +45,11 @@ impl Drop for Session {
     }
 }
 
-struct Terminal {
-    master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
-    child: Box<dyn portable_pty::Child + Send + Sync>,
-    _job: ProcessJob,
-    host_job: Option<ProcessJob>,
-}
-
-impl Drop for Terminal {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-        drop(self.host_job.take());
-    }
-}
-
 #[derive(Default)]
 pub struct Sessions {
     sessions: Mutex<HashMap<String, Session>>,
     active: Mutex<Option<String>>,
-    terminals: Mutex<HashMap<String, Terminal>>,
+    terminals: Mutex<HashMap<String, ManagedPty>>,
     opening: Mutex<()>,
     browser_logins: Arc<crate::browser_login::BrowserLogins>,
 }
@@ -562,10 +546,7 @@ impl Sessions {
         let sessions = std::mem::take(&mut *self.sessions.lock().unwrap());
         drop(sessions);
         let terminals = std::mem::take(&mut *self.terminals.lock().unwrap());
-        for (_, mut terminal) in terminals {
-            let _ = terminal.child.kill();
-            let _ = terminal.child.wait();
-        }
+        drop(terminals);
     }
 
     pub fn terminal_open(
@@ -600,9 +581,7 @@ impl Sessions {
             pixel_width: 0,
             pixel_height: 0,
         })?;
-        let pair = managed.pair.as_ref().unwrap();
-        let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
-        let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
+        let mut reader = managed.reader()?;
         let mut cmd = CommandBuilder::new(executable);
         cmd.cwd(cwd);
         cmd.args(launch_args);
@@ -616,29 +595,11 @@ impl Sessions {
         }
         // 先准备终端资源，再释放 RPC 写者，避免预检失败打断会话。
         self.close(id)?;
-        let mut child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
-        let job = child
-            .process_id()
-            .ok_or_else(|| "Terminal did not start.".to_owned())
-            .and_then(ProcessJob::attach)
-            .map_err(|error| {
-                let _ = child.kill();
-                let _ = child.wait();
-                error
-            })?;
-        let pair = managed.pair.take().unwrap();
-        let host_job = managed.host_job.take();
-        drop(pair.slave);
-        self.terminals.lock().unwrap().insert(
-            id.to_owned(),
-            Terminal {
-                master: pair.master,
-                writer,
-                child,
-                _job: job,
-                host_job,
-            },
-        );
+        managed.spawn([cmd])?;
+        self.terminals
+            .lock()
+            .unwrap()
+            .insert(id.to_owned(), managed);
         let session_id = id.to_owned();
         thread::spawn(move || {
             let mut buf = [0u8; 8192];
@@ -682,11 +643,7 @@ impl Sessions {
     pub fn terminal_write(&self, id: &str, data: &str) -> Result<Value, String> {
         let mut terminals = self.terminals.lock().unwrap();
         let terminal = terminals.get_mut(id).ok_or("Terminal is closed.")?;
-        terminal
-            .writer
-            .write_all(data.as_bytes())
-            .and_then(|_| terminal.writer.flush())
-            .map_err(|e| e.to_string())?;
+        terminal.write(data.as_bytes())?;
         Ok(Value::Null)
     }
     pub fn terminal_resize(&self, id: &str, cols: u16, rows: u16) -> Result<Value, String> {
@@ -695,7 +652,6 @@ impl Sessions {
             .unwrap()
             .get(id)
             .ok_or("Terminal is closed.")?
-            .master
             .resize(PtySize {
                 rows,
                 cols,
@@ -706,9 +662,9 @@ impl Sessions {
         Ok(Value::Null)
     }
     pub fn terminal_close(&self, id: &str) -> Result<Value, String> {
-        if let Some(mut terminal) = self.terminals.lock().unwrap().remove(id) {
-            terminal.child.kill().map_err(|e| e.to_string())?;
-            let _ = terminal.child.wait();
+        let terminal = self.terminals.lock().unwrap().remove(id);
+        if let Some(mut terminal) = terminal {
+            terminal.close()?;
         }
         Ok(Value::Null)
     }
