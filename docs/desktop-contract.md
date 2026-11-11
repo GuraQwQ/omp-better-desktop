@@ -95,7 +95,7 @@ MCP 与 SSH 使用资源自身的用户/项目作用域；第三方只读来源�
 
 Host module ownership: `storage.rs` implements runtime/data functions taking `root: &Path`; `sessions.rs` owns RPC/PTY; `lib.rs` owns routing and application lifecycle. `storage.rs` exports `current_runtime`, `install_runtime`, `rollback_runtime`, `discover_omp`, `import_omp`, `takeover`, and `clean_cache`, returning `Result<serde_json::Value,String>` except `current_runtime` returns `Result<Option<PathBuf>,String>`.
 
-前端 `SessionLifecycle` 集中管理会话身份、事件合并、状态快照、历史分页及请求顺序。本地操作即时发布，运行时事件按帧发布；后到的旧快照保留请求期间已经更新的字段。轻量刷新继承未完成的完整历史刷新，切换底层会话时合并新历史和期间到达的消息，并保持工具调用与结果配对。草稿与页面选择由界面管理，连接等待期间用户的新输入优先保留。
+前端 `SessionLifecycle` 集中管理会话建立、恢复、重连、身份、事件合并、状态快照、历史分页及请求顺序。同一来源的建立请求共享结果，无持久路径的草稿在运行 ID 替换后仍能定位连接；历史补齐失败保留可见身份并允许重试。本地操作即时发布，运行时事件按帧发布；后到的旧快照保留请求期间已经更新的字段。轻量刷新继承未完成的完整历史刷新，切换底层会话时合并新历史和期间到达的消息，并保持工具调用与结果配对。草稿与页面选择由界面管理，连接等待期间用户的新输入优先保留。
 
 桌面斜杠命令由 `resolveCommand` 统一解释来源、参数和执行去向，输入框与命令面板共用这份规则。原生 RPC 与 CLI 表单继续直接使用生成协议；扩展同名命令由其原生来源处理。MCP 的发现与运行时读取共用来源格式 Module，各来源 Adapter 集中处理原配置读取、停用状态和格式映射，导入登记继续负责链接与启停。
 
@@ -127,9 +127,11 @@ OMP 的 RPC、CLI 和内置终端统一设置 `PI_NATIVES_DIR=<dataRoot>/cache/n
 | browser.open / system.open_url | url | 系统默认浏览器；浏览器工作区开关仅控制其面板 |
 | card.open/sync/get/focus | id, value?, sessionId? | 独立任务卡；关闭设置时收回卡片窗口 |
 
-工作区、资料库和各业务面板分模块维护。App 连接入口与会话；调度和布局在独立 Hook 中，终端生命周期由原生模块管理。Windows 的 ConPTY 主机与终端子进程一起托管，正常关闭、取消和持有者异常退出均回收本次创建的进程。
+工作区、资料库和各业务面板分模块维护。App 连接入口与会话；调度和布局在独立 Hook 中，终端生命周期由原生 `ManagedPty` 管理。OMP 终端接管与独立终端共享启动、输入、尺寸和回收规则，各自保留输出事件和缓冲。Windows 的 ConPTY 主机与终端子进程一起托管，正常关闭、取消和持有者异常退出均回收本次创建的进程。
 
 选段操作栏按点击位置显示，并在视口边缘翻转或夹紧；旁问与批注使用独立侧栏。旁问以稳定会话路径保存问答、选段与草稿，沿用原生 btw 流式事件，并显式携带当前保留的连续问答。清空或逐条删除后，后续请求只使用剩余上下文；迟到事件不能写回已清除的记录，取消绑定原请求的运行会话。清空、持久化或取消失败均保留可重试入口。
+
+`SideQuestionSession` 集中处理旁问的发送、确认、实时事件与历史合并，复用 `SideQuestionStorage` 串行保存。侧栏负责输入与可见性，主窗口只转交事件和读取摘要；卸载后仍完成取消与保存，空闲时释放控制器及订阅。
 
 配置页复用当前可用连接；当前会话只读或恢复失败时，使用项目内的后台空连接读取 MCP、模型角色与 OMP 配置，关闭设置后回收该连接。
 
@@ -144,3 +146,5 @@ OMP 的 RPC、CLI 和内置终端统一设置 `PI_NATIVES_DIR=<dataRoot>/cache/n
 GenUI runtime、地图和公式在实际使用时加载，关闭或未选组件不请求其重模块。组件注册与发送给助手的说明来自同一份配置；首次使用或说明变化时注入，保留原始用户草稿。设置立即响应并顺序保存，旧回包不覆盖新选择，失败保留选择并可重试。
 
 genui.get/save/call/clear 由原生配置门控；可选持久化用 genui.sqlite 的短事务和 baseRevision 检查。文档与状态使用稳定会话路径和消息块标识，修复使用目标与源码版本链，旧修复不会覆盖新源码。genui.document/document.release 注册短期独立文档，genui 协议响应提供自身 CSP；脚本通过受控消息桥请求已选能力。本地表单变化不调用模型，动作或修复请求才发送消息。
+
+`GenUIViews` 统一管理生成界面输入、卸载缓存、保存队列与冲突恢复。清空等待已发出的保存完成并撤销旧排队写入，期间的新编辑在清空后保存。`sendGenUIPrompt` 只在实际发送确认后记住说明注入；动作与修复获得提交失败反馈，发送忙碌或失败时保留可重试状态。

@@ -24,7 +24,7 @@ import { ReferenceCards } from './ComposerReferences';
 import SideQuestionMarkers from './SideQuestionMarkers';
 
 const RichMessage = lazy(() => import('./RichMessage'));
-type GenUIContext = { configuration: GenUIConfiguration; sessionId?: string; sessionKey?: string; cwd: string; language: 'zh' | 'en'; onSend: (text: string) => void };
+type GenUIContext = { configuration: GenUIConfiguration; sessionId?: string; sessionKey?: string; cwd: string; language: 'zh' | 'en'; onSend: (text: string) => Promise<void> };
 
 type Activity = { kind: 'compaction' | 'retry'; since: number; attempt?: number; maxAttempts?: number };
 type Row = TranscriptItem | { kind: 'working'; id: string };
