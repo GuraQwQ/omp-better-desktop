@@ -6,7 +6,7 @@ import type { Language } from '../lib/types';
 import MarkdownBody from './MarkdownBody';
 
 const GenerativeUI = lazy(() => import('./GenerativeUI'));
-export default function RichMessage({ text, id, sessionId, sessionKey, cwd, language, configuration, onSend, isStreaming = false, repairs = {} }: { text: string; id: string; sessionId?: string; sessionKey?: string; cwd: string; language: Language; configuration: unknown; onSend: (text: string) => void; isStreaming?: boolean; repairs?: GenUIRepairs }) {
+export default function RichMessage({ text, id, sessionId, sessionKey, cwd, language, configuration, onSend, isStreaming = false, repairs = {} }: { text: string; id: string; sessionId?: string; sessionKey?: string; cwd: string; language: Language; configuration: unknown; onSend: (text: string) => Promise<void>; isStreaming?: boolean; repairs?: GenUIRepairs }) {
   const config = normalizeGenUIConfiguration(configuration);
   const blocks = useMemo(() => config.enabled ? extractGenUIBlocks(text) : [], [text, config.enabled]);
   const t = copy(language);

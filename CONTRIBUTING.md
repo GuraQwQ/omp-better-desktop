@@ -4,14 +4,13 @@
 
 改动保持在相应边界：React 不导入 OMP 引擎；Rust 宿主管理进程、数据和 WebView；上游功能通过可重放补丁修改。更新 OMP 时同时更新锁定提交、生成协议和 Rust RPC 客户端，以运行时烟测验证同一组输入。`upstream.lock.json` 记录版本锁定原因和更新责任，Bun 1.4 是当前上游发行构建的最低要求，CI 使用 1.4.4 复现已验证构建；上游更新负责人需同步复查工具版本。
 
-提交前执行：
+本地默认只执行类型检查：
 
 ```powershell
 bun run check
-./scripts/dev.ps1 desktop build --no-bundle
 ```
 
-Rust 改动另执行 `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`。涉及运行时或协议时重新执行 `bun run build:runtime`，它执行实际二进制的协议烟测。公开检查入口由 `.github/workflows/check.yml` 定义。为有行为变化的逻辑增加小而聚焦的验证；不要为改文案扩展套件。
+行为改动只运行对应的 `scripts/check-*.ts`，复用已有用例覆盖关键失败与恢复路径，通过后不重复跑其余套件。Rust 改动执行格式检查及 `cargo check --manifest-path src-tauri/Cargo.toml --tests -j 1`，复用已有非系统盘构建目录；需要进程验收时只运行对应测试。完整桌面构建、上游运行时构建和实际二进制烟测留给发行验证或 `.github/workflows/check.yml`，本地仅在这些行为本身发生变化且轻量检查无法验证时运行。
 
 本机 `test/` 保留忽略规则，公开 CI 不依赖该目录。提交使用中文说明。PR 写明用户可见变化、验证结果与仍未验证的外部服务。Issue 模板提供复现信息入口。
 

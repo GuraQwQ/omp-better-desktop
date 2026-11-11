@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { genUIPrompt, acknowledgeGenUIPrompt, displayUserPrompt } from '../src/lib/genui-prompt';
+import { genUIPrompt, acknowledgeGenUIPrompt, displayUserPrompt, sendGenUIPrompt } from '../src/lib/genui-prompt';
 import { normalizeGenUIConfiguration } from '../src/lib/genui-config';
 import { createDraft, captureDraft, acknowledgeDraft } from '../src/lib/composer-draft';
 const config = normalizeGenUIConfiguration(undefined);
@@ -19,4 +19,10 @@ const typed = createDraft('尚未发送的草稿');
 const action = captureDraft(createDraft('界面动作'));
 acknowledgeDraft(action);
 assert.equal(typed.text, '尚未发送的草稿');
-console.log('生成式UI提示注入、配置变化与草稿保留检查通过');
+// 发送失败保留注入资格；确认后续发不再重复，斜杠命令保持原文。
+await assert.rejects(sendGenUIPrompt('retry', '修复', config, async () => { throw Error('连接失败'); }), /连接失败/);
+assert.notEqual(genUIPrompt('retry', '修复', config).message, '修复');
+await sendGenUIPrompt('retry', '修复', config, async message => { assert.equal(displayUserPrompt(message), '修复'); });
+assert.equal(genUIPrompt('retry', '继续', config).message, '继续');
+await sendGenUIPrompt('slash', '/help', config, async message => assert.equal(message, '/help'));
+console.log('生成式UI提交确认、失败重试与提示注入检查通过');

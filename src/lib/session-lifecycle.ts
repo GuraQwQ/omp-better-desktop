@@ -6,6 +6,7 @@ import { applyEvent, applyEvents, enrichToolMessages, normalizeHistoryMessages }
 import type { DesktopEvent, Json, SessionView } from './types';
 
 type Sessions = Record<string, SessionView>;
+type Preparation = { source?: SessionView; cwd: string; title: string; visible?: boolean; restart?: boolean; canReuse?: (session: SessionView) => boolean };
 type Snapshot = { valid: boolean; state: Set<string>; messages: boolean; path: boolean; title: boolean; replaceMessages: boolean };
 const confirmedState: Record<string, string[]> = {
   agent_start: ['isStreaming', 'isSettled', 'desktopRunAnchor', 'desktopRunStartedAt'],
@@ -25,6 +26,9 @@ export class SessionLifecycle {
   private identities = new Map<string, number>();
   private transcripts = new Map<string, string>();
   private historyPages = new Map<string, Promise<void>>();
+  private opening = new Map<string, { promise: Promise<SessionView>; intent: { visible: boolean } }>();
+  private recovering = new Map<string, Json>();
+  private replacements = new Map<string, string>();
   private queue: Promise<void> = Promise.resolve();
   private frame = 0;
 
@@ -32,6 +36,58 @@ export class SessionLifecycle {
 
   get current(): Sessions { this.flush(); return this.values; }
   isReleased(id: string): boolean { return this.released.has(id); }
+
+  configuration(source: SessionView | undefined, cwd: string): SessionView | undefined {
+    const values = Object.values(this.current);
+    return source && !source.historyOnly && !this.isReleased(source.id) ? source : values.find(value => value.hidden && !value.historyOnly && !this.isReleased(value.id) && !value.messages.length && sessionPathKey(value.cwd) === sessionPathKey(cwd));
+  }
+
+  prepare(options: Preparation): Promise<SessionView> {
+    const values = Object.values(this.current);
+    let source = options.source && (this.values[this.replacements.get(options.source.id) ?? options.source.id] ?? values.find(value => sessionKey(value) === sessionKey(options.source!)) ?? { ...options.source, historyOnly: true });
+    const cwd = options.cwd || source?.cwd || '';
+    const key = source?.path ? sessionKey(source) : `new:${source?.id ?? sessionPathKey(cwd)}`;
+    const pending = this.opening.get(key);
+    if (pending) { pending.intent.visible ||= !!options.visible; return pending.promise; }
+    if (source && !source.historyOnly && !this.isReleased(source.id) && !options.restart) return Promise.resolve(source);
+    const intent = { visible: !!options.visible };
+    const promise = (async () => {
+      if (options.restart && source && !source.historyOnly && !this.isReleased(source.id)) {
+        const closed = await this.transport.request<Json>('session.close', { id: source.id });
+        source = { ...clearQuestions(this.current[source.id] ?? source), path: closed.path ?? undefined, historyOnly: true };
+        this.put(source);
+      }
+      const existing = Object.values(this.current).find(value => !value.historyOnly && !this.isReleased(value.id) && (source?.path ? sessionKey(value) === sessionKey(source) : value.hidden && !value.messages.length && sessionPathKey(value.cwd) === sessionPathKey(cwd) && (options.canReuse?.(value) ?? true)));
+      const recovering = this.recovering.get(key);
+      if (recovering && this.isReleased(recovering.id)) this.recovering.delete(key);
+      const opened = existing ?? this.recovering.get(key) ?? await this.transport.request<Json>('session.open', { cwd, path: source?.path });
+      let page: Json | undefined;
+      let btw: Json = { records: [] };
+      if (!this.isReleased(opened.id)) {
+        try {
+          if (source?.path) page = await this.readMessages(opened.id, opened.path ?? source.path, Math.max(100, source.messages.length));
+          if (!this.isReleased(opened.id)) btw = await this.transport.rpc(opened.id, 'get_btw_history');
+        } catch (error) {
+          if (!this.isReleased(opened.id)) {
+            // 补齐成功后才替换可见身份；失败的连接留在内部供重试。
+            this.recovering.set(key, opened);
+            throw error;
+          }
+        }
+      }
+      const live = existing && !this.isReleased(opened.id) ? this.current[existing.id] : undefined;
+      const value: SessionView = { id: opened.id, cwd, path: opened.path ?? source?.path, title: opened.state?.sessionName ?? source?.title ?? options.title,
+        messages: page ? normalizeHistoryMessages(page.messages, 'reopen') : source?.messages ?? live?.messages ?? [], nextCursor: page ? page.nextCursor : source?.nextCursor,
+        state: { ...opened.state, ...live?.state, btwRecords: btw.records }, status: 'ready', pending: live?.pending ?? [], questionDrafts: live?.questionDrafts,
+        historyOnly: this.isReleased(opened.id), hidden: intent.visible ? false : source ? !!source.hidden : true };
+      this.put(value, source?.id);
+      this.recovering.delete(key);
+      return this.current[value.id] ?? value;
+    })();
+    this.opening.set(key, { promise, intent });
+    void promise.finally(() => { if (this.opening.get(key)?.promise === promise) this.opening.delete(key); }).catch(() => {});
+    return promise;
+  }
 
   run<T>(action: () => Promise<T>): Promise<T> {
     const result = this.queue.then(action);
@@ -47,7 +103,11 @@ export class SessionLifecycle {
   put(session: SessionView, replaceId?: string): void {
     this.flush();
     this.invalidate(session.id);
-    if (replaceId && replaceId !== session.id) this.erase(replaceId);
+    if (replaceId && replaceId !== session.id) {
+      const aliases = [...this.replacements].filter(([, id]) => id === replaceId).map(([alias]) => alias);
+      this.erase(replaceId);
+      for (const alias of [...aliases, replaceId]) this.replacements.set(alias, session.id);
+    }
     if (session.historyOnly) session = clearQuestions(session);
     else this.released.delete(session.id);
     this.write(session);
@@ -66,6 +126,7 @@ export class SessionLifecycle {
     this.invalidate(id);
     this.released.add(id);
     this.pending.delete(id);
+    for (const [alias, target] of this.replacements) if (target === id) this.replacements.delete(alias);
     this.transcripts.delete(id);
     if (!this.values[id]) return;
     const next = { ...this.values }; delete next[id]; this.values = next;
