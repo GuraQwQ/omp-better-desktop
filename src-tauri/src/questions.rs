@@ -84,7 +84,7 @@ impl Questions {
                 "type":"object","additionalProperties":false,"required":["id","question","options"],
                 "properties":{
                     "id":{"type":"string"},"question":{"type":"string"},"header":{"type":"string"},"multi":{"type":"boolean"},"recommended":{"type":"integer","minimum":0},
-                    "options":{"type":"array","items":{
+                    "options":{"type":"array","description":"Use an empty array for a free-text question; the user can enter multiple lines and confirm before sending.","items":{
                         "type":"object","additionalProperties":false,"required":["label"],
                         "properties":{"label":{"type":"string"},"description":{"type":"string"},"preview":{"type":"string"}}
                     }}
@@ -93,7 +93,7 @@ impl Questions {
         });
         HostTool::new(
             "ask",
-            "Ask 1–3 short questions without blocking this turn. Continue work independent of the answers; user answers arrive as a later user message. An unanswered question is not approval.",
+            "Ask 1–3 short questions without blocking this turn. Choose options for a selection question, or options: [] for a free-text input question. Continue work independent of the answers; confirmed user answers arrive as a later user message. An unanswered question is not approval.",
             schema.as_object().unwrap().clone(),
             move |arguments, context| {
                 if context.is_cancelled() {
@@ -181,7 +181,7 @@ impl Questions {
             self.finish(id, true);
             return Some(Ok(json!({"cancelled":true})));
         }
-        let message = match answer_message(&questions, &response["answers"]) {
+        let message = match answer_message(id, &questions, &response["answers"]) {
             Ok(message) => message,
             Err(error) => return Some(Err(error)),
         };
@@ -235,7 +235,7 @@ impl Questions {
     }
 }
 
-fn answer_message(questions: &[Question], value: &Value) -> Result<String, String> {
+fn answer_message(id: &str, questions: &[Question], value: &Value) -> Result<String, String> {
     let answers: Vec<Answer> = serde_json::from_value(value.clone())
         .map_err(|_| "Invalid question answers.".to_owned())?;
     if answers.len() != questions.len() {
@@ -250,18 +250,18 @@ fn answer_message(questions: &[Question], value: &Value) -> Result<String, Strin
                 !question.options.iter().any(|option| option.label == *label)
                     || !selected.insert(label.as_str())
             })
+            || answer.selected_options.is_empty() && custom.trim().is_empty()
             || !question.multi
                 && (answer.selected_options.len() > 1
-                    || !answer.selected_options.is_empty() && !custom.trim().is_empty()
-                    || answer.selected_options.is_empty() && custom.trim().is_empty())
+                    || !answer.selected_options.is_empty() && !custom.trim().is_empty())
         {
             return Err("Choose valid answers or enter a custom response.".into());
         }
-        rows.push(json!({"question":question.question,"selectedOptions":answer.selected_options,"customInput":custom}));
+        rows.push(json!({"id":question.id,"question":question.question,"header":question.header,"selectedOptions":answer.selected_options,"customInput":custom}));
     }
     Ok(format!(
-        "User answered the pending questions:\n{}",
-        json!(rows)
+        "[omp-desktop-question-response]\n{}\n[/omp-desktop-question-response]",
+        json!({"questionId":id,"answers":rows})
     ))
 }
 
@@ -357,6 +357,48 @@ mod tests {
                 .unwrap();
         }
         assert_eq!(sends.load(Ordering::Relaxed), 1);
+        assert!(!questions.has_pending());
+    }
+
+    #[test]
+    fn text_question_requires_confirmation_content_and_keeps_multiline_answer() {
+        let (questions, _) = collector();
+        let id = questions
+            .enqueue(
+                json!({"questions":[{"id":"details","question":"需要哪些结果？","options":[]}]}),
+            )
+            .unwrap();
+        let mut response =
+            json!({"id":id,"answers":[{"id":"details","selectedOptions":[],"customInput":"  "}]});
+        assert!(
+            questions
+                .respond(&response, |_| panic!("空白答案不能提交"))
+                .unwrap()
+                .is_err()
+        );
+        response["answers"][0]["customInput"] = json!("第一行\n第二行");
+        assert!(
+            questions
+                .respond(&response, |_| Err("offline".into()))
+                .unwrap()
+                .is_err()
+        );
+        assert!(questions.has_pending());
+        questions
+            .respond(&response, |message| {
+                let content = message
+                    .strip_prefix("[omp-desktop-question-response]\n")
+                    .unwrap()
+                    .strip_suffix("\n[/omp-desktop-question-response]")
+                    .unwrap();
+                let record: Value = serde_json::from_str(content).unwrap();
+                assert_eq!(record["questionId"], id);
+                assert_eq!(record["answers"][0]["id"], "details");
+                assert_eq!(record["answers"][0]["customInput"], "第一行\n第二行");
+                Ok(json!({"queued":true}))
+            })
+            .unwrap()
+            .unwrap();
         assert!(!questions.has_pending());
     }
 

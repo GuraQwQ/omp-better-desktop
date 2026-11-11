@@ -8,6 +8,13 @@ export function questionDraft(session: SessionView, question: Json): QuestionDra
   return session.questionDrafts?.[question.id] ?? createQuestionDraft(question);
 }
 
+export function questionAnswersComplete(question: Json, draft: QuestionDraft): boolean {
+  return question.method !== 'ask' || Array.isArray(question.questions) && question.questions.length > 0 && question.questions.every((item: Json) => {
+    const answer = draft.answers[item.id];
+    return !!answer && (answer.selectedOptions.length > 0 || !!answer.customInput.trim());
+  });
+}
+
 export function answerableQuestion(session: SessionView | undefined, id: string): Json | undefined {
   if (!session || session.historyOnly) return;
   const question = session.pending.find(item => item.id === id);

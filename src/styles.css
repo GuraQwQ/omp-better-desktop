@@ -158,6 +158,7 @@ kbd { font-size: 12px; color: var(--muted); }
 .message-user { max-width: 94%; margin-left: auto; }
 .message-user .message-label, .message-user .message-actions { justify-content: flex-end; }
 .message-user .message-body { background: var(--user-message); border-radius: 8px; padding: 12px 16px; }
+.message-notice .message-body { padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-control); color: var(--secondary); font-size: 13px; }
 .message-body { font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; }
 .message-body p:last-child { margin-bottom: 0; }
 .message-body p { margin: 0 0 12px; }
