@@ -35,7 +35,7 @@ export function createMessageReference(source: ReferenceSource, message: Message
 }
 
 export function createToolCallReference(source: ReferenceSource, message: Message, block?: ContentBlock, turn?: number, selection?: string): ConversationReference {
-  return identify({ source: { ...source, messageId: message.id, role: message.role, turn, kind: 'tool-call', toolName: block?.name ?? message.toolName, toolCallId: block?.id ?? message.toolCallId }, content: selection ?? JSON.stringify(block?.arguments ?? message.args ?? {}, null, 2) });
+  return identify({ source: { ...source, messageId: message.id, role: message.role, turn, kind: 'tool-call', toolName: block?.name ?? message.toolName, toolCallId: block?.id ?? message.toolCallId }, content: selection ?? block?.argumentsText ?? JSON.stringify(block?.arguments ?? message.args ?? {}, null, 2) });
 }
 
 export function appendReferences(existing: ConversationReference[], additions: ConversationReference[]): ConversationReference[] {

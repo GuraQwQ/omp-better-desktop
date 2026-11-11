@@ -92,21 +92,30 @@ function reduceEvent(session: SessionView, event: Json): SessionView {
     let message = normalizeMessage(event, id ?? `event-${session.messages.length}`);
     const delta = event.assistantMessageEvent;
     if (event.type === 'message_update' && delta && !event.message?.content) {
+      const snapshot = delta.type === 'start' || delta.type === 'done' ? delta.message : delta.type === 'error' ? delta.error : undefined;
       const content = Array.isArray(previous?.content) ? previous.content.map(block => ({ ...block })) : [];
       const blockIndex = delta.contentIndex ?? 0;
-      if (delta.type === 'text_delta' || delta.type === 'thinking_delta') {
+      if (delta.type === 'text_start' || delta.type === 'thinking_start') {
+        const key = delta.type === 'text_start' ? 'text' : 'thinking';
+        content[blockIndex] = { ...delta.block, type: key, [key]: '' };
+      } else if (delta.type === 'text_delta' || delta.type === 'thinking_delta') {
         const key = delta.type === 'text_delta' ? 'text' : 'thinking';
         content[blockIndex] = { ...(content[blockIndex] ?? { type: key }), [key]: (content[blockIndex]?.[key] ?? '') + delta.delta };
+      } else if (delta.type === 'toolcall_start') {
+        content[blockIndex] = { ...delta.block, type: 'toolCall', arguments: {}, argumentsText: '' };
+      } else if (delta.type === 'toolcall_delta') {
+        const block = content[blockIndex] ?? { type: 'toolCall' };
+        const argumentsText = (block.argumentsText ?? '') + delta.delta;
+        content[blockIndex] = { ...block, argumentsText };
       } else if (delta.type === 'toolcall_end') {
         content[blockIndex] = { type: 'toolCall', ...delta.toolCall };
-      } else if (delta.type === 'toolcall_start' || delta.type === 'toolcall_delta') {
-        const block = delta.partial?.content?.[blockIndex];
-        if (block?.type === 'toolCall') content[blockIndex] = { ...block };
+      } else if (delta.type === 'image_end') {
+        content[blockIndex] = { ...delta.content };
       } else if (delta.type === 'text_end' || delta.type === 'thinking_end') {
         const key = delta.type === 'text_end' ? 'text' : 'thinking';
-        content[blockIndex] = { type: key, [key]: delta.content ?? content[blockIndex]?.[key] ?? '' };
+        content[blockIndex] = { ...content[blockIndex], ...delta.block, type: key, [key]: delta.content ?? content[blockIndex]?.[key] ?? '' };
       }
-      message = { ...(previous ?? message), content };
+      message = snapshot ? normalizeMessage({ messageId: message.id, message: snapshot }, message.id) : { ...(previous ?? message), content };
     }
     const provisional = message.toolCallId ? session.messages.find(item => item.id === `tool-${message.toolCallId}`) : undefined;
     if (message.role === 'toolResult' || message.role === 'tool') message = { ...provisional, ...message, args: message.args ?? provisional?.args, details: message.details ?? provisional?.details, result: message.result ?? { ...provisional?.result, content: message.content, details: message.details ?? provisional?.details }, running: event.type !== 'message_end' };

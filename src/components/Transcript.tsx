@@ -9,7 +9,7 @@ import Collapse from './Collapse';
 import { ToolGenerationRate } from './GenerationRate';
 import { retryMessageIndex } from '../lib/message-actions';
 import { messageText } from '../lib/session-state';
-import { isStoppedMessage, projectTranscript, type TranscriptItem } from '../lib/transcript-items';
+import { isSessionNotice, isStoppedMessage, projectTranscript, type TranscriptItem } from '../lib/transcript-items';
 import type { Copy as CopyText } from '../lib/i18n';
 import type { ContentBlock, Message } from '../lib/types';
 import { displayUserPrompt } from '../lib/genui-prompt';
@@ -22,6 +22,8 @@ import { readReferenceSelection } from '../lib/reference-selection';
 import type { SideQuestionThreadSummary } from '../lib/side-questions';
 import { ReferenceCards } from './ComposerReferences';
 import SideQuestionMarkers from './SideQuestionMarkers';
+import QuestionResponse from './QuestionResponse';
+import { readQuestionResponse } from '../lib/question-response';
 
 const RichMessage = lazy(() => import('./RichMessage'));
 type GenUIContext = { configuration: GenUIConfiguration; sessionId?: string; sessionKey?: string; cwd: string; language: 'zh' | 'en'; onSend: (text: string) => Promise<void> };
@@ -60,22 +62,25 @@ function CollapsedBlock({ block, t, active, stopped, live, onReference }: { bloc
   const thinking = block.type === 'thinking';
   return <details className={thinking ? 'thinking' : 'tool-call'} onToggle={event => setOpen(event.currentTarget.open)}>
     <summary><ChevronRight size={12} aria-hidden="true" /><span className={live ? 'shimmer-text' : undefined}>{thinking ? t.thinking : toolLabel(block.name, t)}</span>{!thinking && active && !stopped && <ToolGenerationRate callId={block.id} />}{!thinking && <span className="tool-call-state">{stopped ? t.stopped : active ? t.running : t.statusLabels.pending}</span>}{!thinking && onReference && <span className="tool-reference-actions"><button type="button" aria-label="引用工具调用" onClick={event => { event.preventDefault(); event.stopPropagation(); onReference(); }}>引用调用</button></span>}</summary>
-    <Collapse open={open}>{thinking ? <div className="thinking-body" data-reference-kind="text"><Markdown text={block.thinking ?? block.text ?? ''} t={t} live={live} /></div> : <pre data-reference-kind="tool-call" data-reference-call-id={block.id}>{JSON.stringify(block.arguments, null, 2)}</pre>}</Collapse>
+    <Collapse open={open}>{thinking ? <div className="thinking-body" data-reference-kind="text"><Markdown text={block.thinking ?? block.text ?? ''} t={t} live={live} /></div> : <pre data-reference-kind="tool-call" data-reference-call-id={block.id}>{block.argumentsText ?? JSON.stringify(block.arguments, null, 2)}</pre>}</Collapse>
   </details>;
 }
 
 const MessageView = memo(function MessageView({ message, t, disabled, active, live, turn, edit, retry, genui, repairs, onReference, sideQuestionThreads, onSideQuestionThread }: { message: Message; t: CopyText; disabled: boolean; active: boolean; live: boolean; turn?: number; edit?: (message: Message) => void; retry?: () => void; genui?: GenUIContext; repairs?: GenUIRepairs; onReference?: (message: Message, block?: ContentBlock) => void; sideQuestionThreads?: SideQuestionThreadSummary[]; onSideQuestionThread?: (id: string) => void }) {
-  const text = messageText(message);
+  const text = message.role === 'user' ? displayUserPrompt(messageText(message)) : messageText(message);
   const stopped = isStoppedMessage(message);
+  const notice = isSessionNotice(message);
+  const response = readQuestionResponse(message);
   const activityOnly = message.role === 'assistant' && !stopped && !message.errorMessage && Array.isArray(message.content) && message.content.length > 0 && message.content.every(block => block?.type === 'thinking' || block?.type === 'toolCall');
   const rich = genui?.configuration.enabled && message.role === 'assistant';
   const renderText = (value: string, key?: number) => {
     const prompt = message.role === 'user' ? parseReferencedPrompt(displayUserPrompt(value)) : { body: value, references: [] };
     return <div key={key} className="message-reference-text"><ReferenceCards references={prompt.references} /><div data-reference-kind="text">{rich ? <Suspense fallback={<Markdown text={value} t={t} live={live} />}><RichMessage text={value} id={key === undefined ? message.id : `${message.id}-${key}`} {...genui!} isStreaming={live} repairs={repairs} /></Suspense> : <Markdown text={prompt.body} t={t} live={live && message.role === 'assistant'} />}</div></div>;
   };
-  return <article data-message-id={message.id} className={`message message-${message.role}${activityOnly ? ' message-activity' : ''}${live ? ' is-streaming' : ''}`}>
+  return <article data-message-id={message.id} className={`message message-${message.role}${notice ? ' message-notice' : ''}${activityOnly ? ' message-activity' : ''}${live ? ' is-streaming' : ''}`}>
     {message.role === 'user' && <div className="message-label">{t.you}</div>}
-    <div className="message-body" data-reference-message-id={message.id}>{typeof message.content === 'string' ? renderText(message.content) : message.content?.filter(Boolean).map((block, i, blocks) => {
+    {notice && <div className="message-label">{t.sessionNotice}</div>}
+    <div className="message-body" data-reference-message-id={message.id}>{response ? <QuestionResponse record={response} t={t} /> : typeof message.content === 'string' ? renderText(message.content) : message.content?.filter(Boolean).map((block, i, blocks) => {
       if (block.type === 'thinking' || block.type === 'toolCall') return <CollapsedBlock block={block} t={t} active={active} stopped={stopped} live={live && block.type === 'thinking' && i === blocks.length - 1} onReference={onReference ? () => onReference(message, block) : undefined} key={block.id ?? i} />;
       if (block.type === 'image') return block.data ? <img className="message-image" key={i} src={`data:${block.mimeType};base64,${block.data}`} alt={t.addImage} /> : null;
       return block.text ? renderText(block.text, i) : null;

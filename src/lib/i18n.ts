@@ -1,6 +1,7 @@
 import type { Language } from './types';
 
 const en = {
+  checkConfirmation: 'Check confirmation',
   product: 'Better OMP Desktop', newSession: 'New conversation', addProject: 'Add project', projects: 'Projects',
   settings: 'Settings', commands: 'Commands', review: 'Changes', context: 'Context', agents: 'Agents', terminal: 'Terminal',
   files: 'Files', history: 'History', runtime: 'Runtime', ready: 'Ready', connecting: 'Connecting', running: 'Working',
@@ -16,7 +17,7 @@ const en = {
   takeover: 'Use managed OMP in the terminal', restoreCli: 'Restore previous CLI',
   takeoverText: 'Switch the omp command to this runtime and imported data. The previous command can be restored.',
   clean: 'Clean managed caches', rollback: 'Use previous runtime', close: 'Close', cancel: 'Cancel',
-  approve: 'Approve', decline: 'Decline', submit: 'Submit', pending: 'Needs your attention',
+  approve: 'Approve', decline: 'Decline', submit: 'Submit', pending: 'Needs your attention', questionAnswers: 'Your answers', sessionNotice: 'Session notice',
   waiting: 'Waiting for input', chooseModel: 'Choose a model', noModels: 'Connect a provider to see available models.',
   providers: 'Providers', login: 'Connect', logout: 'Disconnect', refresh: 'Refresh', search: 'Search',
   searchCommands: 'Search commands, settings, and tools…', noResults: 'No matching results.',
@@ -63,6 +64,7 @@ const en = {
   reviewScope: 'Review scope', workspaceChanges: 'Working tree', turnChanges: 'Turn tool changes', turnLabel: 'Turn', earlierTurn: 'Earlier turn records', noTurnChanges: 'No file operations recorded for this turn.', changeRecord: 'Operation record', proposedChange: 'Preview',
 };
 const zh: typeof en = {
+  checkConfirmation: '检查确认',
   product: 'Better OMP Desktop', newSession: '新建对话', addProject: '添加项目', projects: '项目',
   settings: '设置', commands: '命令', review: '更改', context: '上下文', agents: '代理', terminal: '终端',
   files: '文件', history: '历史记录', runtime: '运行时', ready: '就绪', connecting: '连接中', running: '正在工作',
@@ -78,7 +80,7 @@ const zh: typeof en = {
   takeover: '终端使用托管 OMP', restoreCli: '恢复原 CLI',
   takeoverText: '将 omp 命令切换到此运行时和迁入数据，之后可以恢复原命令入口。',
   clean: '清理托管缓存', rollback: '使用上一运行时', close: '关闭', cancel: '取消',
-  approve: '批准', decline: '拒绝', submit: '提交', pending: '需要你处理',
+  approve: '批准', decline: '拒绝', submit: '提交', pending: '需要你处理', questionAnswers: '提问回复', sessionNotice: '会话通知',
   waiting: '等待输入', chooseModel: '选择模型', noModels: '连接提供商后查看可用模型。',
   providers: '提供商', login: '连接', logout: '断开', refresh: '刷新', search: '搜索',
   searchCommands: '搜索命令、设置和工具…', noResults: '没有匹配结果。',
@@ -130,6 +132,8 @@ export const copy = (language: Language): Copy => language === 'zh' ? zh : en;
 export const statusText = (status: string, t: Copy): string => t.statusLabels[status as keyof Copy['statusLabels']] ?? status;
 
 const errorTranslations: Record<string, string> = {
+  'Answer confirmation is still pending. Retry to check the same submission.': '答案仍在等待确认，可再次检查提交状态。',
+  'Session is closed or interrupted.': '对话已关闭或中止。',
   'Git is required to review project changes.': '查看项目差异需要安装 Git；文件浏览和对话仍可使用。',
   'This project is not a Git working tree.': '此文件夹尚未初始化 Git 仓库，可在回合工具改动中查看本次文件操作。',
   'Install a matching OMP runtime in Settings first.': '请先在设置中安装匹配的 OMP 运行时。',
