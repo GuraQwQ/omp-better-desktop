@@ -1,8 +1,8 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { modelCapabilitySources } from './build-inputs';
 
 export const projectRoot = path.resolve(import.meta.dir, '..');
-export const modelCapabilitySources = ['model-metadata.mjs', 'model-metadata.d.mts', 'model-capabilities.json', 'model-capabilities-overrides.json'] as const;
 const pinnedLock = await Bun.file(path.join(projectRoot, 'upstream.lock.json')).json();
 export const lock = {
   ...pinnedLock,
