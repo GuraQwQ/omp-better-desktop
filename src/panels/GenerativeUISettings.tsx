@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ChevronRight } from 'lucide-react';
-import { GENUI_CAPABILITIES, GENUI_COMPONENTS, GENUI_FEATURES, GENUI_GROUPS, normalizeGenUIConfiguration, buildGenUIInstructions, type GenUIConfiguration, type GenUIFeature, type GenUIGroup } from '../lib/genui-config';
+import { GENUI_CAPABILITIES, GENUI_COMPONENTS, GENUI_FEATURES, GENUI_GROUPS, GENUI_USAGE, normalizeGenUIConfiguration, buildGenUIInstructions, type GenUIConfiguration, type GenUIFeature, type GenUIGroup } from '../lib/genui-config';
+import Select from '../components/Select';
 import type { Language } from '../lib/types';
 import { genUIViews } from '../lib/genui-state';
 import { GenUISettingsDraft } from '../lib/genui-settings-draft';
@@ -37,6 +38,7 @@ export default function GenerativeUISettings({ language, configuration, onChange
     <div className="setting-row"><div><strong id="genui-enabled">{zh ? '生成可交互界面' : 'Generate interactive interfaces'}</strong><small>{zh ? '让助手使用 OpenUI Lang 或 HTML 呈现交互界面。组件选择同步决定模型说明和运行时注册。' : 'Let the assistant render interfaces with OpenUI Lang or HTML. Your selection controls both model instructions and runtime registration.'}</small></div><input className="capture-switch genui-master-switch" type="checkbox" role="switch" aria-labelledby="genui-enabled" checked={config.enabled} onChange={event => update({ enabled: event.target.checked })} /></div>
     <fieldset disabled={!config.enabled} className="genui-options">
       <legend>{zh ? '界面能力' : 'Interface features'}</legend>
+      <div className="setting-row genui-usage"><div><strong>{zh ? '使用偏好' : 'Usage preference'}</strong><small>{zh ? GENUI_USAGE[config.usage].hint : GENUI_USAGE[config.usage].hintEn}</small></div><Select value={config.usage} label={zh ? '生成式UI使用偏好' : 'Generative UI usage preference'} options={Object.entries(GENUI_USAGE).map(([value, item]) => ({ value, label: zh ? item.label : item.labelEn }))} onChange={value => update({ usage: value as GenUIConfiguration['usage'] })} /></div>
       <div className="genui-feature-list">{Object.entries(GENUI_FEATURES).map(([name, feature]) => <label className="genui-setting-option" key={name}><input type="checkbox" checked={config.features[name as GenUIFeature]} onChange={event => toggleFeature(name as GenUIFeature, event.target.checked)} /><span><strong>{!zh && 'labelEn' in feature ? feature.labelEn : feature.label}</strong><small>{!zh && 'hintEn' in feature ? feature.hintEn : feature.hint}</small></span></label>)}</div>
       <h3>{zh ? '暴露给助手的组件' : 'Components available to the assistant'}</h3>
       <p className="settings-hint">{zh ? `已选 ${config.components.length} / ${GENUI_COMPONENTS.length} 项。选择越少，组件说明越短；地图和公式仅在实际使用时加载。` : `${config.components.length} / ${GENUI_COMPONENTS.length} selected. Fewer components mean shorter instructions. Maps and formulas load on use.`}</p>

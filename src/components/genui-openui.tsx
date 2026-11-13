@@ -1,8 +1,9 @@
 import { action, createLibrary, defineComponent, FormNameContext, reactive, useFormName, useIsStreaming, useStateField, useTriggerAction, type ActionPlan, type ComponentRenderProps } from '@openuidev/react-lang';
-import { lazy, Suspense, type ReactNode } from 'react';
+import { lazy, Suspense, useId, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { z } from 'zod/v4';
+import { ChevronRight } from 'lucide-react';
 import { GENUI_COMPONENTS, exposedGenUIFields, type GenUIConfiguration, type GenUIField } from '../lib/genui-config';
 import { TargetLink } from './LinkTargets';
 import { safeGenUIUrl } from '../lib/genui';
@@ -24,6 +25,8 @@ function schema(field: GenUIField, config: GenUIConfiguration): z.ZodType {
     case 'reactiveString': value = z.string(); break;
     case 'reactiveNumber': value = z.number(); break;
     case 'reactiveBoolean': value = z.boolean(); break;
+    case 'reactiveStrings': value = z.array(z.string()); break;
+    case 'reactiveNumberOrRange': case 'numberOrRange': value = z.union([z.number(), z.tuple([z.number(), z.number()])]); break;
     case 'action': value = action(); break;
     default: value = field.type.includes('|') ? z.enum(field.type.split('|') as [string, ...string[]]) : z.string();
   }
@@ -58,9 +61,64 @@ function Control({ name, props, config, statementId }: { name: string; props: Re
   if (name === 'TextArea') control = <textarea rows={3} value={String(value)} disabled={disabled} onChange={event => set(event.target.value)} />;
   else if (name === 'Select') control = <select value={String(value)} disabled={disabled} onChange={event => set(event.target.value)}>{(props.options as string[]).map(option => <option key={option} value={option}>{option}</option>)}</select>;
   else if (name === 'Checkbox') control = <input type="checkbox" checked={!!value} disabled={disabled} onChange={event => set(event.target.checked)} />;
-  else if (name === 'Slider') control = <><input type="range" min={Number(props.min)} max={Number(props.max)} value={Number(value || 0)} disabled={disabled} onChange={event => set(Number(event.target.value))} /><output>{String(value)}</output></>;
   else control = <input type={name === 'NumberInput' ? 'number' : name === 'DatePicker' ? 'date' : 'text'} value={String(value)} placeholder={String(props.placeholder ?? '')} disabled={disabled} onChange={event => set(name === 'NumberInput' ? event.target.value === '' ? null : Number(event.target.value) : event.target.value)} />;
   return <label className={`genui-field ${name === 'Checkbox' ? 'genui-checkbox' : ''}`}><span>{label}</span>{control}</label>;
+}
+
+function SliderControl({ props, config, statementId }: { props: Record<string, unknown>; config: GenUIConfiguration; statementId?: string }) {
+  const id = useId(), streaming = useIsStreaming();
+  const min = Math.min(Number(props.min), Number(props.max)), max = Math.max(Number(props.min), Number(props.max));
+  const step = typeof props.step === 'number' && props.step > 0 && Number.isFinite(props.step) ? props.step : 1;
+  // 滑轨按步序号定位，最后一个位置始终映射到声明的最大值。
+  const intervals = (max - min) / step;
+  const steps = Math.max(max > min ? 1 : 0, Math.ceil(intervals - Math.abs(intervals) * Number.EPSILON * 4));
+  const decimals = Math.max(0, ...[min, step].map(value => { const [number, exponent] = String(value).split('e'); return (number.split('.')[1]?.length ?? 0) - Number(exponent ?? 0); }));
+  const valueAt = (index: number) => { const value = min + index * step; return index >= steps ? max : decimals <= 100 ? Number(value.toFixed(decimals)) : value; };
+  const indexOf = (value: unknown, fallback: number) => {
+    const number = typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
+    const lower = Math.max(0, Math.min(steps, Math.floor((number - min) / step))), upper = Math.min(steps, lower + 1);
+    return number - valueAt(lower) < valueAt(upper) - number ? lower : upper;
+  };
+  const field = useStateField(String(props.name || statementId || 'slider'), props.value ?? min);
+  const range = Array.isArray(field.value) ? field.value as number[] : undefined;
+  const value = typeof field.value === 'number' ? field.value : min, disabled = streaming || !config.features.state;
+  const label = String(props.label ?? ''), zh = document.documentElement.lang.startsWith('zh');
+  return <fieldset className="genui-field genui-slider" disabled={disabled}><legend>{label}</legend><div className="genui-slider-values">
+    {range ? range.map((value, index) => <label key={index}><span>{index === 0 ? zh ? '起点' : 'Start' : zh ? '终点' : 'End'}</span><input id={`${id}-${index}`} type="range" min={0} max={steps} step={1} value={indexOf(value, min)} aria-valuemin={min} aria-valuemax={max} aria-valuenow={value} aria-valuetext={String(value)} aria-label={`${label} ${index === 0 ? zh ? '起点' : 'Start' : zh ? '终点' : 'End'}`} onChange={event => {
+      const next = valueAt(Number(event.target.value)); field.setValue(index === 0 ? [Math.min(next, range[1]), range[1]] : [range[0], Math.max(next, range[0])]);
+    }} /><output htmlFor={`${id}-${index}`}>{value}</output></label>) : <label><input id={id} type="range" min={0} max={steps} step={1} value={indexOf(value, min)} aria-valuemin={min} aria-valuemax={max} aria-valuenow={value} aria-valuetext={String(value)} aria-label={label} onChange={event => field.setValue(valueAt(Number(event.target.value)))} /><output htmlFor={id}>{value}</output></label>}
+  </div></fieldset>;
+}
+
+function SwitchGroup({ props, config, statementId }: { props: Record<string, unknown>; config: GenUIConfiguration; statementId?: string }) {
+  const field = useStateField(String(props.name || statementId || 'switches'), props.value ?? []), streaming = useIsStreaming();
+  const selected = Array.isArray(field.value) ? field.value : [];
+  const options = [...new Set(props.options as string[])];
+  return <fieldset className="genui-field genui-switch-group" disabled={streaming || !config.features.state}><legend>{String(props.label)}</legend>{options.map(option => <label className="genui-switch-option" key={option}><span>{option}</span><input className="capture-switch" type="checkbox" role="switch" checked={selected.includes(option)} onChange={event => field.setValue(event.target.checked ? [...selected, option] : selected.filter(value => value !== option))} /></label>)}</fieldset>;
+}
+
+function Tabs({ props, renderNode, statementId, config }: ComponentRenderProps & { config: GenUIConfiguration }) {
+  const id = useId(), streaming = useIsStreaming();
+  const field = useStateField(String(props.name || statementId || 'tabs'), props.value ?? 0);
+  const labels = props.labels as string[], children = props.children as unknown[];
+  const zh = document.documentElement.lang.startsWith('zh');
+  const count = Math.max(labels.length, children.length), selected = Math.round(clamp(field.value, 0, 0, Math.max(0, count - 1)));
+  const disabled = streaming || !config.features.state;
+  return <div className="genui-tabs"><div role="tablist" aria-label={String(props.name)} onKeyDown={event => {
+    if (disabled || !count || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault(); const next = event.key === 'Home' ? 0 : event.key === 'End' ? count - 1 : (selected + (event.key === 'ArrowRight' ? 1 : -1) + count) % count;
+    field.setValue(next); event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
+  }}>{Array.from({ length: count }, (_, index) => <button type="button" role="tab" key={index} id={`${id}-tab-${index}`} aria-controls={`${id}-panel-${index}`} aria-selected={selected === index} tabIndex={selected === index ? 0 : -1} disabled={disabled} onClick={() => field.setValue(index)}>{labels[index] ?? `${zh ? '标签页' : 'Tab'} ${index + 1}`}</button>)}</div>
+    {Array.from({ length: count }, (_, index) => <div key={index} id={`${id}-panel-${index}`} role="tabpanel" aria-labelledby={`${id}-tab-${index}`} hidden={selected !== index} tabIndex={0}>{index < children.length ? renderNode(children[index]) : <p>{zh ? '暂无内容。' : 'No content yet.'}</p>}</div>)}
+  </div>;
+}
+
+function Accordion({ props, renderNode, statementId, config }: ComponentRenderProps & { config: GenUIConfiguration }) {
+  const field = useStateField(String(props.name || statementId || 'accordion'), props.value ?? false), streaming = useIsStreaming();
+  const disabled = streaming || !config.features.state;
+  return <details className="genui-accordion" open={!!field.value} onToggle={event => { if (!disabled && event.currentTarget.open !== !!field.value) field.setValue(event.currentTarget.open); }}>
+    <summary aria-disabled={disabled || undefined} onClick={event => { if (disabled) event.preventDefault(); }}><ChevronRight size={14} aria-hidden="true" />{String(props.label)}</summary><div>{renderNode(props.children)}</div>
+  </details>;
 }
 
 function ActionButton({ props, config }: { props: Record<string, unknown>; config: GenUIConfiguration }) {
@@ -73,8 +131,13 @@ function ExternalLink({ url, label }: { url: unknown; label: ReactNode }) {
   return target ? <TargetLink className="genui-link" href={target} target="_blank" rel="noreferrer">{label}</TargetLink> : <span>{label}</span>;
 }
 
-function renderComponent(name: string, { props, renderNode, statementId }: ComponentRenderProps, config: GenUIConfiguration): ReactNode {
-  if (['Input', 'TextArea', 'NumberInput', 'Select', 'Checkbox', 'Slider', 'DatePicker'].includes(name)) return <Control name={name} props={props} config={config} statementId={statementId} />;
+function renderComponent(name: string, renderProps: ComponentRenderProps, config: GenUIConfiguration): ReactNode {
+  const { props, renderNode, statementId } = renderProps;
+  if (name === 'Tabs') return <Tabs {...renderProps} config={config} />;
+  if (name === 'Accordion') return <Accordion {...renderProps} config={config} />;
+  if (name === 'SwitchGroup') return <SwitchGroup props={props} config={config} statementId={statementId} />;
+  if (name === 'Slider') return <SliderControl props={props} config={config} statementId={statementId} />;
+  if (['Input', 'TextArea', 'NumberInput', 'Select', 'Checkbox', 'DatePicker'].includes(name)) return <Control name={name} props={props} config={config} statementId={statementId} />;
   const children = () => renderNode(props.children);
   switch (name) {
     case 'Col': case 'Row': case 'Grid': return <div className={`genui-${name.toLowerCase()}`} style={{ gap: clamp(props.gap, 12), ...(name === 'Grid' ? { gridTemplateColumns: `repeat(${Math.round(clamp(props.columns, 2, 1, 12))},minmax(0,1fr))` } : {}) }}>{children()}</div>;
