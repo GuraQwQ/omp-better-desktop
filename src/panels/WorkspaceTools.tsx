@@ -142,7 +142,9 @@ function WorkspaceEditor({ cwd, language, target }: PanelProps & { target?: Open
   const textarea = useRef<HTMLTextAreaElement>(null);
   const liveDocuments = useRef(documents); liveDocuments.current = documents;
   const mounted = useRef(true);
-  const opening = useRef(new Set<string>());
+  const opening = useRef(new Map<string, Promise<void>>());
+  const selection = useRef({ revision: 0, path: active });
+  const activePath = useRef(active); activePath.current = active;
   const savingPath = useRef('');
   const document = documents.find(document => document.path === active);
   useEffect(() => { editorCache.set(cacheKey, { documents, active }); }, [cacheKey, documents, active]);
@@ -154,20 +156,28 @@ function WorkspaceEditor({ cwd, language, target }: PanelProps & { target?: Open
     return () => { mounted.current = false; window.removeEventListener('beforeunload', beforeUnload); };
   }, [cwd]);
   const open = async (path: string, line = 1) => {
-    if (opening.current.has(path)) return;
+    const revision = ++selection.current.revision;
+    selection.current.path = path;
     setError('');
     try {
       if (!liveDocuments.current.some(document => document.path === path)) {
-        opening.current.add(path);
-        const result = await request('file.get', { cwd, path });
-        if (!mounted.current) return;
-        const content = normalizedText(result.content);
-        setDocuments(documents => documents.some(document => document.path === path) ? documents : [...documents, { ...result, path, content, saved: content }]);
+        let pending = opening.current.get(path);
+        if (!pending) {
+          pending = request('file.get', { cwd, path }).then(result => {
+            if (!mounted.current || liveDocuments.current.some(document => document.path === path)) return;
+            const content = normalizedText(result.content);
+            const next = [...liveDocuments.current, { ...result, path, content, saved: content }];
+            liveDocuments.current = next; setDocuments(next);
+          }).finally(() => opening.current.delete(path));
+          opening.current.set(path, pending);
+        }
+        await pending;
       }
-      if (mounted.current) { setActive(path); setLocation({ path, line }); }
-    } catch (error) { if (mounted.current) setError(message(error)); }
-    finally { opening.current.delete(path); }
+      // 同一文件共用读取，只有最后一次选择可以改变当前文件与定位。
+      if (mounted.current && selection.current.revision === revision) { activePath.current = path; setActive(path); setLocation({ path, line }); }
+    } catch (error) { if (mounted.current && selection.current.revision === revision) setError(message(error)); }
   };
+  const selectDocument = (path: string) => { selection.current = { revision: selection.current.revision + 1, path }; activePath.current = path; setLocation(undefined); setActive(path); };
   useEffect(() => { if (target) void open(target.path, target.line); }, [target?.path, target?.line, target?.nonce]);
   useEffect(() => {
     if (!textarea.current || location?.path !== active || !document) return;
@@ -189,7 +199,7 @@ function WorkspaceEditor({ cwd, language, target }: PanelProps & { target?: Open
       const content = normalizedText(result.content);
       const next = liveDocuments.current.map(document => document.path === path ? { ...document, revision: result.revision, saved: content, content: document.content === snapshot.content ? content : document.content, encoding: result.encoding, newline: result.newline } : document);
       liveDocuments.current = next;
-      editorCache.set(cacheKey, { documents: next, active: path });
+      editorCache.set(cacheKey, { documents: next, active: activePath.current });
       if (mounted.current) setDocuments(next);
       return next.find(document => document.path === path)?.content === content;
     } catch (error) { if (mounted.current) setError(message(error)); return false; }
@@ -197,7 +207,9 @@ function WorkspaceEditor({ cwd, language, target }: PanelProps & { target?: Open
   };
   const close = (path: string) => {
     const remaining = liveDocuments.current.filter(document => document.path !== path);
-    liveDocuments.current = remaining; setDocuments(remaining); setActive(current => current === path ? remaining.at(-1)?.path ?? '' : current); setConfirm(undefined);
+    if (selection.current.path === path) selection.current.revision++;
+    const nextActive = activePath.current === path ? remaining.at(-1)?.path ?? '' : activePath.current;
+    liveDocuments.current = remaining; activePath.current = nextActive; setDocuments(remaining); setActive(nextActive); setConfirm(undefined);
   };
   const reload = async (path: string) => {
     setError(''); setReloading(path);
@@ -219,7 +231,7 @@ function WorkspaceEditor({ cwd, language, target }: PanelProps & { target?: Open
   };
   const visible = files.filter(path => path.toLowerCase().includes(filter.toLowerCase()));
   return <div className="workspace-editor" onKeyDown={event => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); event.stopPropagation(); void save(); } }}><div className="workspace-tool-form"><input aria-label={zh ? '查找文件名' : 'Find file names'} placeholder={zh ? '查找并打开文件…' : 'Find and open a file…'} value={filter} onChange={event => setFilter(event.target.value)} /></div>{(filter || !documents.length) && <div className="workspace-editor-files">{visible.slice(0, 150).map(path => <button title={path} key={path} onClick={() => { void open(path); setFilter(''); }}><FileCode2 size={13} /><span>{path}</span></button>)}{visible.length > 150 && <p className="workspace-tool-hint">{zh ? '输入文件名缩小结果范围。' : 'Enter a file name to narrow the results.'}</p>}</div>}
-    <div className="workspace-document-tabs">{documents.map(document => <div key={document.path} className={active === document.path ? 'active' : ''}><button title={document.path} onClick={() => setActive(document.path)}>{document.content !== document.saved && <span aria-label={zh ? '未保存' : 'Unsaved'}>●</span>}{document.path.split(/[\\/]/).at(-1)}</button><button className="icon-button" aria-label={`${zh ? '关闭' : 'Close'} ${document.path}`} disabled={saving === document.path} onClick={() => requestAction(document.path, 'close')}><X size={12} /></button></div>)}</div>
+    <div className="workspace-document-tabs">{documents.map(document => <div key={document.path} className={active === document.path ? 'active' : ''}><button title={document.path} onClick={() => selectDocument(document.path)}>{document.content !== document.saved && <span aria-label={zh ? '未保存' : 'Unsaved'}>●</span>}{document.path.split(/[\\/]/).at(-1)}</button><button className="icon-button" aria-label={`${zh ? '关闭' : 'Close'} ${document.path}`} disabled={saving === document.path} onClick={() => requestAction(document.path, 'close')}><X size={12} /></button></div>)}</div>
     {error && <p className="workspace-tool-error" role="alert">{error}</p>}{confirm && <div className="workspace-tool-confirm"><p>{zh ? `${confirm.path} 有未保存修改。` : `${confirm.path} has unsaved changes.`}</p>{confirm.action === 'close' && <button className="secondary-button" disabled={!!saving} onClick={() => { void save(confirm.path).then(saved => { if (saved) close(confirm.path); }); }}>{zh ? '保存并关闭' : 'Save and close'}</button>}<button className="quiet-button" disabled={!!saving} onClick={() => { if (confirm.action === 'close') close(confirm.path); else void reload(confirm.path); }}>{confirm.action === 'close' ? zh ? '放弃修改并关闭' : 'Discard and close' : zh ? '重载文件' : 'Reload file'}</button><button className="quiet-button" onClick={() => setConfirm(undefined)}>{zh ? '取消' : 'Cancel'}</button></div>}
     {document && <><div className="workspace-editor-toolbar"><code title={document.path}>{document.path}</code><button className="quiet-button" disabled={!!saving || document.content === document.saved} onClick={() => void save()}><Save size={14} />{saving === active ? zh ? '保存中…' : 'Saving…' : zh ? '保存' : 'Save'}</button><button className="icon-button" aria-label={zh ? '重载文件' : 'Reload file'} disabled={!!saving} onClick={() => requestAction(active, 'reload')}><RefreshCw size={14} /></button></div><textarea ref={textarea} className="workspace-editor-text" disabled={reloading === active} aria-label={document.path} value={document.content} onChange={event => change(event.target.value)} spellCheck={false} wrap="off" onKeyDown={event => { if (event.key === 'Tab') { event.preventDefault(); const input = event.currentTarget; const start = input.selectionStart; const end = input.selectionEnd; change(document.content.slice(0, start) + '  ' + document.content.slice(end)); requestAnimationFrame(() => input.setSelectionRange(start + 2, start + 2)); } }} /><p className="workspace-tool-hint">{document.encoding.toUpperCase()} · {document.newline.toUpperCase()} · {document.content.split('\n').length} {zh ? '行' : 'lines'} · Ctrl+S</p></>}
   </div>;

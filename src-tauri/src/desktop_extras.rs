@@ -49,9 +49,12 @@ pub fn reveal_path(value: &str) -> Result<Value, String> {
     {
         let mut command = std::process::Command::new("explorer.exe");
         if info["isFile"] == true {
-            command.arg("/select,");
+            command.arg(format!("/select,{}", path.display()));
         }
-        platform::hidden(command.arg(path))
+        if info["isFile"] != true {
+            command.arg(path);
+        }
+        platform::hidden(&mut command)
             .spawn()
             .map_err(|error| error.to_string())?;
     }

@@ -87,7 +87,7 @@ function renderComponent(name: string, { props, renderNode, statementId }: Compo
     case 'Caption': return <small>{String(props.text)}</small>;
     case 'Badge': return <span className={`genui-badge genui-tone-${props.tone || 'neutral'}`}>{String(props.text)}</span>;
     case 'Code': return <pre><code>{String(props.text)}</code></pre>;
-    case 'Markdown': return <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ href, children }) => <ExternalLink url={href} label={children} />, img: ({ src, alt }) => <ZoomableImage src={safeGenUIUrl(src, true)} alt={alt} /> }}>{String(props.text)}</ReactMarkdown>;
+    case 'Markdown': return <ReactMarkdown urlTransform={(url, key) => safeGenUIUrl(url, key === 'src') ?? ''} remarkPlugins={[remarkGfm]} components={{ a: ({ href, children }) => <ExternalLink url={href} label={children} />, img: ({ src, alt }) => <ZoomableImage src={safeGenUIUrl(src, true)} alt={alt} /> }}>{String(props.text)}</ReactMarkdown>;
     case 'Link': return <ExternalLink url={props.url} label={String(props.label)} />;
     case 'List': return <ul>{(props.items as string[]).map((item, index) => <li key={index}>{item}</li>)}</ul>;
     case 'Button': return <ActionButton props={props} config={config} />;

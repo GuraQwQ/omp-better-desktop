@@ -1,7 +1,8 @@
 import { useLayoutEffect, useMemo, useRef, type ComponentPropsWithoutRef } from 'react';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import ZoomableImage from './ZoomableImage';
-import { TargetLink } from './LinkTargets';
+import { LinkSource, TargetLink } from './LinkTargets';
+import { safeGenUIUrl } from '../lib/genui';
 import remarkGfm from 'remark-gfm';
 import CopyButton from './CopyButton';
 import type { Copy } from '../lib/i18n';
@@ -16,7 +17,7 @@ function CodeBlock({ t, children, ...props }: ComponentPropsWithoutRef<'pre'> & 
 }
 
 // 独立成块以便按需加载：react-markdown 与 remark-gfm 不进入主包。
-export default function MarkdownBody({ text, t, live = false }: { text: string; t: Copy; live?: boolean }) {
+export default function MarkdownBody({ text, t, live = false, sourceDirectory }: { text: string; t: Copy; live?: boolean; sourceDirectory?: string }) {
   const previous = useRef(text);
   const from = previous.current.length;
   const reveal = live && text.startsWith(previous.current) && from < text.length && document.documentElement.dataset.motion === 'rich' && !matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -26,5 +27,5 @@ export default function MarkdownBody({ text, t, live = false }: { text: string; 
     img: ({ node: _node, ...props }: WithNode<'img'>) => <ZoomableImage {...props} />,
     pre: ({ node: _node, ...props }: WithNode<'pre'>) => <CodeBlock t={t} {...props} />,
   }), [t]);
-  return <ReactMarkdown urlTransform={(url, key) => key === 'href' && /^(?:file:|[a-z]:[\\/])/i.test(url) ? url : defaultUrlTransform(url)} remarkPlugins={reveal ? [remarkGfm, () => tree => revealStreamText(tree, from, text)] : [remarkGfm]} components={components}>{text}</ReactMarkdown>;
+  return <LinkSource directory={sourceDirectory}><ReactMarkdown urlTransform={(url, key) => key === 'src' ? safeGenUIUrl(url, true) ?? defaultUrlTransform(url) : key === 'href' && /^(?:file:|[a-z]:[\\/])/i.test(url) ? url : defaultUrlTransform(url)} remarkPlugins={reveal ? [remarkGfm, () => tree => revealStreamText(tree, from, text)] : [remarkGfm]} components={components}>{text}</ReactMarkdown></LinkSource>;
 }

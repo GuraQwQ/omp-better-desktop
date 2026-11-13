@@ -75,7 +75,7 @@ export default function Artifacts({ cwd, onError }: { cwd: string; onError: (err
     {selected && <section className="artifact-preview"><h3>{selected.name}</h3><code>{selected.path}</code>{selected.kind === 'html'
       ? <iframe title={selected.name} sandbox="allow-scripts" src={native ? convertFileSrc(selected.id, 'artifact') : `data:text/html;charset=utf-8,${encodeURIComponent(`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none';">${selected.content}`)}`} />
       : selected.kind === 'image' ? <ZoomableImage src={selected.content} alt={selected.name} />
-        : selected.kind === 'markdown' ? <Suspense fallback={<pre>{selected.content}</pre>}><Markdown text={selected.content} t={copy('zh')} /></Suspense>
+        : selected.kind === 'markdown' ? <Suspense fallback={<pre>{selected.content}</pre>}><Markdown text={selected.content} sourceDirectory={String(selected.path).match(/^.*[/\\]/)?.[0]} t={copy('zh')} /></Suspense>
           : <pre>{selected.content}</pre>}</section>}
   </>;
 }

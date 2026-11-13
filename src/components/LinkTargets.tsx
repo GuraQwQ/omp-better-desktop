@@ -6,15 +6,17 @@ import { resolveLinkTarget, type LinkTarget } from '../lib/link-target';
 import type { Language } from '../lib/types';
 import './link-targets.css';
 
-type OpenLink = (href: string, anchor: HTMLElement, x?: number, y?: number) => boolean;
+type OpenLink = (href: string, anchor: HTMLElement, x?: number, y?: number, sourceDirectory?: string) => boolean;
 const LinkContext = createContext<OpenLink | undefined>(undefined);
+const SourceDirectory = createContext<string | undefined>(undefined);
+export function LinkSource({ directory, children }: { directory?: string; children: ReactNode }) { return <SourceDirectory.Provider value={directory}>{children}</SourceDirectory.Provider>; }
 export const useTargetMenu = () => useContext(LinkContext);
 
 export function TargetLink({ href, children, onClick, ...props }: AnchorHTMLAttributes<HTMLAnchorElement>) {
-  const open = useContext(LinkContext);
+  const open = useContext(LinkContext), sourceDirectory = useContext(SourceDirectory);
   return <a {...props} href={href} className={`target-link ${props.className ?? ''}`} onClick={event => {
     onClick?.(event);
-    if (!event.defaultPrevented && href && open?.(href, event.currentTarget, event.clientX, event.clientY)) { event.preventDefault(); event.stopPropagation(); }
+    if (!event.defaultPrevented && href && open && !href.startsWith('#')) { event.preventDefault(); event.stopPropagation(); open(href, event.currentTarget, event.clientX, event.clientY, sourceDirectory); }
   }}>{children}</a>;
 }
 
@@ -27,8 +29,8 @@ export function LinkTargets({ cwd, language, onOpenFile, children }: { cwd: stri
   const currentSelection = useRef(selected); currentSelection.current = selected;
   const zh = language === 'zh';
   const close = (focus = false) => { if (focus && selected?.anchor.isConnected) selected.anchor.focus(); setSelected(undefined); };
-  const open: OpenLink = useCallback((href, anchor, x, y) => {
-    const target = resolveLinkTarget(href, cwd);
+  const open: OpenLink = useCallback((href, anchor, x, y, sourceDirectory) => {
+    const target = resolveLinkTarget(href, cwd, sourceDirectory);
     if (!target) return false;
     const rect = anchor.getBoundingClientRect();
     setError(''); setBusy(false); setIsFile(false);

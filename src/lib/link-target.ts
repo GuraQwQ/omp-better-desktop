@@ -11,7 +11,7 @@ function normalizePath(value: string): string {
   return prefix + parts.join('/');
 }
 
-export function resolveLinkTarget(href: string, cwd: string): LinkTarget | undefined {
+export function resolveLinkTarget(href: string, cwd: string, sourceDirectory = cwd): LinkTarget | undefined {
   if (!href || href.startsWith('#')) return;
   if (/^https?:\/\//i.test(href)) {
     try { return { kind: 'url', url: new URL(href).href }; } catch { return; }
@@ -25,8 +25,8 @@ export function resolveLinkTarget(href: string, cwd: string): LinkTarget | undef
   if (lineMatch) path = path.slice(0, -lineMatch[0].length);
   try { path = decodeURIComponent(path); } catch { /* 非网址形式的本地百分号保持原样。 */ }
   const absolute = /^(?:[a-z]:[\\/]|[\\/])/i.test(path);
-  if (!absolute && !cwd) return;
-  path = normalizePath(absolute ? path : `${cwd}/${path}`);
+  if (!absolute && !sourceDirectory) return;
+  path = normalizePath(absolute ? path : `${sourceDirectory}/${path}`);
   const base = normalizePath(cwd).replace(/\/$/, '');
   const windows = /^[a-z]:\//i.test(path) || path.startsWith('//');
   const compare = (value: string) => windows ? value.toLowerCase() : value;

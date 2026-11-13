@@ -40,7 +40,7 @@ function ToolBody({ message, t, active }: { message: Message; t: Copy; active: b
   const details = record(result.details ?? message.details);
   const kind = message.toolName;
   const output = messageText(message);
-  const path = text(details.resolvedPath) || text(details.finalUrl) || text(details.url) || text(details.path) || text(args.path);
+  const path = text(details.resolvedPath) || text(details.finalUrl) || text(details.url) || text(details.path) || text(args.path) || text(args.file_path);
   const command = text(args.command);
   const files: Json[] = Array.isArray(details.perFileResults) ? details.perFileResults.map(record) : [];
   const failed = toolFailed(message);
@@ -69,7 +69,7 @@ export default function ToolResult({ message, t, active = true, expanded, onExpa
   const result = record(message.result ?? message.partialResult);
   const details = record(result.details ?? message.details);
   const kind = message.toolName;
-  const path = text(details.resolvedPath) || text(details.finalUrl) || text(details.url) || text(details.path) || text(args.path);
+  const path = text(details.resolvedPath) || text(details.finalUrl) || text(details.url) || text(details.path) || text(args.path) || text(args.file_path);
   const firstText = typeof message.content === 'string' ? message.content : message.content?.find(block => block?.type === 'text')?.text ?? '';
   const summary = (kind === 'bash' ? text(args.command) : path) || firstText.split('\n', 1)[0] || '';
   const fileSummary = !!path && ['read', 'write', 'edit', 'ast_edit'].includes(kind ?? '');
