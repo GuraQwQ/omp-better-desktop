@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type AnchorHTMLAttributes, type MouseEvent, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type AnchorHTMLAttributes, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ExternalLink, FileText, FolderOpen } from 'lucide-react';
 import { native, request } from '../lib/bridge';
@@ -6,19 +6,20 @@ import { resolveLinkTarget, type LinkTarget } from '../lib/link-target';
 import type { Language } from '../lib/types';
 import './link-targets.css';
 
-type OpenLink = (event: MouseEvent<HTMLAnchorElement>, href: string) => void;
+type OpenLink = (href: string, anchor: HTMLElement, x?: number, y?: number) => boolean;
 const LinkContext = createContext<OpenLink | undefined>(undefined);
+export const useTargetMenu = () => useContext(LinkContext);
 
 export function TargetLink({ href, children, onClick, ...props }: AnchorHTMLAttributes<HTMLAnchorElement>) {
   const open = useContext(LinkContext);
   return <a {...props} href={href} className={`target-link ${props.className ?? ''}`} onClick={event => {
     onClick?.(event);
-    if (!event.defaultPrevented && href && open) open(event, href);
+    if (!event.defaultPrevented && href && open?.(href, event.currentTarget, event.clientX, event.clientY)) { event.preventDefault(); event.stopPropagation(); }
   }}>{children}</a>;
 }
 
 export function LinkTargets({ cwd, language, onOpenFile, children }: { cwd: string; language: Language; onOpenFile: (path: string, line?: number) => void; children: ReactNode }) {
-  const [selected, setSelected] = useState<{ target: LinkTarget; anchor: HTMLAnchorElement; x: number; y: number }>();
+  const [selected, setSelected] = useState<{ target: LinkTarget; anchor: HTMLElement; x: number; y: number }>();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [isFile, setIsFile] = useState(false);
@@ -26,13 +27,13 @@ export function LinkTargets({ cwd, language, onOpenFile, children }: { cwd: stri
   const currentSelection = useRef(selected); currentSelection.current = selected;
   const zh = language === 'zh';
   const close = (focus = false) => { if (focus && selected?.anchor.isConnected) selected.anchor.focus(); setSelected(undefined); };
-  const open: OpenLink = useCallback((event, href) => {
+  const open: OpenLink = useCallback((href, anchor, x, y) => {
     const target = resolveLinkTarget(href, cwd);
-    if (!target) return;
-    event.preventDefault(); event.stopPropagation();
-    const rect = event.currentTarget.getBoundingClientRect();
+    if (!target) return false;
+    const rect = anchor.getBoundingClientRect();
     setError(''); setBusy(false); setIsFile(false);
-    setSelected({ target, anchor: event.currentTarget, x: event.clientX || rect.left, y: event.clientY || rect.bottom });
+    setSelected({ target, anchor, x: x || rect.left, y: y || rect.bottom });
+    return true;
   }, [cwd]);
   useLayoutEffect(() => {
     if (!selected || !menu.current) return;

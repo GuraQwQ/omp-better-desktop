@@ -9,7 +9,7 @@ const labels = {
   en: { open: 'Enlarge image', title: 'Image preview', close: 'Close image preview', zoomIn: 'Zoom in', zoomOut: 'Zoom out', fit: 'Fit to window', actual: 'Actual size', loading: 'Loading image…', failed: 'The image could not be loaded.', retry: 'Reload', hint: 'Scroll to zoom · Drag to pan · Esc to close' },
 };
 
-function ImagePreview({ src, alt, language, close }: { src: string; alt: string; language: Language; close: () => void }) {
+export function ImagePreview({ src, alt, language, close }: { src: string; alt: string; language: Language; close: () => void }) {
   const t = labels[language];
   const dialog = useRef<HTMLDialogElement>(null), stage = useRef<HTMLDivElement>(null), image = useRef<HTMLImageElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 }), [viewport, setViewport] = useState({ width: 0, height: 0 });
