@@ -38,6 +38,15 @@ index ce5500f..b00e764 100644
  	return AIError.is(AIError.classify(previousError), AIError.Flag.AuthFailed) ? nextError : previousError;
  }
  
+@@ -2285,7 +2286,7 @@ export async function compact(
+ 		}
+ 	}
+ 
+-	if (!usedRemoteCompaction && nativeCompactionError !== undefined && !summaryOptions.remoteEndpoint) {
++	if (!usedRemoteCompaction && nativeCompactionError !== undefined) {
+ 		throw new NativeCompactionError(nativeCompactionError);
+ 	}
+ 	if (!usedRemoteCompaction && nativeSummary === undefined) await ensureExtraContext();
 @@ -2387,7 +2388,11 @@ export async function compact(
  		...(shortSummary !== undefined ? { shortSummary } : {}),
  		firstKeptEntryId: nativeSummary !== undefined ? nativeFirstKeptEntryId : firstKeptEntryId,
@@ -236,13 +245,13 @@ index 877d574..afd090a 100644
  	codexCompaction?: CodexCompactionContext;
  	/** Last branch entry covered by the speculated summary's source snapshot. */
  	snapshotLeafId: string;
-@@ -1332,6 +1334,7 @@ export class SessionMaintenance {
- 				requireProviderRemote
- 					? candidate => canUseLiveProviderNativeCompaction(candidate, activeModel, effectiveSettings)
+@@ -1400,6 +1402,7 @@ export class SessionMaintenance {
+ 								canUseLiveProviderNativeCompaction(candidate, activeModel, effectiveSettings)) &&
+ 							(!remoteReader || canReplayRemoteCompactionFrom(candidate, remoteReader))
  					: undefined,
 +				selectedMethod === "soft",
  			);
- 			if (requireProviderRemote && compactionCandidates.length === 0) {
+ 			if ((requireProviderRemote || remoteReader) && compactionCandidates.length === 0) {
  				this.#host.emitNotice(
 @@ -1621,7 +1624,8 @@ export class SessionMaintenance {
  				!compactionAbortController.signal.aborted &&

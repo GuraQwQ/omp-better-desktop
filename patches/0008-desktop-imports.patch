@@ -1,10 +1,10 @@
 diff --git a/packages/coding-agent/src/capability/index.ts b/packages/coding-agent/src/capability/index.ts
 --- a/packages/coding-agent/src/capability/index.ts
 +++ b/packages/coding-agent/src/capability/index.ts
-@@ -306,6 +306,12 @@
- function filterProviders<T>(capability: Capability<T>, options: LoadOptions<T>): Provider<T>[] {
- 	const disabled = disabledProviders();
- 	let providers = (capability.providers as Provider<T>[]).filter(p => !disabled.has(p.id));
+@@ -362,6 +362,12 @@
+ 	let providers = disabled
+ 		? (capability.providers as Provider<T>[]).filter(p => !disabled.has(p.id))
+ 		: (capability.providers as Provider<T>[]);
 +	// 桌面会话只从原生目录和用户明确导入的链接加载技能与 MCP。
 +	if (process.env.OMP_DESKTOP_MANAGED_RESOURCES === "1" && (capability.id === "skills" || capability.id === "mcps")) {
 +		providers = providers.filter(
@@ -23,8 +23,8 @@ diff --git a/packages/coding-agent/src/discovery/index.ts b/packages/coding-agen
  import "./skillshare";
 +import "./desktop-imports";
  import "./ssh";
+ import "./ssh-config";
  import "./vscode";
- import "./windsurf";
 diff --git a/packages/coding-agent/src/extensibility/skills.ts b/packages/coding-agent/src/extensibility/skills.ts
 --- a/packages/coding-agent/src/extensibility/skills.ts
 +++ b/packages/coding-agent/src/extensibility/skills.ts

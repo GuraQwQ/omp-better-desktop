@@ -1,10 +1,28 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
+const releaseHeaders = { accept: 'application/vnd.github+json', 'user-agent': 'omp-better-desktop-updater' };
+
 export function skipScheduledRelease(current: string, candidate: string, event: string | undefined): boolean {
   const before = /^(\d+)\.(\d+)\.(\d+)$/.exec(current);
   const after = /^(\d+)\.(\d+)\.(\d+)$/.exec(candidate);
   return event === 'schedule' && !(before && after && before[1] === after[1] && before[2] === after[2] && Number(after[3]) > Number(before[3]));
+}
+
+export async function findScheduledPatchRelease(current: string, request: typeof fetch = fetch): Promise<string | undefined> {
+  let candidate = current;
+  let url = 'https://api.github.com/repos/can1357/oh-my-pi/releases?per_page=100';
+  while (url) {
+    const response = await request(url, { headers: releaseHeaders });
+    if (!response.ok) throw new Error(`Read OMP releases: ${response.status} ${response.statusText}`);
+    const releases = await response.json() as { tag_name?: string; prerelease: boolean; draft: boolean }[];
+    for (const release of releases) {
+      const version = release.tag_name?.replace(/^v/, '');
+      if (!release.prerelease && !release.draft && version && !skipScheduledRelease(candidate, version, 'schedule')) candidate = version;
+    }
+    url = response.headers.get('link')?.match(/<([^>]+)>;\s*rel="next"/)?.[1] ?? '';
+  }
+  return candidate === current ? undefined : candidate;
 }
 
 if (import.meta.main) {
@@ -12,11 +30,11 @@ if (import.meta.main) {
   const lockPath = path.join(projectRoot, 'upstream.lock.json');
   const lock = await Bun.file(lockPath).json();
   const release = await fetch(`https://api.github.com/repos/can1357/oh-my-pi/releases/latest`, {
-    headers: { accept: 'application/vnd.github+json', 'user-agent': 'omp-better-desktop-updater' },
+    headers: releaseHeaders,
   });
   if (!release.ok) throw new Error(`Read latest OMP release: ${release.status} ${release.statusText}`);
   const latest = await release.json() as { tag_name?: string };
-  const version = latest.tag_name?.replace(/^v/, '');
+  let version = latest.tag_name?.replace(/^v/, '');
   if (!version || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) throw new Error('Latest OMP release has an invalid version tag.');
   if (version === lock.runtimeVersion) {
     console.log(`OMP ${version} is already pinned.`);
@@ -24,11 +42,15 @@ if (import.meta.main) {
     process.exit(0);
   }
   if (skipScheduledRelease(lock.runtimeVersion, version, process.env.GITHUB_EVENT_NAME)) {
-    const message = `当前内置 OMP ${lock.runtimeVersion}，上游最新为 ${version}。定时更新只构建同一主次版本内的稳定补丁升级；请手动运行“更新内置 OMP”（PR 编号留空）生成其他版本的审核候选。`;
-    console.log(message);
-    if (process.env.GITHUB_OUTPUT) await fs.appendFile(process.env.GITHUB_OUTPUT, 'changed=false\n', 'utf8');
-    if (process.env.GITHUB_STEP_SUMMARY) await fs.appendFile(process.env.GITHUB_STEP_SUMMARY, `${message}\n`, 'utf8');
-    process.exit(0);
+    const patch = await findScheduledPatchRelease(lock.runtimeVersion);
+    if (patch) version = patch;
+    else {
+      const message = `当前内置 OMP ${lock.runtimeVersion}，上游最新为 ${version}。定时更新只构建同一主次版本内的稳定补丁升级；请手动运行“更新内置 OMP”（PR 编号留空）生成其他版本的审核候选。`;
+      console.log(message);
+      if (process.env.GITHUB_OUTPUT) await fs.appendFile(process.env.GITHUB_OUTPUT, 'changed=false\n', 'utf8');
+      if (process.env.GITHUB_STEP_SUMMARY) await fs.appendFile(process.env.GITHUB_STEP_SUMMARY, `${message}\n`, 'utf8');
+      process.exit(0);
+    }
   }
 
   const upstreamRoot = path.resolve(process.env.OMP_UPSTREAM_ROOT ?? path.join(process.env.OMP_DESKTOP_CACHE ?? path.join(projectRoot, '.cache'), 'upstream-release-' + version));
