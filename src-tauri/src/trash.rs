@@ -52,8 +52,10 @@ fn recycle_in_apartment(path: &Path) -> Result<(), String> {
                     | FOFX_RECYCLEONDELETE,
             )
             .map_err(|error| error.to_string())?;
-        let item: IShellItem = SHCreateItemFromParsingName(&HSTRING::from(path.as_os_str()), None)
-            .map_err(|error| error.to_string())?;
+        let shell_path = crate::platform::external_path(path);
+        let item: IShellItem =
+            SHCreateItemFromParsingName(&HSTRING::from(shell_path.as_os_str()), None)
+                .map_err(|error| error.to_string())?;
         operation
             .DeleteItem(&item, None)
             .map_err(|error| error.to_string())?;

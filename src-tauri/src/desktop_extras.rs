@@ -176,9 +176,11 @@ pub fn execute(app: tauri::AppHandle, root: &Path, request: &Value) -> Result<Va
                     if let Some(window) = handle.get_webview_window(&label) {
                         window.show().map_err(|e| e.to_string())?;
                         window.set_focus().map_err(|e| e.to_string())?;
-                        handle
-                            .emit_to(&label, "desktop-card-change", value)
-                            .map_err(|error| error.to_string())?;
+                        if value.is_object() {
+                            handle
+                                .emit_to(&label, "desktop-card-change", value)
+                                .map_err(|error| error.to_string())?;
+                        }
                     } else {
                         let window = tauri::WebviewWindowBuilder::new(
                             &handle,
