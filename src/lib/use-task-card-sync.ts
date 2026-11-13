@@ -10,6 +10,8 @@ export function useTaskCardSync(sessions: Record<string, SessionView>, enabled: 
   const sent = useRef(new Map<string, string>());
   const inflight = useRef(new Map<string, object>());
   const generation = useRef(0);
+  const retry = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const failures = useRef(0);
   const [confirmed, setConfirmed] = useState(0);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
@@ -30,7 +32,7 @@ export function useTaskCardSync(sessions: Record<string, SessionView>, enabled: 
       if (!disposed) setOpened(values => [...new Set([...values, ...ids])]);
     };
     void attach().catch(error => { if (!disposed) latest.current.onError(error); });
-    return () => { disposed = true; generation.current++; cleanup.forEach(stop => stop()); sent.current.clear(); inflight.current.clear(); if (timer.current) clearTimeout(timer.current); timer.current = undefined; };
+    return () => { disposed = true; generation.current++; cleanup.forEach(stop => stop()); sent.current.clear(); inflight.current.clear(); if (timer.current) clearTimeout(timer.current); timer.current = undefined; if (retry.current) clearTimeout(retry.current); retry.current = undefined; };
   }, [enabled]);
   useEffect(() => {
     if (!native || !enabled || !opened.length || timer.current) return;
@@ -49,8 +51,9 @@ export function useTaskCardSync(sessions: Record<string, SessionView>, enabled: 
         void request<{ open: boolean }>('card.sync', { id, value }).then(result => {
           if (generation.current !== version) return;
           if (!result.open) { sent.current.delete(id); setOpened(values => values.filter(value => value !== id)); }
+          failures.current = 0;
           setConfirmed(value => value + 1);
-        }).catch(error => { if (generation.current === version) { if (sent.current.get(id) === signature) sent.current.delete(id); current.onError(error); } }).finally(() => { if (inflight.current.get(id) === token) inflight.current.delete(id); });
+        }).catch(error => { if (generation.current === version) { if (sent.current.get(id) === signature) sent.current.delete(id); current.onError(error); if (!retry.current && failures.current < 3) { retry.current = setTimeout(() => { retry.current = undefined; if (generation.current === version) setConfirmed(value => value + 1); }, 500 * 2 ** failures.current++); } } }).finally(() => { if (inflight.current.get(id) === token) inflight.current.delete(id); });
       }
     }, 500);
   }, [sessions, enabled, language, opened, confirmed]);

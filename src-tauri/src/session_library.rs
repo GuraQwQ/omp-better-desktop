@@ -71,6 +71,7 @@ pub fn list(root: &Path, cwd: Option<&str>, include_archived: bool) -> Result<Va
 }
 
 fn archive(root: &Path, request: &Value) -> Result<Value, String> {
+    let _guard = metadata_lock(root)?;
     let path = text(request, "path")?;
     let archived = request["archived"].as_bool().ok_or("缺少 archived")?;
     let snapshot = if archived {
@@ -88,7 +89,7 @@ fn archive(root: &Path, request: &Value) -> Result<Value, String> {
     } else {
         None
     };
-    update_metadata(root, |value| {
+    update_metadata_locked(root, |value| {
         let key = path_key(
             snapshot
                 .as_ref()
@@ -110,6 +111,11 @@ fn update_metadata(
     root: &Path,
     update: impl FnOnce(&mut Value) -> Result<(), String>,
 ) -> Result<(), String> {
+    let _guard = metadata_lock(root)?;
+    update_metadata_locked(root, update)
+}
+
+fn metadata_lock(root: &Path) -> Result<fs::File, String> {
     fs::create_dir_all(root).map_err(|error| error.to_string())?;
     let lock = OpenOptions::new()
         .create(true)
@@ -119,6 +125,13 @@ fn update_metadata(
         .open(root.join("desktop-library.lock"))
         .map_err(|error| error.to_string())?;
     lock.lock().map_err(|error| error.to_string())?;
+    Ok(lock)
+}
+
+fn update_metadata_locked(
+    root: &Path,
+    update: impl FnOnce(&mut Value) -> Result<(), String>,
+) -> Result<(), String> {
     let mut value = metadata(root)?;
     update(&mut value)?;
     storage::atomic_write(
@@ -128,6 +141,7 @@ fn update_metadata(
 }
 
 fn pin(root: &Path, request: &Value) -> Result<Value, String> {
+    let _guard = metadata_lock(root)?;
     let path = text(request, "path")?;
     let pinned = request["pinned"].as_bool().ok_or("缺少 pinned")?;
     let key = if pinned {
@@ -135,7 +149,7 @@ fn pin(root: &Path, request: &Value) -> Result<Value, String> {
     } else {
         path_key(path)
     };
-    update_metadata(root, |value| {
+    update_metadata_locked(root, |value| {
         let pins = value["pins"].as_array_mut().unwrap();
         if pinned {
             if !pins.iter().any(|path| path.as_str() == Some(key.as_str())) {
@@ -185,7 +199,7 @@ fn reorder(root: &Path, request: &Value) -> Result<Value, String> {
     Ok(json!({"paths":paths}))
 }
 
-pub fn delete_session(root: &Path, request: &Value) -> Result<Value, String> {
+pub fn validate_delete(root: &Path, request: &Value) -> Result<PathBuf, String> {
     let supplied = Path::new(text(request, "path")?);
     if !supplied.is_absolute()
         || supplied.extension().and_then(|part| part.to_str()) != Some("jsonl")
@@ -212,11 +226,20 @@ pub fn delete_session(root: &Path, request: &Value) -> Result<Value, String> {
                 "请选择会话列表中的 OMP 会话。 / Choose an OMP conversation from the list.".into(),
             );
         }
-        trash::recycle(&path)?;
         path
     };
+    Ok(path)
+}
+
+pub fn delete_session(root: &Path, request: &Value) -> Result<Value, String> {
+    let _guard = metadata_lock(root)?;
+    let path = validate_delete(root, request)?;
+    let missing = !path.exists();
+    if !missing {
+        trash::recycle(&path)?;
+    }
     let key = path_key(&path.to_string_lossy());
-    let cleanup = update_metadata(root, |value| {
+    let cleanup = update_metadata_locked(root, |value| {
         value["archives"].as_object_mut().unwrap().remove(&key);
         value["pins"]
             .as_array_mut()
@@ -235,12 +258,20 @@ fn archives(root: &Path) -> Result<Value, String> {
         .iter()
         .map(|s| (path_key(s["path"].as_str().unwrap_or_default()), s.clone()))
         .collect();
-    let mut items: Vec<_> = metadata(root)?["archives"]
+    let saved = metadata(root)?;
+    let mut items: Vec<_> = saved["archives"]
         .as_object()
         .unwrap()
         .iter()
         .map(|(key, old)| {
             let mut summary = live.get(key).unwrap_or(old).clone();
+            let pin = saved["pins"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .position(|path| path.as_str() == Some(key));
+            summary["pinned"] = json!(pin.is_some());
+            summary["pinOrder"] = json!(pin);
             summary["archived"] = json!(true);
             summary["missing"] = json!(!live.contains_key(key));
             summary

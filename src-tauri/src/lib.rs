@@ -348,7 +348,10 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
         operation if operation.starts_with("browser.") || operation.starts_with("card.") => {
             desktop_extras::execute(app.clone(), root, &request)
         }
-        "session.delete" => desktop.sessions.delete_history(&app, root, &request),
+        "session.delete" => {
+            let _guard = desktop.data_access.read().unwrap();
+            desktop.sessions.delete_history(&app, root, &request)
+        }
         "session.history" => history::page(
             root,
             Path::new(text(&request, "path")?),

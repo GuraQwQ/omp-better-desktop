@@ -14,6 +14,7 @@ type Props = {
   onOpen: (session: SessionSummary, messageId?: string) => void;
   onReference: (value: string | ConversationReference[]) => void;
   onArchiveChange?: () => void;
+  onSessionAction?: (value: SessionListEntry, action: SessionAction) => Promise<void>;
 };
 type ArchivedSession = SessionSummary & { archived?: boolean; missing?: boolean };
 type SearchItem = { session: ArchivedSession; messageId: string; role: string; snippet: string };
@@ -125,7 +126,7 @@ function MessageSearch({ language, cwd, onOpen, onReference, onArchiveChange, wo
   </div>;
 }
 
-function Archives({ language, cwd, onOpen, onArchiveChange, words }: Props & { words: Words }) {
+function Archives({ language, cwd, onOpen, onArchiveChange, onSessionAction, words }: Props & { words: Words }) {
   const [items, setItems] = useState<ArchivedSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
@@ -142,7 +143,7 @@ function Archives({ language, cwd, onOpen, onArchiveChange, words }: Props & { w
   const restore = async (item: ArchivedSession) => {
     const current = revision.current; setBusy(item.path); setError('');
     try {
-      await request('session.archive', { path: item.path, archived: false });
+      if (onSessionAction) await onSessionAction(item, 'restore'); else await request('session.archive', { path: item.path, archived: false });
       if (current !== revision.current) return;
       setItems(items => items.filter(row => row.path !== item.path)); setNotice(words.restored); onArchiveChange?.();
     } catch (error) { if (current === revision.current) setError(failure(error, language)); }
@@ -150,6 +151,7 @@ function Archives({ language, cwd, onOpen, onArchiveChange, words }: Props & { w
   };
   const act = async (item: SessionListEntry, action: SessionAction) => {
     if (action === 'restore') return restore(item);
+    if (onSessionAction) { await onSessionAction(item, action); await load(); return; }
     if (action === 'delete') { const result = await request<{ warning?: string }>('session.delete', { path: item.path }); if (result.warning) setNotice(result.warning); }
     else await request('session.pin', { path: item.path, pinned: action === 'pin' });
     await load(); onArchiveChange?.();

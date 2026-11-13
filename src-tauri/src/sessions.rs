@@ -15,13 +15,32 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, RwLock,
         atomic::{AtomicBool, Ordering},
     },
     thread,
     time::{Duration, Instant},
 };
 use tauri::{AppHandle, Emitter, Manager};
+
+#[derive(Default)]
+struct SessionAccess {
+    gate: RwLock<()>,
+    deleting: AtomicBool,
+}
+struct DeleteAccess {
+    gates: Vec<Arc<SessionAccess>>,
+    committed: bool,
+}
+impl Drop for DeleteAccess {
+    fn drop(&mut self) {
+        if !self.committed {
+            for access in &self.gates {
+                access.deleting.store(false, Ordering::Release);
+            }
+        }
+    }
+}
 
 pub struct Session {
     pub client: Arc<Client>,
@@ -33,6 +52,7 @@ pub struct Session {
     launch: crate::launch::ResolvedLaunch,
     questions: Arc<Questions>,
     _job: ProcessJob,
+    access: Arc<SessionAccess>,
 }
 
 impl Drop for Session {
@@ -49,7 +69,7 @@ impl Drop for Session {
 pub struct Sessions {
     sessions: Mutex<HashMap<String, Session>>,
     active: Mutex<Option<String>>,
-    terminals: Mutex<HashMap<String, ManagedPty>>,
+    terminals: Mutex<HashMap<String, (ManagedPty, Option<PathBuf>)>>,
     opening: Mutex<()>,
     browser_logins: Arc<crate::browser_login::BrowserLogins>,
 }
@@ -253,6 +273,7 @@ impl Sessions {
         self.sessions.lock().unwrap().insert(
             id.clone(),
             Session {
+                access: Arc::new(SessionAccess::default()),
                 client: client.clone(),
                 cwd,
                 path: path_cell.clone(),
@@ -356,7 +377,7 @@ impl Sessions {
         frame: Value,
         question_id: Option<&str>,
     ) -> Result<Value, String> {
-        let (client, settled, side_running, path_cell, capture_context, questions) = {
+        let (client, settled, side_running, path_cell, capture_context, questions, access) = {
             let sessions = self.sessions.lock().unwrap();
             let session = sessions
                 .get(id)
@@ -368,8 +389,13 @@ impl Sessions {
                 session.path.clone(),
                 session.capture_context.clone(),
                 session.questions.clone(),
+                session.access.clone(),
             )
         };
+        let _access = access.gate.read().map_err(|error| error.to_string())?;
+        if access.deleting.load(Ordering::Acquire) {
+            return Err("Conversation deletion is in progress. Retry after it finishes.".into());
+        }
         let is_prompt = matches!(
             frame["type"].as_str(),
             Some("prompt" | "abort_and_prompt" | "steer" | "follow_up")
@@ -478,10 +504,14 @@ impl Sessions {
 
     pub fn ui(&self, app: AppHandle, id: &str, mut response: Value) -> Result<Value, String> {
         response["type"] = json!("extension_ui_response");
-        let (client, questions) = {
+        let (client, questions, access) = {
             let sessions = self.sessions.lock().unwrap();
             let session = sessions.get(id).ok_or("Session is closed.")?;
-            (session.client.clone(), session.questions.clone())
+            (
+                session.client.clone(),
+                session.questions.clone(),
+                session.access.clone(),
+            )
         };
         if let Some(result) = questions.respond(&response, |message| {
             self.rpc_request(
@@ -494,6 +524,10 @@ impl Sessions {
             drop(client);
             self.release_idle(&app);
             return result;
+        }
+        let _access = access.gate.read().map_err(|error| error.to_string())?;
+        if access.deleting.load(Ordering::Acquire) {
+            return Err("Conversation deletion is in progress. Retry after it finishes.".into());
         }
         client
             .send(&RpcInbound::from_value(response).map_err(|e| e.to_string())?)
@@ -534,40 +568,101 @@ impl Sessions {
         request: &Value,
     ) -> Result<Value, String> {
         let _opening = self.opening.lock().map_err(|error| error.to_string())?;
-        let supplied = Path::new(crate::text(request, "path")?);
-        let target = supplied
-            .canonicalize()
-            .unwrap_or_else(|_| supplied.to_owned());
-        let removed: Vec<_> = {
-            let mut sessions = self.sessions.lock().unwrap();
-            let ids: Vec<_> = sessions
-                .iter()
-                .filter(|(_, session)| {
-                    session.path.lock().unwrap().as_ref().is_some_and(|path| {
-                        path.canonicalize().unwrap_or_else(|_| path.clone()) == target
-                    })
+        let target = crate::session_library::validate_delete(root, request)?;
+        let targets: Vec<_> = self
+            .sessions
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, session)| {
+                session.path.lock().unwrap().as_ref().is_some_and(|path| {
+                    path.canonicalize().unwrap_or_else(|_| path.clone()) == target
                 })
-                .map(|(id, _)| id.clone())
-                .collect();
-            ids.into_iter()
-                .filter_map(|id| sessions.remove(&id).map(|session| (id, session)))
-                .collect()
+            })
+            .map(|(id, session)| {
+                (
+                    id.clone(),
+                    session.client.clone(),
+                    session.access.clone(),
+                    session.questions.clone(),
+                )
+            })
+            .collect();
+        let terminal_ids: Vec<_> = self
+            .terminals
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, (_, path))| {
+                path.as_ref().is_some_and(|path| {
+                    path.canonicalize().unwrap_or_else(|_| path.clone()) == target
+                })
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in terminal_ids {
+            self.terminal_close(&id)?;
+            emit(
+                app,
+                &id,
+                json!({"type":"desktop_status","status":"released","path":target}),
+            );
+        }
+        let mut reset = DeleteAccess {
+            gates: targets
+                .iter()
+                .map(|(_, _, access, _)| access.clone())
+                .collect(),
+            committed: false,
         };
-        for (id, session) in &removed {
-            session.questions.close();
+        for access in &reset.gates {
+            access.deleting.store(true, Ordering::Release);
+        }
+        // 先解除等待确认，再等已有 RPC 退出；不再允许新请求写入这个会话。
+        for (_, client, _, questions) in &targets {
+            questions.interrupt(|| {
+                client
+                    .call_raw(json!({"type":"abort"}))
+                    .map_err(|error| error.to_string())
+            })?;
+        }
+        let _guards: Vec<_> = reset
+            .gates
+            .iter()
+            .map(|access| access.gate.write().map_err(|error| error.to_string()))
+            .collect::<Result<_, _>>()?;
+        for (_, client, _, _) in &targets {
+            client
+                .call_raw(json!({"type":"btw_cancel"}))
+                .map_err(|error| error.to_string())?;
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                let state = client
+                    .call_raw(json!({"type":"get_state"}))
+                    .map_err(|error| error.to_string())?;
+                if state["isSettled"] == true {
+                    break;
+                }
+                if Instant::now() >= deadline {
+                    return Err("Conversation is still stopping. Retry deletion shortly.".into());
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+        }
+        // 文件回收失败时保留同一连接；成功后才移除运行时和界面身份。
+        let result = crate::session_library::delete_session(root, request)?;
+        for (id, _, _, _) in &targets {
+            let removed = self.sessions.lock().unwrap().remove(id);
             self.browser_logins.cancel(id, None);
-            // 断开入口后终止主任务与旁问，防止回收时继续写入历史。
-            let _ = session.client.call_raw(json!({"type":"btw_cancel"}));
-            let _ = session.client.call_raw(json!({"type":"abort"}));
             emit(
                 app,
                 id,
-                json!({"type":"desktop_status","status":"released","path":session.path.lock().unwrap().as_ref()}),
+                json!({"type":"desktop_status","status":"released","path":null}),
             );
+            drop(removed);
         }
-        // 释放进程 Job 后再回收文件，错误时历史仍可重新打开。
-        drop(removed);
-        crate::session_library::delete_session(root, request)
+        reset.committed = true;
+        Ok(result)
     }
 
     pub fn shutdown(&self) {
@@ -618,6 +713,7 @@ impl Sessions {
         cols: u16,
         rows: u16,
     ) -> Result<Value, String> {
+        let _opening = self.opening.lock().map_err(|error| error.to_string())?;
         let (cwd, path, launch_args) = {
             let sessions = self.sessions.lock().unwrap();
             let session = sessions.get(id).ok_or("Open a session first.")?;
@@ -650,6 +746,7 @@ impl Sessions {
             cmd.env(name, value);
         }
         cmd.env("OMP_DESKTOP_MANAGED_RESOURCES", "1");
+        let terminal_path = path.clone();
         if let Some(path) = path {
             cmd.arg("--session");
             cmd.arg(path);
@@ -660,7 +757,7 @@ impl Sessions {
         self.terminals
             .lock()
             .unwrap()
-            .insert(id.to_owned(), managed);
+            .insert(id.to_owned(), (managed, terminal_path));
         let session_id = id.to_owned();
         thread::spawn(move || {
             let mut buf = [0u8; 8192];
@@ -704,7 +801,7 @@ impl Sessions {
     pub fn terminal_write(&self, id: &str, data: &str) -> Result<Value, String> {
         let mut terminals = self.terminals.lock().unwrap();
         let terminal = terminals.get_mut(id).ok_or("Terminal is closed.")?;
-        terminal.write(data.as_bytes())?;
+        terminal.0.write(data.as_bytes())?;
         Ok(Value::Null)
     }
     pub fn terminal_resize(&self, id: &str, cols: u16, rows: u16) -> Result<Value, String> {
@@ -713,6 +810,7 @@ impl Sessions {
             .unwrap()
             .get(id)
             .ok_or("Terminal is closed.")?
+            .0
             .resize(PtySize {
                 rows,
                 cols,
@@ -724,7 +822,7 @@ impl Sessions {
     }
     pub fn terminal_close(&self, id: &str) -> Result<Value, String> {
         let terminal = self.terminals.lock().unwrap().remove(id);
-        if let Some(mut terminal) = terminal {
+        if let Some((mut terminal, _)) = terminal {
             terminal.close()?;
         }
         Ok(Value::Null)

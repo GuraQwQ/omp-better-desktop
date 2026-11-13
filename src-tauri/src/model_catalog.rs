@@ -1,6 +1,18 @@
 use crate::{launch, platform::ProcessJob, sessions};
 use serde_json::{Value, json};
-use std::{path::Path, process::Stdio};
+use std::{
+    io::Read,
+    path::Path,
+    process::Stdio,
+    thread,
+    time::{Duration, Instant},
+};
+
+fn read_pipe(mut pipe: impl Read) -> std::io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    pipe.read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
 
 pub fn list(root: &Path, cwd: &Path) -> Result<Value, String> {
     let cwd = cwd.canonicalize().map_err(|error| error.to_string())?;
@@ -28,7 +40,7 @@ pub fn list(root: &Path, cwd: &Path) -> Result<Value, String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut child = command.spawn().map_err(|error| error.to_string())?;
-    let _job = match ProcessJob::attach(child.id()) {
+    let job = match ProcessJob::attach(child.id()) {
         Ok(job) => job,
         Err(error) => {
             let _ = child.kill();
@@ -36,19 +48,60 @@ pub fn list(root: &Path, cwd: &Path) -> Result<Value, String> {
             return Err(error);
         }
     };
-    // 模型目录沿用上游的配置、凭据和目录缓存，不创建聊天会话或工具宿主。
-    let output = child
-        .wait_with_output()
+    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
+    let (status, stdout, stderr) = thread::scope(|scope| {
+        // 同时排空两条管道，扩展的诊断输出不能堵住目录进程。
+        let stdout = scope.spawn(move || read_pipe(stdout));
+        let stderr = scope.spawn(move || read_pipe(stderr));
+        let started = Instant::now();
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break Ok(status),
+                Ok(None) if started.elapsed() < Duration::from_secs(45) => {
+                    thread::sleep(Duration::from_millis(25));
+                }
+                Ok(None) => {
+                    break Err(
+                        "Model catalog loading timed out after 45 seconds. Please retry."
+                            .to_owned(),
+                    );
+                }
+                Err(error) => break Err(error.to_string()),
+            }
+        };
+        if status.is_err() {
+            let _ = child.kill();
+        }
+        // 先关闭 Job 回收持有管道的子进程，再等待读取线程退出。
+        drop(job);
+        if status.is_err() {
+            let _ = child.wait();
+        }
+        (status, stdout.join(), stderr.join())
+    });
+    let stderr = stderr
+        .map_err(|_| "Cannot read model catalog diagnostics.")?
         .map_err(|error| error.to_string())?;
-    let warning = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-    if !output.status.success() {
+    let warning = String::from_utf8_lossy(&stderr).trim().to_owned();
+    let status = status.map_err(|error| {
+        if warning.is_empty() {
+            error
+        } else {
+            format!("{error}\n{warning}")
+        }
+    })?;
+    if !status.success() {
         return Err(if warning.is_empty() {
             "Cannot load the model catalog. Retry after checking the provider settings.".into()
         } else {
             warning
         });
     }
-    let result: Value = serde_json::from_slice(&output.stdout)
+    let stdout = stdout
+        .map_err(|_| "Cannot read the model catalog response.")?
+        .map_err(|error| error.to_string())?;
+    let result: Value = serde_json::from_slice(&stdout)
         .map_err(|_| "The model catalog returned an invalid response.")?;
     let models = result["models"]
         .as_array()

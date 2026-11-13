@@ -134,6 +134,9 @@ export const copy = (language: Language): Copy => language === 'zh' ? zh : en;
 export const statusText = (status: string, t: Copy): string => t.statusLabels[status as keyof Copy['statusLabels']] ?? status;
 
 const errorTranslations: Record<string, string> = {
+  'Conversation deletion is in progress. Retry after it finishes.': '会话正在移入回收站，请完成后重试。',
+  'Conversation is still stopping. Retry deletion shortly.': '会话仍在停止，请稍后重试删除。',
+  'Model catalog loading timed out after 45 seconds. Please retry.': '模型目录加载超时，请重试。',
   'Choose an existing project folder.': '请选择一个已存在的项目文件夹。',
   'Cannot load the model catalog. Retry after checking the provider settings.': '无法载入模型目录，请检查提供商设置后重试。',
   'The model catalog returned an invalid response.': '模型目录返回的数据无效，请重试。',
