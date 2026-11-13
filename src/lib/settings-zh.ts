@@ -1,6 +1,7 @@
 // 中文文案改编自 oh-my-pi-gui 的 schema-zh.ts 与 schema-option-zh.ts，并按当前 OMP 设置元数据校订。
 // Copyright (c) 2026 nornzach；MIT 许可及完整归属见 THIRD-PARTY-NOTICES.md。
 export const settingsZh: Record<string, { label: string; description?: string; options?: Record<string, string> }> = {
+  "compaction.summaryModel": { label: "摘要模型", description: "原生压缩不支持时使用的摘要模型。留空沿用原会话模型，也可选择已配置的其他模型。" },
   "auth.broker.url": {
     "label": "认证代理 URL"
   },

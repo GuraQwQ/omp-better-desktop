@@ -1,0 +1,420 @@
+diff --git a/packages/agent/src/compaction/compaction.ts b/packages/agent/src/compaction/compaction.ts
+index ce5500f..b00e764 100644
+--- a/packages/agent/src/compaction/compaction.ts
++++ b/packages/agent/src/compaction/compaction.ts
+@@ -59,7 +59,7 @@ import {
+ 	V2_RETAINED_MESSAGE_TOKEN_BUDGET,
+ } from "./compaction-v2-streaming";
+ import type { CompactionEntry, SessionEntry } from "./entries";
+-import { NativeCompactionError } from "./errors";
++import { isNativeCompactionUnsupported, NativeCompactionError } from "./errors";
+ import {
+ 	type ConvertToLlm,
+ 	createCompactionSummaryMessage,
+@@ -102,6 +102,8 @@ import {
+ export interface CompactionDetails {
+ 	readFiles: string[];
+ 	modifiedFiles: string[];
++	compactionModel?: string;
++	compactionMethod?: "remote" | "soft";
+ }
+ 
+ /**
+@@ -1685,13 +1687,12 @@ function buildCompactionV2Reasoning(
+ }
+ 
+ /**
+- * Keep any non-auth native protocol failure ahead of authentication failures.
+- * Downstream may retry compaction with another provider only when every native
+- * protocol failed authentication, so a later auth error must not hide an
+- * earlier transport or protocol failure.
++ * 原生协议的认证或传输失败优先于“不支持”，防止后一个协议的拒绝
++ * 掩盖真实故障并触发模型摘要。
+  */
+ function selectNativeCompactionError(previousError: unknown, nextError: unknown): unknown {
+-	if (previousError === undefined) return nextError;
++	if (previousError === undefined || isNativeCompactionUnsupported(previousError)) return nextError;
++	if (isNativeCompactionUnsupported(nextError)) return previousError;
+ 	return AIError.is(AIError.classify(previousError), AIError.Flag.AuthFailed) ? nextError : previousError;
+ }
+ 
+@@ -2387,7 +2388,11 @@ export async function compact(
+ 		...(shortSummary !== undefined ? { shortSummary } : {}),
+ 		firstKeptEntryId: nativeSummary !== undefined ? nativeFirstKeptEntryId : firstKeptEntryId,
+ 		tokensBefore,
+-		details: { readFiles, modifiedFiles } as CompactionDetails,
++		details: {
++			readFiles, modifiedFiles,
++			compactionModel: `${model.provider}/${model.id}`,
++			compactionMethod: usedRemoteCompaction ? "remote" : "soft",
++		} as CompactionDetails,
+ 		preserveData: finalPreserveData,
+ 		...(remoteReplayThroughEntryId ? { providerReplayThroughEntryId: remoteReplayThroughEntryId } : {}),
+ 	};
+diff --git a/packages/agent/src/compaction/errors.ts b/packages/agent/src/compaction/errors.ts
+index 24b6b39..e3cd8f4 100644
+--- a/packages/agent/src/compaction/errors.ts
++++ b/packages/agent/src/compaction/errors.ts
+@@ -1,3 +1,5 @@
++import * as AIError from "@oh-my-pi/pi-ai/error";
++
+ /**
+  * Compaction error types.
+  *
+@@ -18,14 +20,7 @@ export class CompactionCancelledError extends Error {
+ 	}
+ }
+ 
+-/**
+- * A provider-native compaction request failed after every native protocol
+- * available for the selected model was exhausted.
+- *
+- * The cause stays attached so AI error classification can still recognize
+- * authentication failures. Non-auth failures remain distinguishable from
+- * ordinary summarization errors and must not fall through to another provider.
+- */
++/** 所选模型的原生压缩协议均失败，保留原因以区分能力不支持、认证和传输错误。 */
+ export class NativeCompactionError extends Error {
+ 	override readonly name = "NativeCompactionError" as const;
+ 
+@@ -34,6 +29,34 @@ export class NativeCompactionError extends Error {
+ 	}
+ }
+ 
++/** 仅明确拒绝压缩能力时改用模型摘要，服务故障仍沿原请求重试。 */
++export function isNativeCompactionUnsupported(error: unknown): boolean {
++	const cause = error instanceof NativeCompactionError ? error.cause : error;
++	const id = AIError.classify(cause);
++	const status = AIError.status(cause);
++	if ([
++		AIError.Flag.AuthFailed, AIError.Flag.Timeout, AIError.Flag.UsageLimit,
++		AIError.Flag.ContextOverflow, AIError.Flag.Abort,
++	].some(flag => AIError.is(id, flag))) return false;
++	if (status !== 501 && AIError.is(id, AIError.Flag.Transient)) return false;
++	if (status !== undefined && ![400, 404, 405, 422, 501].includes(status)) return false;
++	if (status === 405 || status === 501) return true;
++	const seen = new Set<object>();
++	let current: unknown = typeof cause === "string" ? new Error(cause) : cause;
++	while (current !== null && typeof current === "object" && !seen.has(current)) {
++		seen.add(current);
++		const failure = current as { message?: unknown; code?: unknown; cause?: unknown; captured?: { bodyText?: unknown } };
++		for (const value of [failure.message, failure.code, failure.captured?.bodyText]) {
++			if (typeof value !== "string") continue;
++			const text = value.replace(/[_-]/g, " ");
++			if (/\b(?:compaction|context management)\s+(?:is |are )?(?:not (?:supported|available|enabled|implemented)|unsupported)\b/i.test(text) ||
++				/\b(?:unsupported|unrecognized|does not support|doesn't support|cannot post).{0,100}\b(?:compaction|context management|responses\/compact)\b|responses\/compact.{0,80}\bnot found\b/i.test(text)) return true;
++		}
++		current = failure.cause;
++	}
++	return false;
++}
++
+ /**
+  * Outcome of a compaction attempt, surfaced by `CommandController.executeCompaction`
+  * so callers (e.g. the plan-mode approval flow) can distinguish a deliberate abort
+diff --git a/packages/coding-agent/src/session/compaction-methods.ts b/packages/coding-agent/src/session/compaction-methods.ts
+index 64aaf51..de983cb 100644
+--- a/packages/coding-agent/src/session/compaction-methods.ts
++++ b/packages/coding-agent/src/session/compaction-methods.ts
+@@ -28,8 +28,8 @@ export const COMPACTION_METHOD_CHOICES = [
+ 	},
+ 	{
+ 		value: "soft",
+-		label: "Soft compaction",
+-		description: "Summarize in place with a compaction model without using server compaction",
++		label: "Model summary",
++		description: "Generate a structured summary with the selected summary model while preserving recent messages",
+ 	},
+ 	{
+ 		value: "shake",
+@@ -41,14 +41,8 @@ export const COMPACTION_METHOD_CHOICES = [
+ /** One selectable automatic context-maintenance method. */
+ export type CompactionMethod = (typeof COMPACTION_METHOD_CHOICES)[number]["value"];
+ 
+-/** Default fallback order: server-native first, portable summary last. */
+-export const DEFAULT_COMPACTION_METHOD_ORDER: CompactionMethod[] = [
+-	"remote",
+-	"snapcompact",
+-	"handoff",
+-	"shake",
+-	"soft",
+-];
++/** 默认先调用供应商原生压缩，不支持时生成结构化摘要。 */
++export const DEFAULT_COMPACTION_METHOD_ORDER: CompactionMethod[] = ["remote", "soft"];
+ 
+ const COMPACTION_METHODS: Record<CompactionMethod, true> = {
+ 	remote: true,
+diff --git a/packages/coding-agent/src/session/context-settings.ts b/packages/coding-agent/src/session/context-settings.ts
+index 747a4ca..7f7e283 100644
+--- a/packages/coding-agent/src/session/context-settings.ts
++++ b/packages/coding-agent/src/session/context-settings.ts
+@@ -149,12 +149,24 @@ export const cfgCompactionMethodOrder = register({
+ 		group: "Compaction",
+ 		label: "Compaction Method Order",
+ 		description:
+-			"Preferred fallback order for automatic context maintenance; unavailable or failed methods advance to the next choice",
++			"Try methods in order; provider-native compaction advances only when explicitly unsupported, while other failures retain their retry behavior",
+ 		options: COMPACTION_METHOD_CHOICES,
+ 		ordered: true,
+ 	},
+ });
+ 
++export const cfgCompactionSummaryModel = register({
++	id: "compaction.summaryModel",
++	type: "string",
++	default: "",
++	ui: {
++		tab: "context",
++		group: "Compaction",
++		label: "Summary Model",
++		description: "Leave empty to use the conversation model, or choose an available provider/model for structured summaries. Provider-native compaction always uses the conversation model.",
++	},
++});
++
+ export const cfgCompactionThresholdPercent = register({
+ 	id: "compaction.thresholdPercent",
+ 	type: "number",
+@@ -259,7 +271,7 @@ export const cfgCompactionRemoteStreamingV2Enabled = register({
+ export const cfgCompactionAsyncEnabled = register({
+ 	id: "compaction.asyncEnabled",
+ 	type: "boolean",
+-	default: true,
++	default: false,
+ 	ui: {
+ 		tab: "context",
+ 		group: "Compaction",
+@@ -386,6 +398,7 @@ export const cfgCompaction = combine({
+ 	enabled: cfgCompactionEnabled,
+ 	experimentalContextManagement: cfgCompactionExperimentalContextManagement,
+ 	methodOrder: cfgCompactionMethodOrder,
++	summaryModel: cfgCompactionSummaryModel,
+ 	thresholdPercent: cfgCompactionThresholdPercent,
+ 	thresholdTokens: cfgCompactionThresholdTokens,
+ 	reserveTokens: cfgCompactionReserveTokens,
+diff --git a/packages/coding-agent/src/session/session-maintenance.ts b/packages/coding-agent/src/session/session-maintenance.ts
+index 877d574..afd090a 100644
+--- a/packages/coding-agent/src/session/session-maintenance.ts
++++ b/packages/coding-agent/src/session/session-maintenance.ts
+@@ -33,6 +33,7 @@ import {
+ 	invalidateMessageCache,
+ 	isTranscriptUsageAnchor,
+ 	NativeCompactionError,
++	isNativeCompactionUnsupported,
+ 	prepareCompaction,
+ 	promptBudgetTokens,
+ 	RESCUE_SHAKE_CONFIG,
+@@ -72,7 +73,6 @@ import { isRecord, logger, prompt, Snowflake, toError } from "@oh-my-pi/pi-utils
+ import * as snapcompact from "@oh-my-pi/snapcompact";
+ import { writeArtifact } from "./artifacts";
+ import type { ModelRegistry } from "../config/model-registry";
+-import { CHAT_MODEL_ROLE_IDS } from "../config/model-roles";
+ import type { Settings } from "../config/settings";
+ import type { ExtensionRunner, SessionBeforeCompactResult } from "../extensibility/extensions";
+ import type { CompactOptions, ContextUsage } from "../extensibility/extensions/types";
+@@ -104,7 +104,7 @@ import {
+ } from "./messages";
+ import { isTerminalTextAssistantAnswer } from "./queued-messages";
+ import {
+-	resolveCompactionConfiguredTarget,
++	resolveConfiguredModelTarget,
+ 	resolveContextPromotionConfiguredTarget,
+ 	resolveRoleModelFull,
+ } from "./role-models";
+@@ -123,6 +123,7 @@ import {
+ 	cfgCompactionAutoContinue,
+ 	cfgCompactionEnabled,
+ 	cfgCompactionMethodOrder,
++	cfgCompactionSummaryModel,
+ 	cfgContextPromotionEnabled,
+ 	cfgSnapcompactShape,
+ } from "./context-settings";
+@@ -339,6 +340,7 @@ interface ArmedSpeculation {
+ 	result: CompactionResult;
+ 	action: "context-full" | "handoff" | "remote";
+ 	method: CompactionMethod;
++	summaryModel?: string;
+ 	codexCompaction?: CodexCompactionContext;
+ 	/** Last branch entry covered by the speculated summary's source snapshot. */
+ 	snapshotLeafId: string;
+@@ -1332,6 +1334,7 @@ export class SessionMaintenance {
+ 				requireProviderRemote
+ 					? candidate => canUseLiveProviderNativeCompaction(candidate, activeModel, effectiveSettings)
+ 					: undefined,
++				selectedMethod === "soft",
+ 			);
+ 			if (requireProviderRemote && compactionCandidates.length === 0) {
+ 				this.#host.emitNotice(
+@@ -1621,7 +1624,8 @@ export class SessionMaintenance {
+ 				!compactionAbortController.signal.aborted &&
+ 				!(error instanceof CompactionCancelledError) &&
+ 				selectedMethodIndex >= 0 &&
+-				selectedMethodIndex + 1 < methods.length
++				selectedMethodIndex + 1 < methods.length &&
++				(methods[selectedMethodIndex] !== "remote" || isNativeCompactionUnsupported(error))
+ 			) {
+ 				this.#host.emitNotice(
+ 					"warning",
+@@ -2296,17 +2300,13 @@ export class SessionMaintenance {
+ 				error: error instanceof Error ? error.message : String(error),
+ 			});
+ 			if (this.#speculation === run) this.#speculation = undefined;
+-			// Keyed by the live model even when a compaction-model candidate made the
+-			// failing request: every consumer checks the live model, and a false hit
+-			// only moves this cycle to the next configured method. Errors with no
+-			// HTTP status classify by message text, so an unrecognised transient
+-			// failure costs the same single early fallback.
++			// 只有明确不支持的原生能力才允许下一次阈值检查跳过原路由。
+ 			if (
+ 				method === "remote" &&
+ 				model &&
+ 				!controller.signal.aborted &&
+ 				error instanceof NativeCompactionError &&
+-				!AIError.retriable(AIError.classify(error.cause, model.api))
++				isNativeCompactionUnsupported(error)
+ 			) {
+ 				this.#failedNativeSpeculation = nativeKey;
+ 			}
+@@ -2425,6 +2425,7 @@ export class SessionMaintenance {
+ 				method === "remote" && !effectiveSettings.remoteEndpoint
+ 					? candidate => canUseLiveProviderNativeCompaction(candidate, model, effectiveSettings)
+ 					: undefined,
++				method === "soft",
+ 			);
+ 			if (candidates.length === 0) return clear();
+ 			const codexCompaction = createCodexCompactionContext({
+@@ -2457,6 +2458,7 @@ export class SessionMaintenance {
+ 				},
+ 				action: method === "remote" ? "remote" : "context-full",
+ 				method,
++				summaryModel: settings.summaryModel,
+ 				codexCompaction,
+ 				snapshotLeafId,
+ 				contextTokensAtStart: contextTokens,
+@@ -2489,6 +2491,7 @@ export class SessionMaintenance {
+ 		const model = this.#model;
+ 		if (!model) return false;
+ 		const settings = this.#compactionSettings;
++		if (armed.method === "soft" && armed.summaryModel !== settings.summaryModel) return false;
+ 		if (
+ 			armed.result.preserveData &&
+ 			!remotePreserveReusable(armed.result.preserveData, model, resolveMethodSettings(settings, armed.method))
+@@ -3639,58 +3642,30 @@ export class SessionMaintenance {
+ 		return candidate;
+ 	}
+ 
+-	#getCompactionModelCandidates(availableModels: Model[], filter?: (model: Model) => boolean): Model[] {
+-		return this.resolveCompactionModelCandidates(this.#model, availableModels, filter);
++	#getCompactionModelCandidates(
++		availableModels: Model[],
++		filter?: (model: Model) => boolean,
++		useSummaryModel = true,
++	): Model[] {
++		return this.resolveCompactionModelCandidates(this.#model, availableModels, filter, useSummaryModel);
+ 	}
+ 
+ 	resolveCompactionModelCandidates(
+ 		preferredModel: Model | null | undefined,
+ 		availableModels: Model[],
+ 		filter?: (model: Model) => boolean,
++		useSummaryModel = false,
+ 	): Model[] {
+-		// Shared catalog rows carry the registry's extended-window opt-ins; judge
+-		// and compact with the window this session's settings select.
+-		const registry = this.#host.modelRegistry;
++		if (!preferredModel) return [];
+ 		const settings = this.#host.settings;
+-		availableModels = availableModels.map(model => registry.fitContextWindow(model, settings));
+-		const candidates: Model[] = [];
+-		const seen = new Set<string>();
+-
+-		const addCandidate = (model: Model | undefined): void => {
+-			if (!model) return;
+-			const key = `${model.provider}/${model.id}`;
+-			if (seen.has(key)) return;
+-			seen.add(key);
+-			// `seen` still tracks rejected models so the largest-context fallback
+-			// scan below doesn't reintroduce them; the filter just suppresses
+-			// inclusion in this caller's candidate chain.
+-			if (filter && !filter(model)) return;
+-			candidates.push(model);
+-		};
+-
+-		if (preferredModel) {
+-			addCandidate(resolveCompactionConfiguredTarget(preferredModel, availableModels));
+-		}
+-		addCandidate(preferredModel ?? undefined);
+-		for (const role of CHAT_MODEL_ROLE_IDS) {
+-			addCandidate(
+-				resolveRoleModelFull(this.#host.settings, role, availableModels, preferredModel ?? undefined).model,
+-			);
+-		}
+-
+-		const sortedByContext = [...availableModels].sort((a, b) => (b.contextWindow ?? 0) - (a.contextWindow ?? 0));
+-		for (const model of sortedByContext) {
+-			if (!seen.has(`${model.provider}/${model.id}`)) {
+-				addCandidate(model);
+-				break;
+-			}
+-		}
+-
+-		return candidates;
++		const selector = useSummaryModel ? cfgCompactionSummaryModel.get(settings).trim() : "";
++		const selected = selector ? resolveConfiguredModelTarget(selector, preferredModel, availableModels) : preferredModel;
++		if (!selected) throw new Error(`Configured summary model is unavailable: ${selector}`);
++		const model = this.#host.modelRegistry.fitContextWindow(selected, settings);
++		return !filter || filter(model) ? [model] : [];
+ 	}
+ 
+-	#buildCompactionAuthError(): Error {
+-		const currentModel = this.#model;
++	#buildCompactionAuthError(currentModel: Model | null | undefined = this.#model): Error {
+ 		if (!currentModel) {
+ 			return new Error(
+ 				"Compaction requires a model with usable credentials, but no authenticated compaction model is available.",
+@@ -3698,7 +3673,7 @@ export class SessionMaintenance {
+ 		}
+ 		return new Error(
+ 			`Compaction requires usable credentials for ${currentModel.provider}/${currentModel.id}. ` +
+-				`Configure ${currentModel.provider} credentials or assign an authenticated fallback role such as modelRoles.smol.`,
++				`Configure credentials for the selected summary model or leave compaction.summaryModel empty to use the conversation model.`,
+ 		);
+ 	}
+ 
+@@ -3782,7 +3757,7 @@ export class SessionMaintenance {
+ 		}
+ 
+ 		if (nativeCompactionFailure) throw nativeCompactionFailure.error;
+-		throw this.#buildCompactionAuthError();
++		throw this.#buildCompactionAuthError(candidates[0]);
+ 	}
+ 
+ 	async #prepareCompactionFromHooks(
+@@ -5774,6 +5749,7 @@ export class SessionMaintenance {
+ 					method === "remote" && !effectiveSettings.remoteEndpoint && liveModel
+ 						? candidate => canUseLiveProviderNativeCompaction(candidate, liveModel, effectiveSettings)
+ 						: undefined,
++					method === "soft",
+ 				);
+ 				const retrySettings = cfgRetry.get(this.#host.settings);
+ 				const telemetry = resolveTelemetry(this.#host.agent.telemetry, this.#host.sessionId());
+@@ -5858,7 +5834,7 @@ export class SessionMaintenance {
+ 								candidate.api,
+ 							);
+ 							if (AIError.is(id, AIError.Flag.AuthFailed)) {
+-								if (!nativeCompactionFailure) lastError = this.#buildCompactionAuthError();
++								if (!nativeCompactionFailure) lastError = this.#buildCompactionAuthError(candidate);
+ 								break;
+ 							}
+ 							if (AIError.is(id, AIError.Flag.Timeout)) {
+@@ -6102,7 +6078,10 @@ export class SessionMaintenance {
+ 					: reason === "incomplete"
+ 						? `Incomplete response recovery failed: ${errorMessage}`
+ 						: `Auto-compaction failed: ${errorMessage}`;
+-			if (!compactionCommitted && methodIndex + 1 < methods.length) {
++			if (
++				!compactionCommitted && methodIndex + 1 < methods.length &&
++				(method !== "remote" || isNativeCompactionUnsupported(error))
++			) {
+ 				logger.warn("Automatic compaction method failed; trying next preference", {
+ 					method,
+ 					error: errorMessage,
