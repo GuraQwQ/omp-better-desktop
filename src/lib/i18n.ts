@@ -134,6 +134,9 @@ export const copy = (language: Language): Copy => language === 'zh' ? zh : en;
 export const statusText = (status: string, t: Copy): string => t.statusLabels[status as keyof Copy['statusLabels']] ?? status;
 
 const errorTranslations: Record<string, string> = {
+  'Choose an existing project folder.': '请选择一个已存在的项目文件夹。',
+  'Cannot load the model catalog. Retry after checking the provider settings.': '无法载入模型目录，请检查提供商设置后重试。',
+  'The model catalog returned an invalid response.': '模型目录返回的数据无效，请重试。',
   'Answer confirmation is still pending. Retry to check the same submission.': '答案仍在等待确认，可再次检查提交状态。',
   'Session is closed or interrupted.': '对话已关闭或中止。',
   'Git is required to review project changes.': '查看项目差异需要安装 Git；文件浏览和对话仍可使用。',

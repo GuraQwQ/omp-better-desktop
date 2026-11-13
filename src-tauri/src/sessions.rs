@@ -527,6 +527,49 @@ impl Sessions {
         Ok(json!({"path": path}))
     }
 
+    pub fn delete_history(
+        &self,
+        app: &AppHandle,
+        root: &Path,
+        request: &Value,
+    ) -> Result<Value, String> {
+        let _opening = self.opening.lock().map_err(|error| error.to_string())?;
+        let supplied = Path::new(crate::text(request, "path")?);
+        let target = supplied
+            .canonicalize()
+            .unwrap_or_else(|_| supplied.to_owned());
+        let removed: Vec<_> = {
+            let mut sessions = self.sessions.lock().unwrap();
+            let ids: Vec<_> = sessions
+                .iter()
+                .filter(|(_, session)| {
+                    session.path.lock().unwrap().as_ref().is_some_and(|path| {
+                        path.canonicalize().unwrap_or_else(|_| path.clone()) == target
+                    })
+                })
+                .map(|(id, _)| id.clone())
+                .collect();
+            ids.into_iter()
+                .filter_map(|id| sessions.remove(&id).map(|session| (id, session)))
+                .collect()
+        };
+        for (id, session) in &removed {
+            session.questions.close();
+            self.browser_logins.cancel(id, None);
+            // 断开入口后终止主任务与旁问，防止回收时继续写入历史。
+            let _ = session.client.call_raw(json!({"type":"btw_cancel"}));
+            let _ = session.client.call_raw(json!({"type":"abort"}));
+            emit(
+                app,
+                id,
+                json!({"type":"desktop_status","status":"released","path":session.path.lock().unwrap().as_ref()}),
+            );
+        }
+        // 释放进程 Job 后再回收文件，错误时历史仍可重新打开。
+        drop(removed);
+        crate::session_library::delete_session(root, request)
+    }
+
     pub fn shutdown(&self) {
         for id in self.sessions.lock().unwrap().keys() {
             self.browser_logins.cancel(id, None);

@@ -39,7 +39,13 @@ fn database(root: &Path) -> Result<Connection> {
         CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY, job_id TEXT NOT NULL, job TEXT NOT NULL, status TEXT NOT NULL, claimed_at INTEGER NOT NULL, started_at INTEGER, finished_at INTEGER, session_id TEXT, path TEXT, error TEXT);
         CREATE UNIQUE INDEX IF NOT EXISTS one_running_job ON runs(job_id) WHERE status='running';
         CREATE INDEX IF NOT EXISTS due_schedules ON schedules(enabled,next_at);
-        PRAGMA user_version=1;").map_err(|error| error.to_string())?;
+").map_err(|error| error.to_string())?;
+    let version: i64 = connection
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    if version < 2 {
+        connection.execute_batch("BEGIN IMMEDIATE; DELETE FROM state WHERE key GLOB 'card:card-*'; PRAGMA user_version=2; COMMIT;").map_err(|error| error.to_string())?;
+    }
     Ok(connection)
 }
 

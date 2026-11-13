@@ -1,3 +1,4 @@
+import { modelCatalog } from '../lib/model-catalog';
 import { useEffect, useRef, useState } from 'react';
 import { rpc } from '../lib/bridge';
 import type { Copy } from '../lib/i18n';
@@ -26,7 +27,7 @@ export default function ProviderAccounts({ sessionId, language, t, onError }: { 
   useEffect(() => { setAccounts({}); setExpanded(''); void load(); return () => { revision.current++; }; }, [sessionId]);
   const act = async (action: () => Promise<unknown>) => {
     setBusy(true); setError('');
-    try { await action(); } catch (error) { setError(String(error)); onError(error); } finally { setBusy(false); }
+    try { await action(); modelCatalog.invalidate(); } catch (error) { setError(String(error)); onError(error); } finally { setBusy(false); }
   };
   const readAccounts = async (providerId: string) => {
     const current = revision.current;

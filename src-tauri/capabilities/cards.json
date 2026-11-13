@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "cards",
+  "description": "浮动任务卡接收状态更新",
+  "windows": ["card-*"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}

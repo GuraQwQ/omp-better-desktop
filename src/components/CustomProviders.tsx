@@ -1,3 +1,4 @@
+import { modelCatalog } from '../lib/model-catalog';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronRight, RefreshCw } from 'lucide-react';
 import { request } from '../lib/bridge';
@@ -136,6 +137,7 @@ export default function CustomProviders({ bootstrap, t, cwd, sessionId, ensureSe
     try {
       const settings = Object.fromEntries(ids.map(model => [model, { ...modelSettings[model], compat: jsonObject(modelCompat[model] ?? '', `${model} ${text.compatibility}`, t.invalidJson) }]));
       const result = await request<Configuration>('providers.config', { operation: 'save', cwd, provider: { id, api, baseUrl, apiKey, options: { ...options, compat: jsonObject(compat, text.compatibility, t.invalidJson) }, modelIds: ids, modelSettings: settings } });
+      modelCatalog.invalidate();
       if (current !== contextRevision.current) return;
       setConfiguration(result);
       const saved = result.providers.find(provider => provider.id === result.savedProvider);
@@ -147,7 +149,7 @@ export default function CustomProviders({ bootstrap, t, cwd, sessionId, ensureSe
   const remove = async () => {
     if (!selected || locked) return;
     const current = contextRevision.current; revision.current++; setWorking('delete'); setError(''); setNotice('');
-    try { const result = await request<Configuration>('providers.config', { operation: 'delete', cwd, provider: { id: selected } }); if (current === contextRevision.current) { setConfiguration(result); loadFields(); setConfirmDelete(false); setNotice([text.removed, ...(result.refreshErrors ?? [])].join('\n')); } }
+    try { const result = await request<Configuration>('providers.config', { operation: 'delete', cwd, provider: { id: selected } }); modelCatalog.invalidate(); if (current === contextRevision.current) { setConfiguration(result); loadFields(); setConfirmDelete(false); setNotice([text.removed, ...(result.refreshErrors ?? [])].join('\n')); } }
     catch (error) { if (current === contextRevision.current) setError(error instanceof Error ? error.message : String(error)); }
     finally { if (current === contextRevision.current) setWorking(''); }
   };

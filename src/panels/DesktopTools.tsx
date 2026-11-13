@@ -33,7 +33,7 @@ export default function DesktopTools(props: Props) {
   const [error, setError] = useState('');
   const [connectionRetry, setConnectionRetry] = useState(0);
   const onError = (error: unknown) => setError(error instanceof Error ? error.message : String(error));
-  const connecting = props.tab === 'side-questions' && !props.session?.path;
+  const connecting = props.tab === 'side-questions' && !props.session;
   useEffect(() => {
     if (!native || !connecting) return;
     let cancelled = false;

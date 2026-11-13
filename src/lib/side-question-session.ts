@@ -141,6 +141,16 @@ export class SideQuestionSession {
   }
   event({ sessionId, event }: DesktopEvent) {
     if (!this.snapshot.ready) return;
+    if (event.type === 'desktop_status' && ['released', 'disconnected'].includes(event.status)) {
+      const job = this.pending;
+      const affected = this.snapshot.state.threads.some(thread => thread.records.some(record => record.runtimeId === sessionId && record.status === 'running'));
+      if (affected) this.update({ ...this.snapshot.state, threads: this.snapshot.state.threads.map(thread => {
+        const records = thread.records.map(record => record.runtimeId === sessionId && record.status === 'running' ? { ...record, status: 'interrupted' as const, updatedAt: Date.now() } : record);
+        return { ...thread, records };
+      }) });
+      if (job && (job.runtimeId === sessionId || !job.runtimeId && this.context?.session?.id === sessionId)) { job.terminal = true; this.finish(job); }
+      return;
+    }
     if (event.type === 'btw_record' && event.record) {
       const job = this.pending, known = this.snapshot.state.threads.some(thread => thread.records.some(record => record.nativeId === event.record.id && record.runtimeId === sessionId));
       if (known || job && latestNativeSideQuestionTurn(event.record).question === job.prompt) this.accept(event.record, sessionId);
@@ -178,6 +188,7 @@ export class SideQuestionSession {
     this.patch(thread.id, item => ({ ...item, records: [...item.records, { id, nativeId: job.nativeId, runtimeId: job.runtimeId, turnIndex: job.turnIndex, question: thread.draft, quote: thread.quote, attachments: thread.attachments, warnings: payload.warnings ?? [], answer: '', status: 'running', createdAt: now, updatedAt: now }], updatedAt: now }));
     try {
       const result = await context.send(job.prompt, thread.nativeTopicId, payload.images), record = result.record as BtwHistoryRecord | undefined;
+      if (job.terminal && this.pending !== job) return;
       if (!record?.id) throw new Error('旁问未返回记录，请重试。 / No side-question record was returned. Retry.');
       job.nativeId = record.id; job.runtimeId = typeof result.desktopSessionId === 'string' ? result.desktopSessionId : job.runtimeId; job.acknowledged = true;
       this.accept(record, job.runtimeId);
@@ -188,6 +199,7 @@ export class SideQuestionSession {
       if (job.cancelRequested && !job.terminal) await this.cancel(job);
       if (job.terminal) this.finish(job);
     } catch (error) {
+      if (job.terminal && this.pending !== job) return;
       this.patch(thread.id, item => ({ ...item, nativeTopicId: undefined, records: item.records.map(record => record.id === id ? { ...record, status: job.cancelRequested ? 'cancelled' : 'error', error: job.cancelRequested ? undefined : message(error), updatedAt: Date.now() } : record) }));
       if (!job.cancelRequested) this.publish({ error: message(error) }); this.finish(job);
     }
