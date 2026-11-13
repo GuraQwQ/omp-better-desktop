@@ -1,4 +1,4 @@
-import { action, createLibrary, defineComponent, FormNameContext, isReactiveAssign, reactive, useFormName, useIsStreaming, useStateField, useTriggerAction, type ActionPlan, type ComponentRenderProps } from '@openuidev/react-lang';
+import { action, createLibrary, defineComponent, FormNameContext, reactive, useFormName, useIsStreaming, useStateField, useTriggerAction, type ActionPlan, type ComponentRenderProps } from '@openuidev/react-lang';
 import { lazy, Suspense, useId, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -72,17 +72,16 @@ function SliderControl({ props, config, statementId }: { props: Record<string, u
   // 滑轨按步序号定位，最后一个位置始终映射到声明的最大值。
   const intervals = (max - min) / step;
   const steps = Math.max(max > min ? 1 : 0, Math.ceil(intervals - Math.abs(intervals) * Number.EPSILON * 4));
-  const valueAt = (index: number) => index >= steps ? max : Number((min + index * step).toPrecision(12));
+  const decimals = Math.max(0, ...[min, step].map(value => { const [number, exponent] = String(value).split('e'); return (number.split('.')[1]?.length ?? 0) - Number(exponent ?? 0); }));
+  const valueAt = (index: number) => { const value = min + index * step; return index >= steps ? max : decimals <= 100 ? Number(value.toFixed(decimals)) : value; };
   const indexOf = (value: unknown, fallback: number) => {
     const number = typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
     const lower = Math.max(0, Math.min(steps, Math.floor((number - min) / step))), upper = Math.min(steps, lower + 1);
     return number - valueAt(lower) < valueAt(upper) - number ? lower : upper;
   };
-  const snap = (value: unknown, fallback: number) => valueAt(indexOf(value, fallback));
-  const initial = isReactiveAssign(props.value) ? props.value : Array.isArray(props.value) ? [snap(props.value[0], min), snap(props.value[1], max)].sort((a, b) => a - b) : snap(props.value, min);
-  const field = useStateField(String(props.name || statementId || 'slider'), initial);
-  const range = Array.isArray(field.value) ? [snap(field.value[0], min), snap(field.value[1], max)].sort((a, b) => a - b) : undefined;
-  const value = snap(field.value, min), disabled = streaming || !config.features.state;
+  const field = useStateField(String(props.name || statementId || 'slider'), props.value ?? min);
+  const range = Array.isArray(field.value) ? field.value as number[] : undefined;
+  const value = typeof field.value === 'number' ? field.value : min, disabled = streaming || !config.features.state;
   const label = String(props.label ?? ''), zh = document.documentElement.lang.startsWith('zh');
   return <fieldset className="genui-field genui-slider" disabled={disabled}><legend>{label}</legend><div className="genui-slider-values">
     {range ? range.map((value, index) => <label key={index}><span>{index === 0 ? zh ? '起点' : 'Start' : zh ? '终点' : 'End'}</span><input id={`${id}-${index}`} type="range" min={0} max={steps} step={1} value={indexOf(value, min)} aria-valuemin={min} aria-valuemax={max} aria-valuenow={value} aria-valuetext={String(value)} aria-label={`${label} ${index === 0 ? zh ? '起点' : 'Start' : zh ? '终点' : 'End'}`} onChange={event => {
