@@ -1,0 +1,4 @@
+.tool-reference-actions > button { display: inline-flex; align-items: center; gap: 2px; min-height: 24px; }
+.tool-reference-menu { position: fixed; z-index: 60; max-width: calc(100vw - 16px); }
+.tool-reference-menu > button { display: block; width: 100%; min-height: 36px; padding: 7px 9px; border-radius: var(--radius-item); text-align: start; font-size: 12px; }
+.tool-reference-menu > button:hover, .tool-reference-menu > button:focus-visible { background: var(--hover); }

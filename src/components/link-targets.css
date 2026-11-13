@@ -1,0 +1,8 @@
+.target-link { cursor: pointer; text-underline-offset: 3px; }
+.tool-file-heading .target-link, .tool-result > summary .target-link { display: inline-flex; min-width: 0; color: inherit; }
+.tool-result > summary .target-link { flex: 1; }
+.target-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.link-target-menu { position: fixed; z-index: 90; width: 260px; max-width: calc(100vw - 16px); padding: 5px; }
+.link-target-menu > button { display: flex; align-items: center; gap: 8px; width: 100%; text-align: start; }
+.link-target-path { padding: 7px 8px; color: var(--secondary); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.link-target-error { padding: 4px 8px; color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }

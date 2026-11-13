@@ -4,6 +4,8 @@ import { copy } from '../../lib/i18n';
 import type { ComposerAttachment } from '../../lib/attachments';
 import type { ConversationReference } from '../../lib/references';
 import ComposerAttachments from '../../components/ComposerAttachments';
+import ZoomableImage from '../../components/ZoomableImage';
+import { TargetLink } from '../../components/LinkTargets';
 import { sideQuestions } from '../../lib/side-question-session';
 import { exportSideQuestions, sideQuestionContextSize, sideQuestionSourceKey, sideQuestionSourceLabel, sideQuestionThreadSummaries, sideQuestionThreadTitle, type SideQuestionSource, type SideQuestionThreadSummary } from '../../lib/side-questions';
 import type { Json, Language, SessionSummary, SessionView } from '../../lib/types';
@@ -86,7 +88,7 @@ export default function SideQuestions(props: Props) {
     <div className="side-question-history">{currentThread.records.map(record => <article className="desktop-record side-question-record" key={record.id} data-side-question-id={record.id}>
       <header><span>{statusLabels[record.status][zh ? 0 : 1]}</span><button className="quiet-button" disabled={record.status === 'running'} aria-label={zh ? `移除旁问 ${record.question}` : `Remove question ${record.question}`} onClick={() => conversation.remove(currentThread.id, record.id)}>{zh ? '移除' : 'Remove'}</button></header>
       {record.quote && <blockquote>{record.quote}</blockquote>}<p className="side-question-question">{record.question}</p>
-      {record.attachments?.length ? <div className="side-question-record-attachments">{record.attachments.map((item, index) => <span key={index} title={item.path}>{item.name}</span>)}</div> : null}
+      {record.attachments?.length ? <div className="side-question-record-attachments">{record.attachments.map((item, index) => item.type === 'image' ? <ZoomableImage key={index} src={`data:${item.mimeType};base64,${item.data}`} alt={item.name} language={language} /> : <TargetLink key={index} href={item.path} title={item.path}>{item.name}</TargetLink>)}</div> : null}
       {!!record.warnings?.length && <div className="side-question-material-note" role="status"><span>{zh ? '附件材料' : 'Attachment material'}</span><ul>{record.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></div>}
       {record.answer && <div className="side-question-answer"><Suspense fallback={<p className="preserve-lines">{record.answer}</p>}><Markdown text={record.answer} t={copy(language)} live={record.status === 'running'} /></Suspense></div>}
       {record.error && <p className="desktop-error">{record.error}</p>}

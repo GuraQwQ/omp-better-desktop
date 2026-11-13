@@ -2,6 +2,7 @@ import type { Language } from './types';
 
 const en = {
   checkConfirmation: 'Check confirmation',
+  toolReference: 'Quote', toolReferenceCall: 'Call arguments', toolReferenceResult: 'Execution result', toolSubmittedContent: 'Submitted content',
   product: 'Better OMP Desktop', newSession: 'New conversation', addProject: 'Add project', projects: 'Projects',
   settings: 'Settings', commands: 'Commands', review: 'Changes', context: 'Context', agents: 'Agents', terminal: 'Terminal',
   files: 'Files', history: 'History', runtime: 'Runtime', ready: 'Ready', connecting: 'Connecting', running: 'Working',
@@ -65,6 +66,7 @@ const en = {
 };
 const zh: typeof en = {
   checkConfirmation: '检查确认',
+  toolReference: '引用', toolReferenceCall: '调用参数', toolReferenceResult: '执行结果', toolSubmittedContent: '提交内容',
   product: 'Better OMP Desktop', newSession: '新建对话', addProject: '添加项目', projects: '项目',
   settings: '设置', commands: '命令', review: '更改', context: '上下文', agents: '代理', terminal: '终端',
   files: '文件', history: '历史记录', runtime: '运行时', ready: '就绪', connecting: '连接中', running: '正在工作',

@@ -33,6 +33,54 @@ pub fn open_url(value: &str) -> Result<Value, String> {
     Ok(json!({"url":url.as_str()}))
 }
 
+pub fn path_info(value: &str) -> Result<Value, String> {
+    let path = Path::new(value);
+    if !path.is_absolute() {
+        return Err("请选择完整文件路径。 / Choose an absolute path.".into());
+    }
+    let metadata = path.metadata().map_err(|error| error.to_string())?;
+    Ok(json!({"isFile":metadata.is_file(),"isDirectory":metadata.is_dir()}))
+}
+
+pub fn reveal_path(value: &str) -> Result<Value, String> {
+    let info = path_info(value)?;
+    let path = Path::new(value);
+    #[cfg(windows)]
+    {
+        let mut command = std::process::Command::new("explorer.exe");
+        if info["isFile"] == true {
+            command.arg(format!("/select,{}", path.display()));
+        }
+        if info["isFile"] != true {
+            command.arg(path);
+        }
+        platform::hidden(&mut command)
+            .spawn()
+            .map_err(|error| error.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let mut command = std::process::Command::new("open");
+        if info["isFile"] == true {
+            command.arg("-R");
+        }
+        command
+            .arg(path)
+            .spawn()
+            .map_err(|error| error.to_string())?;
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    std::process::Command::new("xdg-open")
+        .arg(if info["isFile"] == true {
+            path.parent().unwrap_or(path)
+        } else {
+            path
+        })
+        .spawn()
+        .map_err(|error| error.to_string())?;
+    Ok(info)
+}
+
 pub fn artifact_response(
     root: &Path,
     request: tauri::http::Request<Vec<u8>>,
