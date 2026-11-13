@@ -2532,7 +2532,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-notification",
  "uuid",
- "windows 0.62.2",
+ "windows",
  "windows-sys 0.59.0",
  "winreg 0.55.0",
 ]
