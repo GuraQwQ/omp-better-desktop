@@ -1,3 +1,4 @@
+import { modelCatalog } from '../lib/model-catalog';
 import { lazy, Suspense, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { ArrowLeft, ArrowUpRight, Check, Download, FolderOpen, LoaderCircle, RefreshCw } from 'lucide-react';
 import { pickPath, request } from '../lib/bridge';
@@ -60,6 +61,7 @@ export default function Settings({ bootstrap, t, sessionId, cwd = '', ensureSess
     setImportResult(null); setImportDetails(false);
     return perform('import', async () => {
       const result = await request<ImportResult>('data.import', { path });
+      modelCatalog.invalidate();
       setImportResult({ path, result });
       await reload();
       return '';

@@ -1,0 +1,17 @@
+.session-row { position: relative; display: flex; align-items: center; gap: 1px; border-radius: var(--radius-action); }
+.session-row.active { background: var(--selected); }
+.session-row:hover { background: var(--hover); }
+.session-row > .session-item { flex: 1; min-width: 0; }
+.session-row > .session-row-menu { flex-shrink: 0; margin-inline-end: 3px; padding: 4px; opacity: 0; transition: opacity var(--motion-fast) var(--ease-enter); }
+.session-row:hover > .session-row-menu, .session-row:focus-within > .session-row-menu, .session-row-menu[aria-expanded='true'] { opacity: 1; }
+.session-row > .session-drag { flex-shrink: 0; padding: 3px 0; margin-inline-start: 3px; cursor: grab; color: var(--muted); }
+.session-row > .session-drag:active { cursor: grabbing; }
+.session-row.is-drop-target { outline: 1px solid var(--focus); background: var(--selected); }
+.session-action-menu { position: fixed; width: 220px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: auto; z-index: 80; padding: 5px; }
+.session-action-menu > button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 7px 9px; text-align: start; font-size: 12px; }
+.session-action-menu > button:hover, .session-action-menu > button:focus-visible { background: var(--hover); }
+.session-action-menu > .is-danger, .session-action-menu > p[role='alert'] { color: var(--danger); }
+.session-action-menu > p { margin: 6px; overflow-wrap: anywhere; font-size: 12px; }
+@media (hover: none) { .session-row > .session-row-menu { opacity: 1; } }
+
+.session-reorder-error { margin: 8px; color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }

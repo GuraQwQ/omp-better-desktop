@@ -6,6 +6,7 @@ mod desktop_tools;
 mod genui;
 mod history;
 mod launch;
+mod model_catalog;
 mod platform;
 mod providers;
 mod questions;
@@ -305,9 +306,12 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
         | "attachment.clipboard"
         | "attachment.discard"
         | "attachment.btw" => attachments::execute(root, &request),
+        "models.list" => model_catalog::list(root, Path::new(text(&request, "cwd")?)),
         "session.list" => session_library::list(root, request["cwd"].as_str(), false),
         "session.search" | "session.locate" | "session.after" | "session.archive"
-        | "session.archives" | "usage.summary" => session_library::execute(root, &request),
+        | "session.pin" | "session.reorder" | "session.archives" | "usage.summary" => {
+            session_library::execute(root, &request)
+        }
         "external.sessions" | "external.history" => {
             if config(root)?["preferences"]["features"]["externalSessions"] != true {
                 return Err("请先在设置中开启外部会话查看。".into());
@@ -343,6 +347,10 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
         }
         operation if operation.starts_with("browser.") || operation.starts_with("card.") => {
             desktop_extras::execute(app.clone(), root, &request)
+        }
+        "session.delete" => {
+            let _guard = desktop.data_access.read().unwrap();
+            desktop.sessions.delete_history(&app, root, &request)
         }
         "session.history" => history::page(
             root,
