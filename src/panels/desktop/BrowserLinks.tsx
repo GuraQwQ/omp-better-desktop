@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { request } from '../../lib/bridge';
-import type { Json } from '../../lib/types';
+import type { Json, Language } from '../../lib/types';
 
-export default function BrowserLinks({ onError }: { onError: (error: unknown) => void }) {
+export default function BrowserLinks({ onError, language = 'zh' }: { language?: Language; onError: (error: unknown) => void }) {
+  const zh = language === 'zh';
   const [url, setUrl] = useState('');
   const [links, setLinks] = useState<Json[]>([]);
   const [ready, setReady] = useState(false);
@@ -34,9 +35,9 @@ export default function BrowserLinks({ onError }: { onError: (error: unknown) =>
     finally { if (scope === generation.current) setWorking(false); }
   };
   return <>
-    <p>使用设备上的默认浏览器打开，沿用已有的登录与扩展。</p>
-    <form className="desktop-tool-actions" onSubmit={event => { event.preventDefault(); void open(url); }}><input aria-label="网址" placeholder="https://…" value={url} disabled={working} onChange={event => setUrl(event.target.value)} /><button className="primary-button" disabled={!ready || working || !url.trim()}>打开</button></form>
+    <p>{zh ? '使用设备上的默认浏览器打开，沿用已有的登录与扩展。' : 'Open links in your default browser with its existing accounts and extensions.'}</p>
+    <form className="desktop-tool-actions" onSubmit={event => { event.preventDefault(); void open(url); }}><input aria-label={zh ? '网址' : 'URL'} placeholder="https://…" value={url} disabled={working} onChange={event => setUrl(event.target.value)} /><button className="primary-button" disabled={!ready || working || !url.trim()}>{zh ? '打开' : 'Open'}</button></form>
     {links.map(link => <div className="desktop-record" key={link.url}><button className="quiet-button browser-link" disabled={working} onClick={() => void open(link.url)}>{link.url}</button><small>{new Date(link.at).toLocaleString()}</small></div>)}
-    {!!links.length && <button className="quiet-button" disabled={working} onClick={() => void clear()}>清空网址历史</button>}
+    {!!links.length && <button className="quiet-button" disabled={working} onClick={() => void clear()}>{zh ? '清空网址历史' : 'Clear browsing history'}</button>}
   </>;
 }

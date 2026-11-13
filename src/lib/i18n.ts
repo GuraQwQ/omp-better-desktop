@@ -1,6 +1,7 @@
 import type { Language } from './types';
 
 const en = {
+  quoteMessage: 'Quote message', quote: 'Quote', selectionActions: 'Selection actions', annotate: 'Annotate', sideQuestion: 'Side question', closeSelectionActions: 'Close selection actions', loadLater: 'Load later messages',
   checkConfirmation: 'Check confirmation',
   toolReference: 'Quote', toolReferenceCall: 'Call arguments', toolReferenceResult: 'Execution result', toolSubmittedContent: 'Submitted content',
   product: 'Better OMP Desktop', newSession: 'New conversation', addProject: 'Add project', projects: 'Projects',
@@ -65,6 +66,7 @@ const en = {
   reviewScope: 'Review scope', workspaceChanges: 'Working tree', turnChanges: 'Turn tool changes', turnLabel: 'Turn', earlierTurn: 'Earlier turn records', noTurnChanges: 'No file operations recorded for this turn.', changeRecord: 'Operation record', proposedChange: 'Preview',
 };
 const zh: typeof en = {
+  quoteMessage: '引用消息', quote: '引用', selectionActions: '选段操作', annotate: '批注', sideQuestion: '旁问', closeSelectionActions: '关闭选段操作', loadLater: '加载后续消息',
   checkConfirmation: '检查确认',
   toolReference: '引用', toolReferenceCall: '调用参数', toolReferenceResult: '执行结果', toolSubmittedContent: '提交内容',
   product: 'Better OMP Desktop', newSession: '新建对话', addProject: '添加项目', projects: '项目',

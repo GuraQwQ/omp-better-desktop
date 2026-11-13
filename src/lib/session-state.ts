@@ -8,7 +8,7 @@ export function isSessionRunning(session?: SessionView): boolean {
 
 export function normalizeMessage(value: Json, fallback: string): Message {
   const message = value.message ?? value;
-  return { ...message, id: value.messageId ?? message.id ?? fallback, role: message.role ?? 'assistant', content: message.content ?? message.text ?? '' };
+  return { ...message, id: value.messageId ?? message.id ?? fallback, role: message.role ?? 'assistant', content: message.role === 'user' && typeof message.parentIrc?.body === 'string' ? message.parentIrc.body : message.content ?? message.text ?? '' };
 }
 
 export function enrichToolMessages(messages: Message[]): Message[] {

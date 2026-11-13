@@ -1,0 +1,11 @@
+.settings-presets { padding-block: 4px 20px; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
+.settings-presets h3 { margin: 0; }
+.preset-select, .preset-save { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-block: 12px; }
+.preset-select > span { color: var(--secondary); font-size: 12px; }
+.preset-preview { margin-block: 16px; }
+.preset-change-list { max-height: 330px; overflow: auto; border-block: 1px solid var(--line); margin-block: 12px; }
+.preset-change { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, .8fr); gap: 16px; padding: 9px 2px; border-bottom: 1px solid var(--line-soft); font-size: 13px; }
+.preset-change > span { min-width: 0; overflow-wrap: anywhere; }
+.preset-change code, .preset-change small { display: block; margin-top: 3px; color: var(--secondary); font-size: 12px; }
+.preset-save > input { flex: 1; min-width: 160px; }
+@media (max-width: 620px) { .preset-change { grid-template-columns: 1fr; gap: 5px; } .preset-select .select-control { width: 100%; } }

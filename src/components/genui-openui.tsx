@@ -1,5 +1,5 @@
 import { action, createLibrary, defineComponent, FormNameContext, reactive, useFormName, useIsStreaming, useStateField, useTriggerAction, type ActionPlan, type ComponentRenderProps } from '@openuidev/react-lang';
-import { lazy, Suspense, useId, type ReactNode } from 'react';
+import { createContext, lazy, Suspense, useContext, useId, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { z } from 'zod/v4';
@@ -8,6 +8,9 @@ import { GENUI_COMPONENTS, exposedGenUIFields, type GenUIConfiguration, type Gen
 import { TargetLink } from './LinkTargets';
 import { safeGenUIUrl } from '../lib/genui';
 import ZoomableImage from './ZoomableImage';
+import type { Language } from '../lib/types';
+
+export const GenUILanguage = createContext<Language>('zh');
 
 const MathView = lazy(() => import('./genui-heavy').then(module => ({ default: module.GenUIMath })));
 const MapView = lazy(() => import('./genui-heavy').then(module => ({ default: module.GenUIMap })));
@@ -34,7 +37,7 @@ function schema(field: GenUIField, config: GenUIConfiguration): z.ZodType {
   return config.features.state && field.type.startsWith('reactive') ? reactive(value) : value;
 }
 
-function Chart({ type, labels, values, title }: { type: string; labels: string[]; values: number[]; title?: string }) {
+function Chart({ type, labels, values, title, language }: { type: string; labels: string[]; values: number[]; title?: string; language: Language }) {
   const data = values.slice(0, labels.length).filter(Number.isFinite);
   const min = Math.min(0, ...data), max = Math.max(1, ...data), span = max - min;
   const y = (value: number) => 180 - (value - min) / span * 155;
@@ -47,7 +50,7 @@ function Chart({ type, labels, values, title }: { type: string; labels: string[]
       const path = `M240 100 L${240 + Math.cos(from) * 80} ${100 + Math.sin(from) * 80} A80 80 0 ${angle - from > Math.PI ? 1 : 0} 1 ${240 + Math.cos(angle) * 80} ${100 + Math.sin(angle) * 80} Z`;
       return value > 0 && sum === value ? <circle key={index} cx="240" cy="100" r="80" className={`genui-series-${index % 4}`}><title>{labels[index]}: {value}</title></circle> : <path key={index} d={path} className={`genui-series-${index % 4}`}><title>{labels[index]}: {value}</title></path>;
     }) : <><line x1="20" y1={baseline} x2="460" y2={baseline} className="genui-axis" />{type === 'LineChart' && <polyline fill="none" className="genui-line" points={data.map((value, index) => `${20 + (index + .5) * step},${y(value)}`).join(' ')} />}{data.map((value, index) => <g key={index}><title>{labels[index]}: {value}</title>{type === 'BarChart' ? <rect x={20 + index * step + 3} y={Math.min(baseline, y(value))} width={Math.max(1, step - 6)} height={Math.max(1, Math.abs(baseline - y(value)))} className="genui-series-0" /> : <circle cx={20 + (index + .5) * step} cy={y(value)} r="3" className="genui-series-0" />}<text x={20 + (index + .5) * step} y="200" textAnchor="middle">{labels[index]?.slice(0, 12)}</text></g>)}</>}
-  </svg><details><summary>数据</summary><table><tbody>{data.map((value, index) => <tr key={index}><th>{labels[index]}</th><td>{value}</td></tr>)}</tbody></table></details></figure>;
+  </svg><details><summary>{language === 'zh' ? '数据' : 'Data'}</summary><table><tbody>{data.map((value, index) => <tr key={index}><th>{labels[index]}</th><td>{value}</td></tr>)}</tbody></table></details></figure>;
 }
 
 function Control({ name, props, config, statementId }: { name: string; props: Record<string, unknown>; config: GenUIConfiguration; statementId?: string }) {
@@ -65,7 +68,7 @@ function Control({ name, props, config, statementId }: { name: string; props: Re
   return <label className={`genui-field ${name === 'Checkbox' ? 'genui-checkbox' : ''}`}><span>{label}</span>{control}</label>;
 }
 
-function SliderControl({ props, config, statementId }: { props: Record<string, unknown>; config: GenUIConfiguration; statementId?: string }) {
+function SliderControl({ props, config, statementId, language }: { props: Record<string, unknown>; config: GenUIConfiguration; statementId?: string; language: Language }) {
   const id = useId(), streaming = useIsStreaming();
   const min = Math.min(Number(props.min), Number(props.max)), max = Math.max(Number(props.min), Number(props.max));
   const step = typeof props.step === 'number' && props.step > 0 && Number.isFinite(props.step) ? props.step : 1;
@@ -82,7 +85,7 @@ function SliderControl({ props, config, statementId }: { props: Record<string, u
   const field = useStateField(String(props.name || statementId || 'slider'), props.value ?? min);
   const range = Array.isArray(field.value) ? field.value as number[] : undefined;
   const value = typeof field.value === 'number' ? field.value : min, disabled = streaming || !config.features.state;
-  const label = String(props.label ?? ''), zh = document.documentElement.lang.startsWith('zh');
+  const label = String(props.label ?? ''), zh = language === 'zh';
   return <fieldset className="genui-field genui-slider" disabled={disabled}><legend>{label}</legend><div className="genui-slider-values">
     {range ? range.map((value, index) => <label key={index}><span>{index === 0 ? zh ? '起点' : 'Start' : zh ? '终点' : 'End'}</span><input id={`${id}-${index}`} type="range" min={0} max={steps} step={1} value={indexOf(value, min)} aria-valuemin={min} aria-valuemax={max} aria-valuenow={value} aria-valuetext={String(value)} aria-label={`${label} ${index === 0 ? zh ? '起点' : 'Start' : zh ? '终点' : 'End'}`} onChange={event => {
       const next = valueAt(Number(event.target.value)); field.setValue(index === 0 ? [Math.min(next, range[1]), range[1]] : [range[0], Math.max(next, range[0])]);
@@ -97,11 +100,11 @@ function SwitchGroup({ props, config, statementId }: { props: Record<string, unk
   return <fieldset className="genui-field genui-switch-group" disabled={streaming || !config.features.state}><legend>{String(props.label)}</legend>{options.map(option => <label className="genui-switch-option" key={option}><span>{option}</span><input className="capture-switch" type="checkbox" role="switch" checked={selected.includes(option)} onChange={event => field.setValue(event.target.checked ? [...selected, option] : selected.filter(value => value !== option))} /></label>)}</fieldset>;
 }
 
-function Tabs({ props, renderNode, statementId, config }: ComponentRenderProps & { config: GenUIConfiguration }) {
+function Tabs({ props, renderNode, statementId, config, language }: ComponentRenderProps & { config: GenUIConfiguration; language: Language }) {
   const id = useId(), streaming = useIsStreaming();
   const field = useStateField(String(props.name || statementId || 'tabs'), props.value ?? 0);
   const labels = props.labels as string[], children = props.children as unknown[];
-  const zh = document.documentElement.lang.startsWith('zh');
+  const zh = language === 'zh';
   const count = Math.max(labels.length, children.length), selected = Math.round(clamp(field.value, 0, 0, Math.max(0, count - 1)));
   const disabled = streaming || !config.features.state;
   return <div className="genui-tabs"><div role="tablist" aria-label={String(props.name)} onKeyDown={event => {
@@ -131,12 +134,12 @@ function ExternalLink({ url, label }: { url: unknown; label: ReactNode }) {
   return target ? <TargetLink className="genui-link" href={target} target="_blank" rel="noreferrer">{label}</TargetLink> : <span>{label}</span>;
 }
 
-function renderComponent(name: string, renderProps: ComponentRenderProps, config: GenUIConfiguration): ReactNode {
+function renderComponent(name: string, renderProps: ComponentRenderProps, config: GenUIConfiguration, language: Language): ReactNode {
   const { props, renderNode, statementId } = renderProps;
-  if (name === 'Tabs') return <Tabs {...renderProps} config={config} />;
+  if (name === 'Tabs') return <Tabs {...renderProps} config={config} language={language} />;
   if (name === 'Accordion') return <Accordion {...renderProps} config={config} />;
   if (name === 'SwitchGroup') return <SwitchGroup props={props} config={config} statementId={statementId} />;
-  if (name === 'Slider') return <SliderControl props={props} config={config} statementId={statementId} />;
+  if (name === 'Slider') return <SliderControl props={props} config={config} statementId={statementId} language={language} />;
   if (['Input', 'TextArea', 'NumberInput', 'Select', 'Checkbox', 'DatePicker'].includes(name)) return <Control name={name} props={props} config={config} statementId={statementId} />;
   const children = () => renderNode(props.children);
   switch (name) {
@@ -156,9 +159,9 @@ function renderComponent(name: string, renderProps: ComponentRenderProps, config
     case 'Button': return <ActionButton props={props} config={config} />;
     case 'Form': return <FormNameContext.Provider value={String(props.name || statementId || 'form')}><div className="genui-col">{children()}</div></FormNameContext.Provider>;
     case 'Table': return <div className="genui-table-scroll"><table>{!!props.caption && <caption>{String(props.caption)}</caption>}<thead><tr>{(props.columns as string[]).map((item, index) => <th key={index}>{item}</th>)}</tr></thead><tbody>{(props.rows as unknown[][]).map((row, index) => <tr key={index}>{row.map((cell, column) => <td key={column}>{String(cell ?? '')}</td>)}</tr>)}</tbody></table></div>;
-    case 'LineChart': case 'BarChart': case 'PieChart': return <Chart type={name} labels={props.labels as string[]} values={props.values as number[]} title={props.title as string | undefined} />;
+    case 'LineChart': case 'BarChart': case 'PieChart': return <Chart language={language} type={name} labels={props.labels as string[]} values={props.values as number[]} title={props.title as string | undefined} />;
     case 'Math': return <Suspense fallback={<code>{String(props.expression)}</code>}><MathView expression={String(props.expression)} display={props.display as boolean | undefined} /></Suspense>;
-    case 'Map': return <Suspense fallback={<p role="status">正在载入地图…</p>}><MapView longitude={Number(props.longitude)} latitude={Number(props.latitude)} zoom={props.zoom as number | undefined} label={props.label as string | undefined} /></Suspense>;
+    case 'Map': return <Suspense fallback={<p role="status">{language === 'zh' ? '正在载入地图…' : 'Loading map…'}</p>}><MapView longitude={Number(props.longitude)} latitude={Number(props.latitude)} zoom={props.zoom as number | undefined} label={props.label as string | undefined} /></Suspense>;
     case 'Image': return <ZoomableImage loading="lazy" src={safeGenUIUrl(props.url,true)} alt={String(props.alt)} />;
     case 'Video': return <video controls preload="none" src={safeGenUIUrl(props.url)} aria-label={String(props.title)} />;
     case 'Audio': return <audio controls preload="none" src={safeGenUIUrl(props.url)} aria-label={String(props.title)} />;
@@ -167,5 +170,5 @@ function renderComponent(name: string, renderProps: ComponentRenderProps, config
 }
 
 export function createGenUILibrary(config: GenUIConfiguration) {
-  return createLibrary({ id: 'omp-genui.v1', components: GENUI_COMPONENTS.filter(item => config.components.includes(item.name)).map(item => defineComponent({ name: item.name, description: item.label, props: z.object(Object.fromEntries(exposedGenUIFields(item, config).map(field => [field.name, schema(field, config)]))), component: renderProps => renderComponent(item.name, renderProps, config) })) });
+  return createLibrary({ id: 'omp-genui.v1', components: GENUI_COMPONENTS.filter(item => config.components.includes(item.name)).map(item => defineComponent({ name: item.name, description: item.label, props: z.object(Object.fromEntries(exposedGenUIFields(item, config).map(field => [field.name, schema(field, config)]))), component: function Component(renderProps) { const language = useContext(GenUILanguage); return renderComponent(item.name, renderProps, config, language); } })) });
 }

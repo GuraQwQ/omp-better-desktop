@@ -204,7 +204,8 @@ export const settingsZh: Record<string, { label: string; description?: string; o
     "options": {
       "smart": "智能",
       "always": "始终",
-      "off": "关闭"
+      "off": "关闭",
+      "auto": "自动"
     }
   },
   "tui.reactions": {
@@ -3139,5 +3140,88 @@ export const settingsZh: Record<string, { label: string; description?: string; o
   },
   "gc.compressAfterDays": {
     "label": "压缩闲置天数"
+  },
+  "display.advisorCollapsedLines": {
+    "label": "顾问卡片折叠行数",
+    "description": "顾问卡片折叠时在标题下显示的最大备注行数；0 表示完整预览，可通过工具输出开关展开。",
+    "options": {
+      "0": "不限",
+      "1": "1 行",
+      "2": "2 行",
+      "3": "3 行",
+      "5": "5 行"
+    }
+  },
+  "session.worktreeScope": {
+    "label": "恢复会话的工作树范围",
+    "description": "恢复会话时，选择当前目录是否包含同一仓库其他工作树中的会话。",
+    "options": {
+      "directory": "当前目录",
+      "repo": "仓库工作树"
+    }
+  },
+  "prewalk.from": {
+    "label": "预先执行的规划模型",
+    "description": "/prewalk restart 返回的规划模型或模型角色，默认为 @default。"
+  },
+  "prewalk.into": {
+    "label": "预先执行的目标模型",
+    "description": "/prewalk、/prewalk restart、启用预先执行或 --prewalk 在首次编辑或写入时移交的模型或角色，默认为 @smol。自动预先执行使用独立目标。"
+  },
+  "retry.rateLimitWalksChain": {
+    "label": "限流时继续回退链",
+    "description": "遇到限流时，即使当前思考由失败模型签名，也继续尝试 retry.fallbackChains。关闭时，该轮会先在受限模型上用完 retry.maxRetries，再进入回退链。"
+  },
+  "providers.openai-codex.daybreak": {
+    "label": "Codex Daybreak Blue",
+    "description": "符合资格的 ChatGPT 账号自动申请 Daybreak Blue 网络访问计划。OpenAI 可能使用该计划会话的内容改进模型。此项不控制 gpt-daybreak-blue-* 专用模型，它们仍可能按 Daybreak 会话运行。"
+  },
+  "session.warnCost": {
+    "label": "会话费用提醒阈值"
+  },
+  "session.maxCost": {
+    "label": "会话费用上限"
+  },
+  "out.enabled": {
+    "label": "任务中途回复",
+    "description": "允许代理写入 out://，在不中断当前轮的情况下显示回复。未设置时，交互终端默认开启，打印、RPC 和 ACP 模式默认关闭。"
+  },
+  "async.printWake": {
+    "label": "后台结果唤醒打印模式",
+    "description": "打印模式（-p、--mode json）在本次后台任务仍运行时继续等待，并将每个结果送入同一会话的新一轮；没有待处理任务或结果后退出。关闭时，提示处理完即退出并取消运行中的任务。"
+  },
+  "tools.restrictedFolders": {
+    "label": "受限文件夹",
+    "description": "这些文件夹及其子项中的读取、写入、编辑、搜索和命令都需要明确批准，不受当前审批模式或已记住授权影响。命令按运行目录匹配。填写路径 JSON 列表，例如 [\"~/secrets\"]。"
+  },
+  "tools.xdevNotices": {
+    "label": "xd:// 挂载通知",
+    "description": "MCP 或扩展工具挂载、卸载时，显示 xd:// 挂载通知。模型在下一次收到提示时仍会获知变更。"
+  },
+  "task.file": {
+    "label": "从文件读取子代理任务",
+    "description": "允许 task 工具从 taskFile 文件读取子代理指令，并记录文件路径与 SHA-256。"
+  },
+  "title.refreshAfterPrompts": {
+    "label": "会话标题复查间隔",
+    "description": "每隔指定数量的用户提示，请评判模型检查自动生成的会话标题；不再匹配对话时重新生成。",
+    "options": {
+      "0": "关闭",
+      "1": "每次提问",
+      "3": "每 3 次提问",
+      "5": "每 5 次提问",
+      "10": "每 10 次提问"
+    }
+  },
+  "extensionHandlers.modeControl": {
+    "label": "扩展模式控制",
+    "description": "允许扩展通过 ctx.sessionModes.set() 进入和退出计划、Vibe、目标、循环模式；读取模式状态的能力始终可用。"
+  },
+  "extensionRenderers.assistantText": {
+    "label": "扩展回复渲染",
+    "description": "允许扩展改变助手回复的显示方式、原位重绘回复，并接收其自有链接点击。会话、导出和模型上下文仍保留回复原文。"
+  },
+  "gc.autoCompress": {
+    "label": "自动压缩冷会话文件"
   }
 };
