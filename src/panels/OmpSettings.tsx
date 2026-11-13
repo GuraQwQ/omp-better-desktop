@@ -44,7 +44,7 @@ export default function OmpSettings({ sessionId, language, initialQuery = '' }: 
   const load = async () => {
     const current = ++revision.current;
     const target = sessionId;
-    setLoading(true); setError(''); setSettings([]);
+    setLoading(true); setError(''); setSettings([]); setSummaryModels([]);
     try {
       const result = await rpc(sessionId, 'desktop_settings', { operation: 'list' });
       void rpc(sessionId, 'get_available_models').then(models => { if (current === revision.current && target === activeSession.current) setSummaryModels(models.models ?? []); }).catch(() => {});
