@@ -1,0 +1,23 @@
+diff --git a/packages/coding-agent/src/modes/rpc/desktop.ts b/packages/coding-agent/src/modes/rpc/desktop.ts
+--- a/packages/coding-agent/src/modes/rpc/desktop.ts
++++ b/packages/coding-agent/src/modes/rpc/desktop.ts
+@@ -32,13 +32,19 @@
+ 		}
+ 		await settings.flush();
+ 	}
++	const global = settings.getGlobalSettings();
+ 	return {
++		profilePath: settings.getAgentDir(),
++		advisorConfigured: Boolean(settings.getModelRole("advisor")),
+ 		settings: orderedSettings().map(setting => ({
+ 			key: setting.id,
+ 			path: setting.id,
+ 			type: setting.type,
+ 			defaultValue: setting.isCredential ? undefined : setting.default,
+ 			value: setting.isCredential ? undefined : setting.layered(settings),
++			effectiveValue: setting.isCredential ? undefined : setting.get(settings),
++			globalValue: setting.isCredential ? undefined : setting.segments.reduce<unknown>((value, segment) =>
++				value && typeof value === "object" ? (value as Record<string, unknown>)[segment] : undefined, global),
+ 			credential: setting.isCredential,
+ 			configured: setting.isCredential ? Boolean(setting.layered(settings)) : undefined,
+ 			enumValues: setting.enumValues,

@@ -26,6 +26,7 @@ const groupNames: Record<string, string> = {
   'Read Summaries': '读取摘要', Reading: '读取', 'Retry & Fallback': '重试与回退', 'Rules (TTSR)': '规则（TTSR）',
   Sampling: '采样', Services: '服务', Skills: '技能', Speech: '语音', 'Startup & Updates': '启动与更新',
   'Status Line': '状态栏', Stream: '流式输出', Subagents: '子代理', Theme: '主题', Thinking: '思考',
+  Bash: 'Bash 命令', Git: 'Git', GitHub: 'GitHub', LSP: '语言服务（LSP）',
   Timeouts: '超时', 'Tiny Model': '小型模型', Todos: '待办', Vision: '视觉',
 };
 
