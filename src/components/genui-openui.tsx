@@ -69,20 +69,25 @@ function SliderControl({ props, config, statementId }: { props: Record<string, u
   const id = useId(), streaming = useIsStreaming();
   const min = Math.min(Number(props.min), Number(props.max)), max = Math.max(Number(props.min), Number(props.max));
   const step = typeof props.step === 'number' && props.step > 0 && Number.isFinite(props.step) ? props.step : 1;
-  const snap = (value: unknown, fallback: number) => {
-    const number = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-    const index = Math.max(0, Math.min(Math.floor((max - min) / step + 1e-9), Math.round((number - min) / step)));
-    return Number((min + index * step).toPrecision(12));
+  // 滑轨按步序号定位，最后一个位置始终映射到声明的最大值。
+  const intervals = (max - min) / step;
+  const steps = Math.max(max > min ? 1 : 0, Math.ceil(intervals - Math.abs(intervals) * Number.EPSILON * 4));
+  const valueAt = (index: number) => index >= steps ? max : Number((min + index * step).toPrecision(12));
+  const indexOf = (value: unknown, fallback: number) => {
+    const number = typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
+    const lower = Math.max(0, Math.min(steps, Math.floor((number - min) / step))), upper = Math.min(steps, lower + 1);
+    return number - valueAt(lower) < valueAt(upper) - number ? lower : upper;
   };
+  const snap = (value: unknown, fallback: number) => valueAt(indexOf(value, fallback));
   const initial = isReactiveAssign(props.value) ? props.value : Array.isArray(props.value) ? [snap(props.value[0], min), snap(props.value[1], max)].sort((a, b) => a - b) : snap(props.value, min);
   const field = useStateField(String(props.name || statementId || 'slider'), initial);
   const range = Array.isArray(field.value) ? [snap(field.value[0], min), snap(field.value[1], max)].sort((a, b) => a - b) : undefined;
   const value = snap(field.value, min), disabled = streaming || !config.features.state;
   const label = String(props.label ?? ''), zh = document.documentElement.lang.startsWith('zh');
   return <fieldset className="genui-field genui-slider" disabled={disabled}><legend>{label}</legend><div className="genui-slider-values">
-    {range ? range.map((value, index) => <label key={index}><span>{index === 0 ? zh ? '起点' : 'Start' : zh ? '终点' : 'End'}</span><input id={`${id}-${index}`} type="range" min={min} max={max} step={step} value={value} aria-label={`${label} ${index === 0 ? zh ? '起点' : 'Start' : zh ? '终点' : 'End'}`} onChange={event => {
-      const next = Number(event.target.value); field.setValue(index === 0 ? [Math.min(next, range[1]), range[1]] : [range[0], Math.max(next, range[0])]);
-    }} /><output htmlFor={`${id}-${index}`}>{value}</output></label>) : <label><input id={id} type="range" min={min} max={max} step={step} value={value} aria-label={label} onChange={event => field.setValue(Number(event.target.value))} /><output htmlFor={id}>{value}</output></label>}
+    {range ? range.map((value, index) => <label key={index}><span>{index === 0 ? zh ? '起点' : 'Start' : zh ? '终点' : 'End'}</span><input id={`${id}-${index}`} type="range" min={0} max={steps} step={1} value={indexOf(value, min)} aria-valuemin={min} aria-valuemax={max} aria-valuenow={value} aria-valuetext={String(value)} aria-label={`${label} ${index === 0 ? zh ? '起点' : 'Start' : zh ? '终点' : 'End'}`} onChange={event => {
+      const next = valueAt(Number(event.target.value)); field.setValue(index === 0 ? [Math.min(next, range[1]), range[1]] : [range[0], Math.max(next, range[0])]);
+    }} /><output htmlFor={`${id}-${index}`}>{value}</output></label>) : <label><input id={id} type="range" min={0} max={steps} step={1} value={indexOf(value, min)} aria-valuemin={min} aria-valuemax={max} aria-valuenow={value} aria-valuetext={String(value)} aria-label={label} onChange={event => field.setValue(valueAt(Number(event.target.value)))} /><output htmlFor={id}>{value}</output></label>}
   </div></fieldset>;
 }
 
@@ -97,14 +102,15 @@ function Tabs({ props, renderNode, statementId, config }: ComponentRenderProps &
   const id = useId(), streaming = useIsStreaming();
   const field = useStateField(String(props.name || statementId || 'tabs'), props.value ?? 0);
   const labels = props.labels as string[], children = props.children as unknown[];
-  const count = Math.min(labels.length, children.length), selected = Math.round(clamp(field.value, 0, 0, Math.max(0, count - 1)));
+  const zh = document.documentElement.lang.startsWith('zh');
+  const count = Math.max(labels.length, children.length), selected = Math.round(clamp(field.value, 0, 0, Math.max(0, count - 1)));
   const disabled = streaming || !config.features.state;
   return <div className="genui-tabs"><div role="tablist" aria-label={String(props.name)} onKeyDown={event => {
     if (disabled || !count || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault(); const next = event.key === 'Home' ? 0 : event.key === 'End' ? count - 1 : (selected + (event.key === 'ArrowRight' ? 1 : -1) + count) % count;
     field.setValue(next); event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
-  }}>{labels.slice(0, count).map((label, index) => <button type="button" role="tab" key={index} id={`${id}-tab-${index}`} aria-controls={`${id}-panel-${index}`} aria-selected={selected === index} tabIndex={selected === index ? 0 : -1} disabled={disabled} onClick={() => field.setValue(index)}>{label}</button>)}</div>
-    {children.slice(0, count).map((child, index) => <div key={index} id={`${id}-panel-${index}`} role="tabpanel" aria-labelledby={`${id}-tab-${index}`} hidden={selected !== index} tabIndex={0}>{renderNode(child)}</div>)}
+  }}>{Array.from({ length: count }, (_, index) => <button type="button" role="tab" key={index} id={`${id}-tab-${index}`} aria-controls={`${id}-panel-${index}`} aria-selected={selected === index} tabIndex={selected === index ? 0 : -1} disabled={disabled} onClick={() => field.setValue(index)}>{labels[index] ?? `${zh ? '标签页' : 'Tab'} ${index + 1}`}</button>)}</div>
+    {Array.from({ length: count }, (_, index) => <div key={index} id={`${id}-panel-${index}`} role="tabpanel" aria-labelledby={`${id}-tab-${index}`} hidden={selected !== index} tabIndex={0}>{index < children.length ? renderNode(children[index]) : <p>{zh ? '暂无内容。' : 'No content yet.'}</p>}</div>)}
   </div>;
 }
 

@@ -108,7 +108,7 @@ export function buildGenUIInstructions(value: unknown): string {
   if (components.some(component => component.name === 'Tabs')) lines.push('Tabs的labels与children按相同顺序对应，value为从0开始的选中项；切换标签页保留各页输入。');
   if (components.some(component => component.name === 'Accordion')) lines.push('Accordion的value是是否展开；将较长的辅助内容放入折叠区。');
   if (components.some(component => component.name === 'SwitchGroup')) lines.push('SwitchGroup的value为已开启选项的字符串数组，各选项可独立切换。');
-  if (components.some(component => component.name === 'Slider')) lines.push('Slider的value可为单个数值或[起点,终点]；step设置步长，默认为1，范围端点不能交叉。');
+  if (components.some(component => component.name === 'Slider')) lines.push('Slider的value可为单个数值或[起点,终点]；step设置步长，默认为1；最大值始终可选，最后一段可以小于step，范围端点不能交叉。');
   if (config.features.state) lines.push('本地状态用 $变量声明并传入 reactive 参数；例如 $name = ""，input = Input("name", "姓名", $name)。');
   if (config.features.actions) lines.push('按钮动作可用 @ToAssistant("用户意图")；在当前用户点击后，将表单状态返回会话。');
   if (config.features.state) lines.push('本地变量可使用 @Set($变量, 值) 与 @Reset($变量)，按钮点击只在本地更新。');
