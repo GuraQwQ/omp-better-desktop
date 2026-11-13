@@ -6,6 +6,7 @@ export type TranscriptItem =
 
 export const isToolMessage = (message: Message): boolean => message.role === 'toolResult' || message.role === 'tool';
 export const isStoppedMessage = (message: Message): boolean => message.role === 'assistant' && ['aborted', 'error'].includes(message.stopReason);
+export const isSessionNotice = (message: Message): boolean => message.role === 'custom' || message.role === 'hookMessage';
 
 export function toolFailed(message: Message): boolean {
   const details = message.result?.details ?? message.partialResult?.details ?? message.details;
@@ -34,6 +35,8 @@ export function projectTranscript(messages: Message[]): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   let previousScope = -1;
   messages.forEach((source, index) => {
+    // 上游的展示标记只控制投影，原始消息继续用于上下文和历史。
+    if (isSessionNotice(source) && source.display === false) return;
     let message = source;
     if (message.role === 'assistant' && Array.isArray(message.content)) {
       // 结果按真实调用ID显示，未收到结果的调用仍留在原消息中。

@@ -23,12 +23,14 @@ export function settingOptionValues(setting: Json): (string | number | boolean)[
   }) ?? [];
 }
 
+const commonOptionsZh: Record<string, string> = { default: '默认', auto: '自动', on: '开启', off: '关闭', enabled: '开启', disabled: '关闭', true: '是', false: '否', global: '全局', project: '项目', never: '从不', always: '始终', inherit: '沿用上级', all: '全部' };
+
 export function settingView(setting: Json, language: Language) {
   const translated = language === 'zh' ? settingsZh[setting.path ?? setting.id] : undefined;
   return {
     label: translated?.label ?? settingText(setting.ui?.label ?? setting.label ?? setting.path ?? setting.id),
     description: translated?.description ?? settingText(setting.ui?.description ?? setting.description),
-    options: settingOptions(setting).map(option => ({ ...option, label: translated?.options?.[option.value] ?? option.label })),
+    options: settingOptions(setting).map(option => ({ ...option, label: translated?.options?.[option.value] ?? (language === 'zh' ? commonOptionsZh[option.value] : undefined) ?? option.label })),
   };
 }
 

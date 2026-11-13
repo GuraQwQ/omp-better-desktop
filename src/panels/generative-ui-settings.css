@@ -46,3 +46,7 @@
   .genui-setting-option:active,.genui-component-option:active,.genui-settings input:active { transform: none; }
 }
 @media (max-width: 600px) { .genui-feature-list { grid-template-columns: 1fr; } }
+
+.genui-usage { margin-bottom: 18px; gap: 16px; }
+.genui-usage .select-control { flex-shrink: 0; min-width: 180px; }
+@media (max-width: 600px) { .genui-usage { align-items: stretch; flex-direction: column; } .genui-usage .select-control { width: 100%; } }

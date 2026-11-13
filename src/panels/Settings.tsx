@@ -1,3 +1,4 @@
+import { modelCatalog } from '../lib/model-catalog';
 import { lazy, Suspense, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { ArrowLeft, ArrowUpRight, Check, Download, FolderOpen, LoaderCircle, RefreshCw } from 'lucide-react';
 import { pickPath, request } from '../lib/bridge';
@@ -10,6 +11,7 @@ import CustomProviders from '../components/CustomProviders';
 import AdvancedSettings from './AdvancedSettings';
 import './import-status.css';
 import './omp-settings.css';
+import SettingsPresets from '../components/SettingsPresets';
 
 const OmpSettings = lazy(() => import('./OmpSettings'));
 const GenerativeUISettings = lazy(() => import('./GenerativeUISettings'));
@@ -48,8 +50,9 @@ export default function Settings({ bootstrap, t, sessionId, cwd = '', ensureSess
     const saving = preferenceQueue.current.then(async () => {
       const preferences = await request<Preferences>('preferences.set', { patch });
       update(current => ({ ...current, preferences }));
+      return preferences;
     });
-    preferenceQueue.current = saving.catch(() => {});
+    preferenceQueue.current = saving.then(() => {}, () => {});
     return saving;
   };
   useEffect(() => {
@@ -60,6 +63,7 @@ export default function Settings({ bootstrap, t, sessionId, cwd = '', ensureSess
     setImportResult(null); setImportDetails(false);
     return perform('import', async () => {
       const result = await request<ImportResult>('data.import', { path });
+      modelCatalog.invalidate();
       setImportResult({ path, result });
       await reload();
       return '';
@@ -77,10 +81,10 @@ export default function Settings({ bootstrap, t, sessionId, cwd = '', ensureSess
     <header className="page-header"><button className="icon-button" title={t.close} onClick={close}><ArrowLeft size={18} /></button><h1>{t.settings}</h1></header>
     <div className="settings-layout"><nav className="settings-nav" aria-label={t.settings}>{navigation.map(group => <div key={group.group}><small>{group.group}</small>{group.tabs.map(([id, label]) => <button key={id} aria-current={tab === id ? 'page' : undefined} className={tab === id ? 'active' : ''} onClick={() => { setNotice(''); setTab(id); }}>{label}</button>)}</div>)}</nav>
       <section className="settings-content" key={tab}><Suspense fallback={<p role="status">{t.loading}</p>}>
-        {tab === 'shortcuts' && <><h2>{zh ? '快捷键' : 'Keyboard shortcuts'}</h2><p>{zh ? '点击输入框后按下组合键。Mod 对应 Ctrl 或 Command，清空可停用。' : 'Focus an input and press a key combination. Mod means Ctrl or Command; clear to disable.'}</p>{Object.entries(shortcuts).map(([key, shortcut]) => <div className="setting-row" key={key}><label htmlFor={`shortcut-${key}`}>{shortcut.label}</label><input id={`shortcut-${key}`} aria-label={shortcut.label} value={shortcutValue(key as keyof typeof shortcuts, bootstrap.preferences.shortcuts)} onChange={event => void preference({ shortcuts: { ...bootstrap.preferences.shortcuts, [key]: event.target.value } }).catch(onError)} onKeyDown={event => { if (event.key === 'Tab') return; event.preventDefault(); if (['Control', 'Meta', 'Shift', 'Alt'].includes(event.key)) return; const value = event.key === 'Backspace' || event.key === 'Delete' ? '' : [...(event.ctrlKey || event.metaKey ? ['Mod'] : []), ...(event.altKey ? ['Alt'] : []), ...(event.shiftKey ? ['Shift'] : []), event.key.length === 1 ? event.key.toUpperCase() : event.key].join('+'); const values = { ...bootstrap.preferences.shortcuts, [key]: value }; if (value && Object.keys(shortcuts).some(id => id !== key && shortcutValue(id as keyof typeof shortcuts, values).toLowerCase() === value.toLowerCase())) { onError(zh ? '该组合键已用于其他操作。' : 'This shortcut is already assigned.'); return; } void preference({ shortcuts: values }).catch(onError); }} /></div>)}<button className="quiet-button" onClick={() => void preference({ shortcuts: {} }).catch(onError)}>{zh ? '恢复默认' : 'Restore defaults'}</button></>}
+        {tab === 'shortcuts' && <><h2>{zh ? '快捷键' : 'Keyboard shortcuts'}</h2><p>{zh ? '点击输入框后按下组合键。Mod 对应 Ctrl 或 Command，清空可停用。' : 'Focus an input and press a key combination. Mod means Ctrl or Command; clear to disable.'}</p>{Object.entries(shortcuts).map(([key, shortcut]) => <div className="setting-row" key={key}><label htmlFor={`shortcut-${key}`}>{zh ? shortcut.label : shortcut.enLabel}</label><input id={`shortcut-${key}`} aria-label={zh ? shortcut.label : shortcut.enLabel} value={shortcutValue(key as keyof typeof shortcuts, bootstrap.preferences.shortcuts)} onChange={event => void preference({ shortcuts: { ...bootstrap.preferences.shortcuts, [key]: event.target.value } }).catch(onError)} onKeyDown={event => { if (event.key === 'Tab') return; event.preventDefault(); if (['Control', 'Meta', 'Shift', 'Alt'].includes(event.key)) return; const value = event.key === 'Backspace' || event.key === 'Delete' ? '' : [...(event.ctrlKey || event.metaKey ? ['Mod'] : []), ...(event.altKey ? ['Alt'] : []), ...(event.shiftKey ? ['Shift'] : []), event.key.length === 1 ? event.key.toUpperCase() : event.key].join('+'); const values = { ...bootstrap.preferences.shortcuts, [key]: value }; if (value && Object.keys(shortcuts).some(id => id !== key && shortcutValue(id as keyof typeof shortcuts, values).toLowerCase() === value.toLowerCase())) { onError(zh ? '该组合键已用于其他操作。' : 'This shortcut is already assigned.'); return; } void preference({ shortcuts: values }).catch(onError); }} /></div>)}<button className="quiet-button" onClick={() => void preference({ shortcuts: {} }).catch(onError)}>{zh ? '恢复默认' : 'Restore defaults'}</button></>}
         {tab === 'generativeUI' && <GenerativeUISettings language={language} configuration={bootstrap.preferences.generativeUI} onChange={configuration => preference({ generativeUI: configuration }).then(() => {})} />}
         {tab === 'advanced' && <AdvancedSettings language={bootstrap.preferences.language} />}
-        {tab === 'general' && <GeneralPreferences bootstrap={bootstrap} t={t} change={patch => void preference(patch).catch(onError)} />}
+        {tab === 'general' && <><SettingsPresets preferences={bootstrap.preferences} sessionId={sessionId} ensureSession={ensureSession} changePreferences={preference} /><GeneralPreferences bootstrap={bootstrap} t={t} change={patch => void preference(patch).catch(onError)} /></>}
         {tab === 'appearance' && <AppearancePreferences bootstrap={bootstrap} t={t} change={patch => void preference(patch).catch(onError)} />}
         {tab === 'runtime' && <><h2>{t.runtime}</h2><div className="runtime-status"><span className={`status-dot ${bootstrap.runtime ? 'connected' : ''}`} /><strong>{bootstrap.runtime ? `${t.installed} / OMP ${bootstrap.runtime.version}` : t.notInstalled}</strong></div><p>{t.installText}</p>{bootstrap.runtime && <code className="path-value">{displayPath(bootstrap.runtime.path)}</code>}{bootstrap.runtime && <div className="settings-actions"><button className="quiet-button" disabled={!!working} onClick={() => perform('install', async () => { const path = await pickPath(true); if (!path) return ''; await request('runtime.install', { path }); await reload(); })}><Download size={15} />{t.choosePackage}</button><button className="quiet-button" disabled={!!working || !bootstrap.runtime} onClick={() => perform('rollback', async () => { await request('runtime.rollback'); await reload(); })}>{t.rollback}</button></div>}<div className="setting-row"><strong>{t.clean}</strong><button className="quiet-button" disabled={!!working} onClick={() => perform('clean', () => request('runtime.clean'))}>{t.clean}</button></div></>}
         {tab === 'data' && <><h2>{t.data}</h2><p>{t.setupDescription}</p><div className="settings-actions"><button className="secondary-button" disabled={!!working} onClick={() => perform('discover', async () => { setFound(await request<Json[]>('data.discover')); })}><RefreshCw size={14} />{t.discover}</button><button className="quiet-button" disabled={!!working} onClick={async () => { try { const path = await pickPath(); if (path) await importFolder(path); } catch (e) { onError(e); } }}><FolderOpen size={14} />{t.importFolder}</button></div>{found.map(source => <div className="source-row" key={source.path}><div><code>{displayPath(source.path)}</code><small>{source.sessionCount ?? 0} {t.history.toLowerCase()}</small></div><button className="secondary-button" disabled={!!working} onClick={() => importFolder(source.path)}>{t.importData}</button></div>)}{importResult && <section className={`import-status${importResult.result.completed ? ' is-complete' : ''}`} aria-label={t.importData} role="status">

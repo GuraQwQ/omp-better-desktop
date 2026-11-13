@@ -1,4 +1,4 @@
-import type { ContentBlock, Message } from './types';
+import type { ContentBlock, Language, Message } from './types';
 
 export type ReferenceSource = { sessionId?: string; sessionPath?: string; sessionTitle?: string };
 export type ConversationReference = {
@@ -35,7 +35,7 @@ export function createMessageReference(source: ReferenceSource, message: Message
 }
 
 export function createToolCallReference(source: ReferenceSource, message: Message, block?: ContentBlock, turn?: number, selection?: string): ConversationReference {
-  return identify({ source: { ...source, messageId: message.id, role: message.role, turn, kind: 'tool-call', toolName: block?.name ?? message.toolName, toolCallId: block?.id ?? message.toolCallId }, content: selection ?? JSON.stringify(block?.arguments ?? message.args ?? {}, null, 2) });
+  return identify({ source: { ...source, messageId: message.id, role: message.role, turn, kind: 'tool-call', toolName: block?.name ?? message.toolName, toolCallId: block?.id ?? message.toolCallId }, content: selection ?? block?.argumentsText ?? JSON.stringify(block?.arguments ?? message.args ?? {}, null, 2) });
 }
 
 export function appendReferences(existing: ConversationReference[], additions: ConversationReference[]): ConversationReference[] {
@@ -65,10 +65,11 @@ export function parseReferencedPrompt(raw: string): { body: string; references: 
   return { body: raw, references: [] };
 }
 
-export function referenceLabel(reference: ConversationReference): string {
+export function referenceLabel(reference: ConversationReference, language: Language = 'zh'): string {
+  const zh = language === 'zh';
   const source = reference.source;
-  const role = source.kind === 'tool-call' ? '工具调用' : source.kind === 'tool-result' ? '工具结果' : source.role === 'user' ? '用户' : source.role === 'assistant' ? '助手' : source.role;
-  return [source.sessionTitle || source.sessionId || '当前会话', source.turn ? `第 ${source.turn} 轮` : '', role, source.toolName].filter(Boolean).join(' · ');
+  const role = source.kind === 'tool-call' ? zh ? '工具调用' : 'Tool call' : source.kind === 'tool-result' ? zh ? '工具结果' : 'Tool result' : source.role === 'user' ? zh ? '用户' : 'You' : source.role === 'assistant' ? zh ? '助手' : 'Assistant' : source.role;
+  return [source.sessionTitle || source.sessionId || (zh ? '当前会话' : 'Current conversation'), source.turn ? zh ? `第 ${source.turn} 轮` : `Turn ${source.turn}` : '', role, source.toolName].filter(Boolean).join(' · ');
 }
 
 export function referencePreview(reference: ConversationReference): string {

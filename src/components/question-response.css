@@ -1,0 +1,9 @@
+.question-response { min-width: 0; overflow-wrap: anywhere; }
+.question-response-heading { display: flex; align-items: center; gap: 6px; color: var(--secondary); font-size: 12px; }
+.question-response dl { display: grid; gap: 12px; margin: 10px 0 0; }
+.question-response dt { font-weight: var(--weight-medium); white-space: pre-wrap; }
+.question-response dt > span { display: block; color: var(--secondary); font-size: 12px; font-weight: var(--weight-normal); }
+.question-response dd { margin: 5px 0 0; }
+.question-response dd > p { margin: 0; white-space: pre-wrap; }
+.question-response dd > ul { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 5px; padding: 0; list-style: none; }
+.question-response li { padding: 2px 8px; border: 1px solid var(--line); border-radius: var(--radius-control); }

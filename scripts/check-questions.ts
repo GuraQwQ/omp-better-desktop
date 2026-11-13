@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { answerableQuestion, completeQuestion, createQuestionDraft, questionDraft, updateQuestionDraft } from '../src/lib/question-draft';
+import { answerableQuestion, completeQuestion, createQuestionDraft, questionAnswersComplete, questionDraft, updateQuestionDraft } from '../src/lib/question-draft';
+import { readQuestionResponse } from '../src/lib/question-response';
+import { displayUserPrompt } from '../src/lib/genui-prompt';
 import { applyEvent, isSessionRunning } from '../src/lib/session-state';
 import type { Json, SessionView } from '../src/lib/types';
 
@@ -27,4 +29,17 @@ assert.equal(ended.questionDrafts, undefined);
 assert.equal(applyEvent(ended, ask), ended);
 assert.equal(applyEvent(first, { type: 'session_settled' }).questionDrafts, first.questionDrafts);
 assert.equal(applyEvent(first, { type: 'session_info_update', sessionFile: '/two.jsonl' }).questionDrafts, undefined);
-console.log('提问草稿隔离、重试、迟到响应和会话结束检查通过');
+
+const inputQuestion = { ...ask, questions: [{ id: 'details', question: '需要哪些结果？', options: [] }] };
+const inputDraft = { ...createQuestionDraft(inputQuestion), answers: { details: { selectedOptions: [], customInput: '第一行\n第二行' } } };
+assert.equal(questionAnswersComplete(inputQuestion, createQuestionDraft(inputQuestion)), false);
+assert.equal(questionAnswersComplete(inputQuestion, inputDraft), true);
+const record = { questionId: 'desktop-ask-12345678-1234-1234-1234-123456789abc', answers: [{ id: 'details', question: '需要哪些结果？', selectedOptions: [], customInput: inputDraft.answers.details.customInput }] };
+const content = '[omp-desktop-question-response]\n' + JSON.stringify(record) + '\n[/omp-desktop-question-response]';
+assert.deepEqual(readQuestionResponse({ id: 'reply', role: 'user', content }), record);
+assert.deepEqual(readQuestionResponse({ id: 'history', role: 'user', content: [{ type: 'text', text: content }] }), record);
+assert.equal(readQuestionResponse({ id: 'assistant', role: 'assistant', content }), undefined);
+assert.equal(readQuestionResponse({ id: 'quote', role: 'user', content: '这是格式示例：\n' + content }), undefined);
+assert.equal(readQuestionResponse({ id: 'broken', role: 'user', content: content.replace('selectedOptions', 'invalidOptions') }), undefined);
+assert.equal(displayUserPrompt(content), '需要哪些结果？\n第一行\n第二行');
+console.log('提问草稿、失败重试、纯输入确认与历史问答展示检查通过');

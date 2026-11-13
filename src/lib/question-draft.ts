@@ -1,11 +1,20 @@
 import type { Json, QuestionDraft, SessionView } from './types';
 
+export const QUESTION_CONFIRMATION_PENDING = 'Answer confirmation is still pending. Retry to check the same submission.';
+
 export function createQuestionDraft(question: Json): QuestionDraft {
   return { value: String(question.prefill ?? question.defaultValue ?? ''), answers: {} };
 }
 
 export function questionDraft(session: SessionView, question: Json): QuestionDraft {
   return session.questionDrafts?.[question.id] ?? createQuestionDraft(question);
+}
+
+export function questionAnswersComplete(question: Json, draft: QuestionDraft): boolean {
+  return question.method !== 'ask' || Array.isArray(question.questions) && question.questions.length > 0 && question.questions.every((item: Json) => {
+    const answer = draft.answers[item.id];
+    return !!answer && (answer.selectedOptions.length > 0 || !!answer.customInput.trim());
+  });
 }
 
 export function answerableQuestion(session: SessionView | undefined, id: string): Json | undefined {

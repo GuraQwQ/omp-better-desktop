@@ -1,4 +1,6 @@
 use crate::{history, storage};
+#[path = "trash.rs"]
+mod trash;
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde_json::{Value, json};
 use std::{
@@ -29,9 +31,19 @@ fn metadata(root: &Path) -> Result<Value, String> {
             if !value["archives"].is_object() {
                 return Err("会话归档记录格式不正确。".into());
             }
+            let mut value = value;
+            if value.get("pins").is_none() {
+                value["pins"] = json!([]);
+            }
+            if !value["pins"]
+                .as_array()
+                .is_some_and(|pins| pins.iter().all(Value::is_string))
+            {
+                return Err("会话置顶记录格式不正确。".into());
+            }
             Ok(value)
         }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(json!({"archives":{}})),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(json!({"archives":{},"pins":[]})),
         Err(e) => Err(e.to_string()),
     }
 }
@@ -42,7 +54,14 @@ pub fn list(root: &Path, cwd: Option<&str>, include_archived: bool) -> Result<Va
     if let Some(items) = sessions.as_array_mut() {
         for session in items.iter_mut() {
             let key = path_key(session["path"].as_str().unwrap_or_default());
-            session["archived"] = json!(saved["archives"].get(key).is_some());
+            session["archived"] = json!(saved["archives"].get(&key).is_some());
+            let pin = saved["pins"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .position(|path| path.as_str() == Some(key.as_str()));
+            session["pinned"] = json!(pin.is_some());
+            session["pinOrder"] = json!(pin);
         }
         if !include_archived {
             items.retain(|session| session["archived"] != true);
@@ -52,6 +71,7 @@ pub fn list(root: &Path, cwd: Option<&str>, include_archived: bool) -> Result<Va
 }
 
 fn archive(root: &Path, request: &Value) -> Result<Value, String> {
+    let _guard = metadata_lock(root)?;
     let path = text(request, "path")?;
     let archived = request["archived"].as_bool().ok_or("缺少 archived")?;
     let snapshot = if archived {
@@ -69,33 +89,166 @@ fn archive(root: &Path, request: &Value) -> Result<Value, String> {
     } else {
         None
     };
-    fs::create_dir_all(root).map_err(|e| e.to_string())?;
+    update_metadata_locked(root, |value| {
+        let key = path_key(
+            snapshot
+                .as_ref()
+                .and_then(|s| s["path"].as_str())
+                .unwrap_or(path),
+        );
+        let archives = value["archives"].as_object_mut().unwrap();
+        if let Some(snapshot) = snapshot {
+            archives.insert(key, snapshot);
+        } else {
+            archives.remove(&key);
+        }
+        Ok(())
+    })?;
+    Ok(json!({"path":path,"archived":archived}))
+}
+
+fn update_metadata(
+    root: &Path,
+    update: impl FnOnce(&mut Value) -> Result<(), String>,
+) -> Result<(), String> {
+    let _guard = metadata_lock(root)?;
+    update_metadata_locked(root, update)
+}
+
+fn metadata_lock(root: &Path) -> Result<fs::File, String> {
+    fs::create_dir_all(root).map_err(|error| error.to_string())?;
     let lock = OpenOptions::new()
         .create(true)
         .truncate(false)
         .read(true)
         .write(true)
         .open(root.join("desktop-library.lock"))
-        .map_err(|e| e.to_string())?;
-    lock.lock().map_err(|e| e.to_string())?;
+        .map_err(|error| error.to_string())?;
+    lock.lock().map_err(|error| error.to_string())?;
+    Ok(lock)
+}
+
+fn update_metadata_locked(
+    root: &Path,
+    update: impl FnOnce(&mut Value) -> Result<(), String>,
+) -> Result<(), String> {
     let mut value = metadata(root)?;
-    let key = path_key(
-        snapshot
-            .as_ref()
-            .and_then(|s| s["path"].as_str())
-            .unwrap_or(path),
-    );
-    let archives = value["archives"].as_object_mut().unwrap();
-    if let Some(snapshot) = snapshot {
-        archives.insert(key, snapshot);
-    } else {
-        archives.remove(&key);
-    }
+    update(&mut value)?;
     storage::atomic_write(
         &root.join("desktop-library.json"),
-        &serde_json::to_vec_pretty(&value).map_err(|e| e.to_string())?,
-    )?;
-    Ok(json!({"path":path,"archived":archived}))
+        &serde_json::to_vec_pretty(&value).map_err(|error| error.to_string())?,
+    )
+}
+
+fn pin(root: &Path, request: &Value) -> Result<Value, String> {
+    let _guard = metadata_lock(root)?;
+    let path = text(request, "path")?;
+    let pinned = request["pinned"].as_bool().ok_or("缺少 pinned")?;
+    let key = if pinned {
+        path_key(&history::session_path(root, Path::new(path))?.to_string_lossy())
+    } else {
+        path_key(path)
+    };
+    update_metadata_locked(root, |value| {
+        let pins = value["pins"].as_array_mut().unwrap();
+        if pinned {
+            if !pins.iter().any(|path| path.as_str() == Some(key.as_str())) {
+                pins.push(json!(key));
+            }
+        } else {
+            pins.retain(|path| path.as_str() != Some(key.as_str()));
+        }
+        Ok(())
+    })?;
+    Ok(json!({"path":path,"pinned":pinned}))
+}
+
+fn reorder(root: &Path, request: &Value) -> Result<Value, String> {
+    let requested = request["paths"].as_array().ok_or("缺少 paths")?;
+    let mut seen = HashSet::new();
+    let paths: Vec<String> = requested
+        .iter()
+        .map(|path| {
+            path.as_str()
+                .map(path_key)
+                .ok_or("无效的置顶路径".to_owned())
+        })
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter(|path| seen.insert(path.clone()))
+        .collect();
+    update_metadata(root, |value| {
+        let pins = value["pins"].as_array_mut().unwrap();
+        if paths
+            .iter()
+            .any(|path| !pins.iter().any(|pin| pin.as_str() == Some(path.as_str())))
+        {
+            return Err(
+                "置顶列表已变化，请刷新后重试。 / Pinned conversations changed. Refresh and retry."
+                    .into(),
+            );
+        }
+        let mut order = paths.iter();
+        for pin in pins.iter_mut() {
+            if pin.as_str().is_some_and(|path| seen.contains(path)) {
+                *pin = json!(order.next().unwrap());
+            }
+        }
+        Ok(())
+    })?;
+    Ok(json!({"paths":paths}))
+}
+
+pub fn validate_delete(root: &Path, request: &Value) -> Result<PathBuf, String> {
+    let supplied = Path::new(text(request, "path")?);
+    if !supplied.is_absolute()
+        || supplied.extension().and_then(|part| part.to_str()) != Some("jsonl")
+    {
+        return Err("请选择 OMP 会话。 / Choose an OMP conversation.".into());
+    }
+    let missing = match fs::symlink_metadata(supplied) {
+        Ok(_) => false,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+        Err(error) => return Err(error.to_string()),
+    };
+    let path = if missing {
+        supplied.to_owned()
+    } else {
+        let path = history::session_path(root, supplied)?;
+        let key = path_key(&path.to_string_lossy());
+        if !history::list(root, None)?
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|session| path_key(session["path"].as_str().unwrap_or_default()) == key)
+        {
+            return Err(
+                "请选择会话列表中的 OMP 会话。 / Choose an OMP conversation from the list.".into(),
+            );
+        }
+        path
+    };
+    Ok(path)
+}
+
+pub fn delete_session(root: &Path, request: &Value) -> Result<Value, String> {
+    let _guard = metadata_lock(root)?;
+    let path = validate_delete(root, request)?;
+    let missing = !path.exists();
+    if !missing {
+        trash::recycle(&path)?;
+    }
+    let key = path_key(&path.to_string_lossy());
+    let cleanup = update_metadata_locked(root, |value| {
+        value["archives"].as_object_mut().unwrap().remove(&key);
+        value["pins"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|path| path.as_str() != Some(key.as_str()));
+        Ok(())
+    });
+    // 文件已经回收，元数据清理失败不能将结果误报为未删除；再次执行可继续清理。
+    Ok(json!({"path":path,"deleted":true,"missing":missing,"warning":cleanup.err()}))
 }
 
 fn archives(root: &Path) -> Result<Value, String> {
@@ -105,12 +258,20 @@ fn archives(root: &Path) -> Result<Value, String> {
         .iter()
         .map(|s| (path_key(s["path"].as_str().unwrap_or_default()), s.clone()))
         .collect();
-    let mut items: Vec<_> = metadata(root)?["archives"]
+    let saved = metadata(root)?;
+    let mut items: Vec<_> = saved["archives"]
         .as_object()
         .unwrap()
         .iter()
         .map(|(key, old)| {
             let mut summary = live.get(key).unwrap_or(old).clone();
+            let pin = saved["pins"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .position(|path| path.as_str() == Some(key));
+            summary["pinned"] = json!(pin.is_some());
+            summary["pinOrder"] = json!(pin);
             summary["archived"] = json!(true);
             summary["missing"] = json!(!live.contains_key(key));
             summary
@@ -930,6 +1091,9 @@ pub fn execute(root: &Path, request: &Value) -> Result<Value, String> {
     match text(request, "type")? {
         "session.search" => search(root, request),
         "session.archive" => archive(root, request),
+        "session.pin" => pin(root, request),
+        "session.reorder" => reorder(root, request),
+        "session.delete" => delete_session(root, request),
         "session.archives" => archives(root),
         "session.locate" => history::locate(
             root,

@@ -1,0 +1,20 @@
+.image-preview-trigger { cursor: zoom-in; }
+.image-preview-trigger:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.image-preview-dialog { padding: 0; border: 0; border-radius: var(--radius-surface); width: min(1200px, calc(100vw - 32px)); max-width: none; height: calc(100dvh - 48px); max-height: none; color: var(--text); background: var(--surface-raised); box-shadow: var(--shadow); overflow: hidden; }
+.image-preview-dialog[open] { display: flex; flex-direction: column; animation: fade-in var(--motion-fast) ease both; }
+.image-preview-dialog::backdrop { background: color-mix(in srgb, var(--surface) 70%, transparent); }
+.image-preview-dialog > header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 12px 16px; border-bottom: 1px solid var(--line-soft); }
+.image-preview-title { min-width: 0; flex: 1 1 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+.image-preview-actions { display: flex; align-items: center; gap: 4px; margin-inline-start: auto; }
+.image-preview-actions output { min-width: 48px; text-align: center; color: var(--secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
+.image-preview-stage { position: relative; flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; touch-action: none; background: var(--surface); cursor: grab; scrollbar-color: var(--line) var(--surface); }
+.image-preview-stage[data-dragging] { cursor: grabbing; }
+.image-preview-canvas { min-width: 100%; min-height: 100%; display: grid; place-items: center; }
+.image-preview-canvas > img { display: block; max-width: none; max-height: none; user-select: none; }
+.image-preview-status { display: grid; align-content: center; justify-items: center; gap: 12px; height: 100%; margin: 0; padding: 24px; color: var(--secondary); }
+.image-preview-status p { margin: 0; }
+.image-preview-dialog > footer { padding: 8px 16px; color: var(--secondary); font-size: 12px; text-align: center; border-top: 1px solid var(--line-soft); }
+.side-question-record-attachments .image-preview-trigger { max-width: 120px; max-height: 80px; object-fit: contain; border-radius: var(--radius-control); }
+@media (max-width: 620px) { .image-preview-dialog { width: calc(100vw - 16px); height: calc(100dvh - 24px); } .image-preview-dialog > header { padding: 8px; } }
+@media (prefers-reduced-motion: reduce) { .image-preview-dialog[open] { animation: none; } }
+:root[data-motion='reduced'] .image-preview-dialog[open] { animation: none; }

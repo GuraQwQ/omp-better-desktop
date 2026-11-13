@@ -6,8 +6,8 @@
 .tool-structured .tool-summary { min-width: 0; }
 .tool-structured .tool-summary:not(.file-name) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-structured .tool-result-status { margin-left: auto; flex-shrink: 0; }
-.tool-result-body { margin: 1px 0 10px 19px; border-left: 1px solid var(--line); background: var(--tool-surface); }
-.tool-steps { margin: 0 0 18px; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
+.tool-result-body { margin: 1px 0 6px 19px; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-control); overflow: hidden; background: var(--tool-surface); }
+.tool-steps { margin: 0 0 8px; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
 .tool-steps > summary { display: flex; align-items: center; gap: 8px; padding: 10px 2px; color: var(--secondary); font-size: 12px; border-radius: 4px; }
 .tool-steps > summary > span:first-of-type { flex-shrink: 0; }
 .tool-step-counts { color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -16,14 +16,15 @@
 .tool-steps[open] > summary > svg:first-child, .thinking[open] > summary > svg:first-child { transform: rotate(90deg); }
 .tool-structured[open] > summary > svg:first-child, .tool-call[open] > summary > svg:first-child { transform: rotate(90deg); }
 .tool-steps-body { padding: 2px 0 6px 15px; }
-.thinking { margin: 3px 0 12px; color: var(--secondary); font-size: 12px; }
+.thinking { margin: 0 0 6px; color: var(--secondary); font-size: 12px; }
+.message.message-activity { padding-top: 0; }
 .thinking > summary, .message-body .tool-call > summary { display: flex; align-items: center; gap: 7px; padding: 7px 2px; margin: 0; font-size: 12px; border-radius: 4px; }
-.thinking-body { margin: 3px 0 10px 19px; padding-left: 12px; border-left: 1px solid var(--line); font-size: 13px; }
+.thinking-body { margin: 3px 0 6px 19px; padding-left: 12px; border-left: 1px solid var(--line); font-size: 13px; }
 .tool-call-state { margin-left: auto; color: var(--muted); font-size: 12px; }
 .tool-live-rate { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tool-live-rate .generation-rate { font-size: 12px; }
 .tool-live-rate + .tool-result-status, .tool-live-rate + .tool-steps-status, .tool-live-rate + .tool-call-state { margin-left: 0; }
-.message-body .tool-call > pre { margin: 1px 0 10px 19px; border-left: 1px solid var(--line); border-radius: 0; padding: 10px 12px; font-size: 12px; max-height: 320px; overflow: auto; }
+.message-body .tool-call .collapse-inner > pre { margin: 1px 0 6px 19px; border: 1px solid var(--line); border-radius: var(--radius-control); padding: 10px 12px; font-size: 12px; max-height: 320px; overflow: auto; }
 .tool-result-status { display: inline-flex; color: var(--success); }
 .tool-structured.is-error .tool-result-status, .tool-exit.is-error { color: var(--danger); }
 .tool-structured:has(.spin) .tool-result-status { color: var(--muted); }
@@ -34,7 +35,12 @@
 .tool-file-heading > code { min-width: 0; }
 .tool-file-heading > code:not(.file-name) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-file-heading > span { color: var(--secondary); font-variant-numeric: tabular-nums; }
-.tool-result .tool-preview { margin: 0; padding: 8px 0; max-height: 320px; overflow: auto; white-space: pre; line-height: 1.65; font-size: 12px; }
+.tool-file-heading > .tool-submitted-label { margin-left: auto; flex-shrink: 0; }
+.tool-result-body > .tool-command-row:first-child, .tool-result-body > .tool-file-heading:first-child, .tool-file-change:first-child > .tool-file-heading { border-top: 0; }
+.tool-write-status { margin: 0; padding: 8px 12px; border-top: 1px solid var(--line-soft); color: var(--secondary); font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; }
+.tool-structured.is-error .tool-write-status { color: var(--danger); }
+.tool-result .tool-preview { margin: 0; padding: 8px 0; border-radius: 0; max-height: 320px; overflow: auto; white-space: pre; line-height: 1.65; font-size: 12px; }
+.tool-preview > code { display: block; min-width: max-content; }
 .tool-output-line { display: block; min-height: 1.65em; padding: 0 12px; }
 .tool-line-number { display: inline-block; width: 4.5ch; margin-right: 14px; color: var(--secondary); text-align: right; user-select: none; font-variant-numeric: tabular-nums; }
 .tool-output-line.added { background: var(--diff-added); color: var(--success); }
@@ -47,3 +53,5 @@
 .tool-raw[open] > summary > svg { transform: rotate(90deg); }
 .tool-result-image { display: block; max-width: calc(100% - 24px); margin: 12px; max-height: 260px; object-fit: contain; }
 @media (max-width: 520px) { .tool-command-row { flex-wrap: wrap; } .tool-command { flex-basis: 100%; } }
+
+.transcript-before-activity > .message { padding-bottom: 8px; }

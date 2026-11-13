@@ -1,3 +1,4 @@
+import { modelCatalog } from '../lib/model-catalog';
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, FolderOpen } from 'lucide-react';
 import { pickPath, request } from '../lib/bridge';
@@ -33,6 +34,7 @@ export default function LaunchSettings({ cwd, language, reconnect }: { cwd: stri
     try {
       const profile = Object.fromEntries(Object.entries(value).map(([key, value]) => [key, Array.isArray(value) ? value.map(v => v.trim()).filter(Boolean) : value]));
       await request('launch.set', { cwd, profile });
+      modelCatalog.invalidate();
       if (current !== revision.current) return;
       if (restart) await reconnect?.();
       if (current === revision.current) setNotice(restart ? zh ? '已保存并重新连接。' : 'Saved and reconnected.' : zh ? '已保存，下次连接时生效。' : 'Saved. Applies on the next connection.');

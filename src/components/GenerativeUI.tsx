@@ -7,14 +7,18 @@ import { genUIRuntimeConfigurationKey, normalizeGenUIConfiguration } from '../li
 import { genUIRepairMessage, safeGenUIUrl, type GenUIKind } from '../lib/genui';
 import { genUIViews } from '../lib/genui-state';
 import type { Language } from '../lib/types';
-import { createGenUILibrary } from './genui-openui';
+import { createGenUILibrary, GenUILanguage } from './genui-openui';
 import { genUIHtmlDocument, genUITheme } from './genui-html';
+import { ImagePreview } from './ZoomableImage';
+import { useTargetMenu } from './LinkTargets';
 import './genui.css';
 
 interface Props { source: string; kind?: GenUIKind; id: string; sessionId?: string; sessionKey?: string; cwd: string; language: Language; configuration: unknown; onSend: (text: string) => Promise<void>; isStreaming?: boolean; repairReason?: string }
 
 export default function GenerativeUI({ source, kind = 'openui', id, sessionId, sessionKey, cwd, language, configuration, onSend, isStreaming = false, repairReason }: Props) {
   const zh = language === 'zh';
+  const targetMenu = useTargetMenu();
+  const [previewImage, setPreviewImage] = useState<{ src: string; alt: string }>();
   const config = normalizeGenUIConfiguration(configuration);
   const configKey = genUIRuntimeConfigurationKey(config);
   const library = useMemo(() => createGenUILibrary(config), [configKey]);
@@ -36,7 +40,7 @@ export default function GenerativeUI({ source, kind = 'openui', id, sessionId, s
   const htmlErrorSource = useRef('');
   const channel = useMemo(() => crypto.randomUUID(), [ownerId, configKey]);
   const result = useMemo(() => kind === 'openui' ? parser.set(source, !isStreaming) : null, [source, kind, parser, isStreaming]);
-  const parseErrors = kind === 'openui' && !isStreaming ? [...(result?.meta.errors.map(error => error.message) ?? []), ...(!result?.root && !result?.rootExpression ? ['未找到可渲染的 root 组件。'] : []), ...(result?.meta.unresolved.length ? [`引用未定义：${result.meta.unresolved.join(', ')}`] : []), ...(result?.meta.incomplete ? ['源码尚未完整。'] : [])] : [];
+  const parseErrors = kind === 'openui' && !isStreaming ? [...(result?.meta.errors.map(error => error.message) ?? []), ...(!result?.root && !result?.rootExpression ? [zh ? '未找到可渲染的 root 组件。' : 'No renderable root component was found.'] : []), ...(result?.meta.unresolved.length ? [`${zh ? '引用未定义：' : 'Undefined references: '}${result.meta.unresolved.join(', ')}`] : []), ...(result?.meta.incomplete ? [zh ? '源码尚未完整。' : 'The source is incomplete.'] : [])] : [];
   const errors = [...new Set([...parseErrors, ...runtimeErrors, ...verification, ...(repairReason ? [repairReason] : [])])];
   const displaySource = lastGood && (kind === 'openui' && parseErrors.length || kind === 'html' && runtimeErrors.length && !isStreaming) ? lastGood : source;
 
@@ -66,8 +70,8 @@ export default function GenerativeUI({ source, kind = 'openui', id, sessionId, s
   const sendAction = useCallback((event: ActionEvent) => {
     if (!current.current.config.features.actions) return;
     if (event.type === 'open_url') { const url = safeGenUIUrl(event.params.url); if (url) void request('system.open_url', { url }).catch(error => setRuntimeErrors([String(error)])); return; }
-    if (event.type === 'continue_conversation') submitAction(`${event.humanFriendlyMessage}\n\n界面 ${id} 当前状态：${JSON.stringify(event.formState ?? view.state)}`);
-  }, [submitAction, id, view]);
+    if (event.type === 'continue_conversation') submitAction(`${event.humanFriendlyMessage}\n\n${zh ? `界面 ${id} 当前状态：` : `UI ${id} state: `}${JSON.stringify(event.formState ?? view.state)}`);
+  }, [submitAction, id, view, language]);
   const toolProvider = useMemo(() => config.features.hostCalls ? Object.fromEntries(config.capabilities.map(capability => [capability, (args: Record<string, unknown>) => request('genui.call', { cwd, capability, args })])) : undefined, [cwd, configKey]);
   const reportedErrors = useCallback((errors: OpenUIError[]) => setRuntimeErrors(previous => { const next = errors.filter(error => error.severity !== 'warning').map(error => `${error.component ?? error.toolName ?? error.statementId ?? error.code}: ${error.message}`); return JSON.stringify(previous) === JSON.stringify(next) ? previous : next; }), []);
   const repair = useCallback((automatic = false) => {
@@ -118,8 +122,9 @@ export default function GenerativeUI({ source, kind = 'openui', id, sessionId, s
       switch (message.type) {
         case 'height': if (Number.isFinite(message.height)) setHeight(Math.max(80, Math.min(1200, message.height))); break;
         case 'state': if (message.state && typeof message.state === 'object' && !Array.isArray(message.state)) stateUpdated(message.state); break;
-        case 'action': if (config.features.actions && !isStreaming && typeof message.text === 'string') submitAction(`${message.text}\n\n界面 ${id} 当前状态：${JSON.stringify(message.state ?? {})}`); break;
-        case 'open': { const url = safeGenUIUrl(message.url); if (url) void request('system.open_url', { url }).catch(error => setRuntimeErrors([String(error)])); break; }
+        case 'action': if (config.features.actions && !isStreaming && typeof message.text === 'string') submitAction(`${message.text}\n\n${zh ? `界面 ${id} 当前状态：` : `UI ${id} state: `}${JSON.stringify(message.state ?? {})}`); break;
+        case 'open': { const url = safeGenUIUrl(message.url); if (url && targetMenu && frame.current) targetMenu(url, frame.current); else if (url) void request('system.open_url', { url }).catch(error => setRuntimeErrors([String(error)])); break; }
+        case 'image': { const src = safeGenUIUrl(message.src, true); if (src) { frame.current?.focus({ preventScroll: true }); setPreviewImage({ src, alt: typeof message.alt === 'string' ? message.alt : '' }); } break; }
         case 'call': if (typeof message.id === 'string' && typeof message.capability === 'string') void request('genui.call', { cwd, capability: message.capability, args: message.args }).then(value => reply(message.id, value)).catch(error => reply(message.id, undefined, String(error))); break;
         case 'error': htmlErrorSource.current = source; setRuntimeErrors(previous => [...new Set([...previous, String(message.error)])]); break;
         case 'verified': if (config.features.verify && Array.isArray(message.issues)) setVerification(message.issues.map(String)); break;
@@ -128,23 +133,23 @@ export default function GenerativeUI({ source, kind = 'openui', id, sessionId, s
     };
     window.addEventListener('message', receive);
     return () => { active = false; window.removeEventListener('message', receive); };
-  }, [kind, channel, cwd, configKey, isStreaming, stateUpdated, submitAction, id, source, displaySource, runtimeErrors.length, view]);
+  }, [kind, channel, cwd, configKey, isStreaming, stateUpdated, submitAction, id, source, displaySource, runtimeErrors.length, view, targetMenu, language]);
   const verify = () => {
     if (kind === 'html') { frame.current?.contentWindow?.postMessage({ channel, type: 'verify' }, '*'); return; }
     const element = container.current?.querySelector('.genui-content');
     const issues: string[] = [];
-    if (element && !element.textContent?.trim() && !element.querySelector('img,svg,input,button,video')) issues.push('界面为空。');
-    if (element && element.scrollWidth > element.clientWidth + 2) issues.push('内容横向溢出。');
-    element?.querySelectorAll<HTMLInputElement>('input,select,textarea').forEach(field => { if (!field.checkValidity()) issues.push(`${field.name || field.type} 的输入无效。`); });
+    if (element && !element.textContent?.trim() && !element.querySelector('img,svg,input,button,video')) issues.push(zh ? '界面为空。' : 'The interface is empty.');
+    if (element && element.scrollWidth > element.clientWidth + 2) issues.push(zh ? '内容横向溢出。' : 'The content overflows horizontally.');
+    element?.querySelectorAll<HTMLInputElement>('input,select,textarea').forEach(field => { if (!field.checkValidity()) issues.push(`${field.name || field.type}${zh ? ' 的输入无效。' : ' has invalid input.'}`); });
     setVerification(issues);
   };
   useEffect(() => {
     if (!config.enabled || !config.features.verify || !loaded || isStreaming || kind!=='openui') return;
     const frame = requestAnimationFrame(verify);
     return () => cancelAnimationFrame(frame);
-  },[config.enabled,config.features.verify,loaded,isStreaming,source,kind,retry]);
+  },[config.enabled,config.features.verify,loaded,isStreaming,source,kind,retry,language]);
   if (!config.enabled) return null;
-  return <div className="genui-view"><div className={`genui ${config.features.theme ? '' : 'genui-independent-theme'}`} ref={container}>
+  return <GenUILanguage.Provider value={language}><div className="genui-view">{previewImage && <ImagePreview {...previewImage} language={language} close={() => setPreviewImage(undefined)} />}<div className={`genui ${config.features.theme ? '' : 'genui-independent-theme'}`} ref={container}>
     <div className="genui-toolbar"><span>{kind === 'html' ? 'HTML' : 'OpenUI Lang'}</span>{isStreaming && <small role="status">{zh ? '正在生成…' : 'Generating…'}</small>}<div>{config.features.verify && <button type="button" className="quiet-button" disabled={isStreaming || !loaded} onClick={verify}>{zh ? '复验' : 'Verify'}</button>}</div></div>
     {!loaded ? <p role="status">{zh ? '正在恢复界面…' : 'Restoring interface…'}</p> : <div className="genui-content">{!config.features.streaming && isStreaming ? <p role="status">{zh ? '等待界面生成完成…' : 'Waiting for complete interface…'}</p> : kind === 'html' ? config.features.html ? documentUrl ? <iframe ref={frame} src={documentUrl} sandbox="allow-scripts" title={zh ? '生成式 HTML 界面' : 'Generated HTML interface'} style={{ height }} /> : <p role="status">{zh ? '正在载入界面文档…' : 'Loading interface document…'}</p> : <pre>{source}</pre> : <Renderer key={`${ownerId}:${retry}`} response={displaySource} library={library} initialState={initialState} isStreaming={isStreaming} toolProvider={toolProvider} onAction={sendAction} onStateUpdate={stateUpdated} onError={reportedErrors} publishObservability={false}><Renderer.Content /><Renderer.QueryLoading><p role="status">{zh ? '正在读取项目数据…' : 'Loading project data…'}</p></Renderer.QueryLoading><Renderer.QueryError><Renderer.Retry>{zh ? '重试能力调用' : 'Retry data source'}</Renderer.Retry></Renderer.QueryError></Renderer>}</div>}
     {errors.length > 0 && !isStreaming && <div className="genui-error" role="alert"><p>{zh ? '界面需要调整，当前输入已保留。' : 'The interface needs adjustment. Your current input is preserved.'}</p>{config.features.diagnostics && <ul>{errors.map((error, index) => <li key={index}>{error}</li>)}</ul>}<div>{config.features.repair && <button type="button" className="quiet-button" disabled={repairing} onClick={() => repair()}>{zh ? '交给助手修复' : 'Ask assistant to repair'}</button>}<button className="quiet-button" onClick={() => { view.refresh(); setRuntimeErrors([]); setRetry(value => value + 1); }}>{zh ? '重新渲染' : 'Render again'}</button>{repairing && <button type="button" className="quiet-button" onClick={() => void cancelRepair()}>{zh ? '取消修复' : 'Cancel repair'}</button>}</div></div>}
@@ -153,5 +158,5 @@ export default function GenerativeUI({ source, kind = 'openui', id, sessionId, s
     {storageError && <div role="alert" className="genui-error"><p>{storageError}</p><button className="quiet-button" onClick={() => void view.readLatest()}>{zh ? '读取最新保存版本' : 'Read latest saved version'}</button>{remoteSaved !== undefined && <details open><summary>{zh ? '最新保存版本' : 'Latest saved version'}</summary>{remoteSaved ? <><pre>{remoteSaved.source}</pre><pre>{JSON.stringify(remoteSaved.state,null,2)}</pre></> : <p>{zh ? '已保存版本已清空。' : 'The saved version has been cleared.'}</p>}<button className="quiet-button" onClick={() => void view.resolve(false)}>{zh ? '用当前源码和输入保存' : 'Save current source and input'}</button><button className="quiet-button" onClick={() => void view.resolve(true).then(() => setRetry(value => value + 1))}>{zh ? '恢复已保存输入' : 'Restore saved input'}</button></details>}</div>}
     </div>
     {config.features.showSource && <details className="genui-source"><summary className="icon-button genui-source-toggle" title={zh ? '查看源码' : 'View source'} aria-label={zh ? '查看源码' : 'View source'}><Code2 size={12} aria-hidden="true" /></summary><pre tabIndex={0} role="region" aria-label={zh ? '生成式UI源码' : 'Generated UI source'}><code>{source}</code></pre></details>}
-  </div>;
+  </div></GenUILanguage.Provider>;
 }

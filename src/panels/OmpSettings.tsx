@@ -27,12 +27,14 @@ const groupNames: Record<string, string> = {
   'Read Summaries': '读取摘要', Reading: '读取', 'Retry & Fallback': '重试与回退', 'Rules (TTSR)': '规则（TTSR）',
   Sampling: '采样', Services: '服务', Skills: '技能', Speech: '语音', 'Startup & Updates': '启动与更新',
   'Status Line': '状态栏', Stream: '流式输出', Subagents: '子代理', Theme: '主题', Thinking: '思考',
+  Bash: 'Bash 命令', Git: 'Git', GitHub: 'GitHub', LSP: '语言服务（LSP）',
   Timeouts: '超时', 'Tiny Model': '小型模型', Todos: '待办', Vision: '视觉',
 };
 
 export default function OmpSettings({ sessionId, language, initialQuery = '' }: { sessionId: string; language: Language; initialQuery?: string }) {
   const zh = language === 'zh';
   const [settings, setSettings] = useState<Json[]>([]);
+  const [summaryModels, setSummaryModels] = useState<Json[]>([]);
   const [category, setCategory] = useState('model');
   const [query, setQuery] = useState(initialQuery);
   const [loading, setLoading] = useState(true);
@@ -44,9 +46,10 @@ export default function OmpSettings({ sessionId, language, initialQuery = '' }: 
   const load = async () => {
     const current = ++revision.current;
     const target = sessionId;
-    setLoading(true); setError(''); setSettings([]);
+    setLoading(true); setError(''); setSettings([]); setSummaryModels([]);
     try {
       const result = await rpc(sessionId, 'desktop_settings', { operation: 'list' });
+      void rpc(sessionId, 'get_available_models').then(models => { if (current === revision.current && target === activeSession.current) setSummaryModels(models.models ?? []); }).catch(() => {});
       if (current === revision.current && target === activeSession.current) { settingsSession.current = target; setSettings(result.settings); }
     } catch (error) { if (current === revision.current && target === activeSession.current) setError(String(error)); }
     finally { if (current === revision.current && target === activeSession.current) setLoading(false); }
@@ -61,7 +64,7 @@ export default function OmpSettings({ sessionId, language, initialQuery = '' }: 
     <input className="settings-search" type="search" aria-label={zh ? '搜索 OMP 配置' : 'Search OMP settings'} placeholder={zh ? '搜索设置名称或配置键' : 'Search names or setting keys'} value={query} onChange={event => setQuery(event.target.value)} />
     <nav className="settings-tabs" aria-label={zh ? '配置分类' : 'Setting categories'}>{Object.entries(categories).filter(([id]) => settings.some(setting => settingCategory(setting) === id)).map(([id, names]) => <button key={id} aria-pressed={category === id && !query.trim()} onClick={() => { setCategory(id); setQuery(''); }}>{names[zh ? 0 : 1]}</button>)}</nav>
     {error && <p role="alert" className="settings-error">{error}</p>}
-    {loading ? <p role="status">{zh ? '正在读取配置…' : 'Loading settings…'}</p> : !visible.length ? <p className="settings-hint">{zh ? '没有匹配的设置。' : 'No matching settings.'}</p> : groups.map(group => <section key={group} className="settings-field-group">{group && <h3>{zh ? groupNames[group] ?? group : group}</h3>}{visible.filter(setting => (setting.ui?.group ?? '') === group).map(setting => <SettingField key={`${sessionId}:${setting.path}`} setting={setting} language={language} save={async (value, reset) => {
+    {loading ? <p role="status">{zh ? '正在读取配置…' : 'Loading settings…'}</p> : !visible.length ? <p className="settings-hint">{zh ? '没有匹配的设置。' : 'No matching settings.'}</p> : groups.map(group => <section key={group} className="settings-field-group">{group && <h3>{zh ? groupNames[group] ?? group : group}</h3>}{visible.filter(setting => (setting.ui?.group ?? '') === group).map(setting => <SettingField key={`${sessionId}:${setting.path}`} setting={setting.path === 'compaction.summaryModel' ? { ...setting, ui: { ...setting.ui, options: [{ value: '', label: zh ? '原会话模型' : 'Current conversation model' }, ...summaryModels.map(model => ({ value: `${model.provider}/${model.id}`, label: `${model.name ?? model.id} / ${model.provider}` })), ...(setting.value && !summaryModels.some(model => `${model.provider}/${model.id}` === setting.value) ? [{ value: setting.value, label: setting.value }] : [])] } } : setting} language={language} save={async (value, reset) => {
       const current = revision.current;
       if (sessionId !== activeSession.current) throw new DOMException('Cancelled', 'AbortError');
       const result = await rpc(sessionId, 'desktop_settings', { operation: reset ? 'unset' : 'set', key: setting.path, ...(reset ? {} : { value }) });

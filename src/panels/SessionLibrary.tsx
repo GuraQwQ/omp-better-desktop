@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Archive, ArrowUpRight, BarChart3, FolderOpen, Quote, RefreshCw, Search, Undo2 } from 'lucide-react';
 import Select from '../components/Select';
+import { SessionRow, type SessionAction, type SessionListEntry } from '../components/SavedSessions';
 import { pickPath, request } from '../lib/bridge';
 import { displayPath } from '../lib/display-path';
 import { localizeError } from '../lib/i18n';
@@ -13,6 +14,7 @@ type Props = {
   onOpen: (session: SessionSummary, messageId?: string) => void;
   onReference: (value: string | ConversationReference[]) => void;
   onArchiveChange?: () => void;
+  onSessionAction?: (value: SessionListEntry, action: SessionAction) => Promise<void>;
 };
 type ArchivedSession = SessionSummary & { archived?: boolean; missing?: boolean };
 type SearchItem = { session: ArchivedSession; messageId: string; role: string; snippet: string };
@@ -124,7 +126,7 @@ function MessageSearch({ language, cwd, onOpen, onReference, onArchiveChange, wo
   </div>;
 }
 
-function Archives({ language, cwd, onOpen, onArchiveChange, words }: Props & { words: Words }) {
+function Archives({ language, cwd, onOpen, onArchiveChange, onSessionAction, words }: Props & { words: Words }) {
   const [items, setItems] = useState<ArchivedSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
@@ -141,14 +143,21 @@ function Archives({ language, cwd, onOpen, onArchiveChange, words }: Props & { w
   const restore = async (item: ArchivedSession) => {
     const current = revision.current; setBusy(item.path); setError('');
     try {
-      await request('session.archive', { path: item.path, archived: false });
+      if (onSessionAction) await onSessionAction(item, 'restore'); else await request('session.archive', { path: item.path, archived: false });
       if (current !== revision.current) return;
       setItems(items => items.filter(row => row.path !== item.path)); setNotice(words.restored); onArchiveChange?.();
     } catch (error) { if (current === revision.current) setError(failure(error, language)); }
     finally { if (current === revision.current) setBusy(''); }
   };
+  const act = async (item: SessionListEntry, action: SessionAction) => {
+    if (action === 'restore') return restore(item);
+    if (onSessionAction) { await onSessionAction(item, action); await load(); return; }
+    if (action === 'delete') { const result = await request<{ warning?: string }>('session.delete', { path: item.path }); if (result.warning) setNotice(result.warning); }
+    else await request('session.pin', { path: item.path, pinned: action === 'pin' });
+    await load(); onArchiveChange?.();
+  };
   const visible = items.filter(item => !cwd || item.cwd.replace(/\\/g, '/').toLowerCase() === cwd.replace(/\\/g, '/').toLowerCase());
-  return <div aria-busy={loading}><div className="library-toolbar"><span>{visible.length} {words.sessions}</span><button type="button" className="quiet-button" disabled={loading || !!busy} onClick={() => void load()}><RefreshCw size={13} />{words.refresh}</button></div>{error && <p className="library-error" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}{loading ? <p role="status" className="library-empty">{words.loading}</p> : !visible.length && !error ? <p className="library-empty">{words.noArchives}</p> : null}<div className="library-results">{visible.map(item => <article key={item.path} className="library-result"><div className="library-result-heading"><strong>{title(item)}</strong><small>{item.missing ? words.missing : new Date(item.updatedAt ?? 0).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US')}</small></div><small className="library-path">{displayPath(item.cwd)}</small><div className="library-row-actions"><button type="button" className="quiet-button" disabled={item.missing} onClick={() => onOpen(item)}><ArrowUpRight size={13} />{words.open}</button><button type="button" className="quiet-button" disabled={!!busy || loading} onClick={() => void restore(item)}><Undo2 size={13} />{item.missing ? words.clearArchive : words.restore}</button></div></article>)}</div></div>;
+  return <div aria-busy={loading}><div className="library-toolbar"><span>{visible.length} {words.sessions}</span><button type="button" className="quiet-button" disabled={loading || !!busy} onClick={() => void load()}><RefreshCw size={13} />{words.refresh}</button></div>{error && <p className="library-error" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}{loading ? <p role="status" className="library-empty">{words.loading}</p> : !visible.length && !error ? <p className="library-empty">{words.noArchives}</p> : null}<div className="library-results">{visible.map(item => <article key={item.path} className="library-result"><SessionRow value={item} title={title(item)} language={language} open={() => { if (!item.missing) onOpen(item); }} onAction={act} disabled={!!busy || loading} /><div className="library-result-heading"><small>{item.missing ? words.missing : new Date(item.updatedAt ?? 0).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US')}</small></div><small className="library-path">{displayPath(item.cwd)}</small><div className="library-row-actions"><button type="button" className="quiet-button" disabled={item.missing} onClick={() => onOpen(item)}><ArrowUpRight size={13} />{words.open}</button><button type="button" className="quiet-button" disabled={!!busy || loading} onClick={() => void restore(item)}><Undo2 size={13} />{item.missing ? words.clearArchive : words.restore}</button></div></article>)}</div></div>;
 }
 
 function UsageTrends({ cwd, language, words }: { cwd?: string; language: Language; words: Words }) {

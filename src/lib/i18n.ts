@@ -1,6 +1,9 @@
 import type { Language } from './types';
 
 const en = {
+  quoteMessage: 'Quote message', quote: 'Quote', selectionActions: 'Selection actions', annotate: 'Annotate', sideQuestion: 'Side question', closeSelectionActions: 'Close selection actions', loadLater: 'Load later messages',
+  checkConfirmation: 'Check confirmation',
+  toolReference: 'Quote', toolReferenceCall: 'Call arguments', toolReferenceResult: 'Execution result', toolSubmittedContent: 'Submitted content',
   product: 'Better OMP Desktop', newSession: 'New conversation', addProject: 'Add project', projects: 'Projects',
   settings: 'Settings', commands: 'Commands', review: 'Changes', context: 'Context', agents: 'Agents', terminal: 'Terminal',
   files: 'Files', history: 'History', runtime: 'Runtime', ready: 'Ready', connecting: 'Connecting', running: 'Working',
@@ -16,7 +19,7 @@ const en = {
   takeover: 'Use managed OMP in the terminal', restoreCli: 'Restore previous CLI',
   takeoverText: 'Switch the omp command to this runtime and imported data. The previous command can be restored.',
   clean: 'Clean managed caches', rollback: 'Use previous runtime', close: 'Close', cancel: 'Cancel',
-  approve: 'Approve', decline: 'Decline', submit: 'Submit', pending: 'Needs your attention',
+  approve: 'Approve', decline: 'Decline', submit: 'Submit', pending: 'Needs your attention', questionAnswers: 'Your answers', sessionNotice: 'Session notice',
   waiting: 'Waiting for input', chooseModel: 'Choose a model', noModels: 'Connect a provider to see available models.',
   providers: 'Providers', login: 'Connect', logout: 'Disconnect', refresh: 'Refresh', search: 'Search',
   searchCommands: 'Search commands, settings, and tools…', noResults: 'No matching results.',
@@ -63,6 +66,9 @@ const en = {
   reviewScope: 'Review scope', workspaceChanges: 'Working tree', turnChanges: 'Turn tool changes', turnLabel: 'Turn', earlierTurn: 'Earlier turn records', noTurnChanges: 'No file operations recorded for this turn.', changeRecord: 'Operation record', proposedChange: 'Preview',
 };
 const zh: typeof en = {
+  quoteMessage: '引用消息', quote: '引用', selectionActions: '选段操作', annotate: '批注', sideQuestion: '旁问', closeSelectionActions: '关闭选段操作', loadLater: '加载后续消息',
+  checkConfirmation: '检查确认',
+  toolReference: '引用', toolReferenceCall: '调用参数', toolReferenceResult: '执行结果', toolSubmittedContent: '提交内容',
   product: 'Better OMP Desktop', newSession: '新建对话', addProject: '添加项目', projects: '项目',
   settings: '设置', commands: '命令', review: '更改', context: '上下文', agents: '代理', terminal: '终端',
   files: '文件', history: '历史记录', runtime: '运行时', ready: '就绪', connecting: '连接中', running: '正在工作',
@@ -78,7 +84,7 @@ const zh: typeof en = {
   takeover: '终端使用托管 OMP', restoreCli: '恢复原 CLI',
   takeoverText: '将 omp 命令切换到此运行时和迁入数据，之后可以恢复原命令入口。',
   clean: '清理托管缓存', rollback: '使用上一运行时', close: '关闭', cancel: '取消',
-  approve: '批准', decline: '拒绝', submit: '提交', pending: '需要你处理',
+  approve: '批准', decline: '拒绝', submit: '提交', pending: '需要你处理', questionAnswers: '提问回复', sessionNotice: '会话通知',
   waiting: '等待输入', chooseModel: '选择模型', noModels: '连接提供商后查看可用模型。',
   providers: '提供商', login: '连接', logout: '断开', refresh: '刷新', search: '搜索',
   searchCommands: '搜索命令、设置和工具…', noResults: '没有匹配结果。',
@@ -130,6 +136,14 @@ export const copy = (language: Language): Copy => language === 'zh' ? zh : en;
 export const statusText = (status: string, t: Copy): string => t.statusLabels[status as keyof Copy['statusLabels']] ?? status;
 
 const errorTranslations: Record<string, string> = {
+  'Conversation deletion is in progress. Retry after it finishes.': '会话正在移入回收站，请完成后重试。',
+  'Conversation is still stopping. Retry deletion shortly.': '会话仍在停止，请稍后重试删除。',
+  'Model catalog loading timed out after 45 seconds. Please retry.': '模型目录加载超时，请重试。',
+  'Choose an existing project folder.': '请选择一个已存在的项目文件夹。',
+  'Cannot load the model catalog. Retry after checking the provider settings.': '无法载入模型目录，请检查提供商设置后重试。',
+  'The model catalog returned an invalid response.': '模型目录返回的数据无效，请重试。',
+  'Answer confirmation is still pending. Retry to check the same submission.': '答案仍在等待确认，可再次检查提交状态。',
+  'Session is closed or interrupted.': '对话已关闭或中止。',
   'Git is required to review project changes.': '查看项目差异需要安装 Git；文件浏览和对话仍可使用。',
   'This project is not a Git working tree.': '此文件夹尚未初始化 Git 仓库，可在回合工具改动中查看本次文件操作。',
   'Install a matching OMP runtime in Settings first.': '请先在设置中安装匹配的 OMP 运行时。',

@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent } from 'react';
-import { Check, ChevronDown, Circle, CircleAlert, CircleDot, ListTodo, Minus } from 'lucide-react';
+import { Check, ChevronDown, Circle, CircleDot, ListTodo, Minus } from 'lucide-react';
 import type { TodoStatus } from '../generated/rpc-wire';
 import { sessionKey } from '../lib/session-identity';
 import { sessionTodoPhases, summarizeTodos } from '../lib/session-todos';
@@ -7,9 +7,9 @@ import type { Language, SessionView } from '../lib/types';
 import './session-todos.css';
 import Collapse from './Collapse';
 
-const statusIcons = { pending: Circle, in_progress: CircleDot, completed: Check, abandoned: Minus, blocked: CircleAlert };
+const statusIcons = { pending: Circle, in_progress: CircleDot, completed: Check, abandoned: Minus };
 const statusLabels: Record<TodoStatus, [string, string]> = {
-  pending: ['待处理', 'Pending'], in_progress: ['进行中', 'In progress'], completed: ['已完成', 'Completed'], abandoned: ['已放弃', 'Abandoned'], blocked: ['受阻', 'Blocked'],
+  pending: ['待处理', 'Pending'], in_progress: ['进行中', 'In progress'], completed: ['已完成', 'Completed'], abandoned: ['已放弃', 'Abandoned'],
 };
 
 export default function SessionTodos({ session, language }: { session?: SessionView; language: Language }) {
@@ -81,7 +81,7 @@ function TodoList({ phases, summary, language }: { phases: ReturnType<typeof ses
           const Icon = statusIcons[task.status];
           const status = statusLabels[task.status][zh ? 0 : 1];
           return <li className={`session-todo-task is-${task.status}`} key={index}>
-            <span className="session-todo-status" role="img" aria-label={status} title={status}><Icon size={12} aria-hidden="true" /></span><div><span className="session-todo-content">{task.content}</span>{task.status === 'blocked' && task.blocker && <small>{task.blocker}</small>}{task.details && <small>{task.details}</small>}{task.notes?.map((note, noteIndex) => <small key={noteIndex}>{note}</small>)}</div>
+            <span className="session-todo-status" role="img" aria-label={status} title={status}><Icon size={12} aria-hidden="true" /></span><div><span className="session-todo-content">{task.content}</span>{task.details && <small>{task.details}</small>}{task.notes?.map((note, noteIndex) => <small key={noteIndex}>{note}</small>)}</div>
           </li>;
         })}</ul>
       </section>)}
