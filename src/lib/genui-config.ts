@@ -1,3 +1,9 @@
+export type GenUIUsage = 'explicit' | 'auto' | 'prefer';
+export const GENUI_USAGE: Record<GenUIUsage, { label: string; labelEn: string; hint: string; hintEn: string; instruction: string }> = {
+  explicit: { label: '仅明确要求时', labelEn: 'Only when requested', hint: '用户明确要求交互界面时使用。', hintEn: 'Use interactive interfaces when the user explicitly asks for them.', instruction: '仅当用户明确要求可交互界面、生成式UI或HTML界面时生成界面，其余回答使用Markdown。' },
+  auto: { label: '适合时使用', labelEn: 'When useful', hint: '适合比较、配置、筛选或分步学习时使用。', hintEn: 'Use interfaces for comparisons, configuration, filtering, or step-by-step learning when helpful.', instruction: '当交互能帮助用户比较、配置、筛选、探索或分步学习时，主动使用界面；普通解释继续使用Markdown。' },
+  prefer: { label: '优先使用', labelEn: 'Prefer interactive UI', hint: '适合交互的内容优先呈现为界面。', hintEn: 'Prefer interactive interfaces whenever the content benefits from interaction.', instruction: '优先把适合交互的讲解、选择、练习、配置和数据探索呈现为界面；简短答复、纯代码和无交互收益的内容使用Markdown。' },
+};
 export type GenUIGroup = 'layout' | 'text' | 'forms' | 'tables' | 'charts' | 'maps' | 'math' | 'media';
 export type GenUIField = { name: string; type: string; optional?: boolean };
 export type GenUIComponent = { name: string; group: GenUIGroup; label: string; fields: GenUIField[] };
@@ -11,6 +17,8 @@ export const GENUI_COMPONENTS: GenUIComponent[] = [
   { name: 'Grid', group: 'layout', label: '网格', fields: [field('children', 'children'), field('columns', 'number', true), field('gap', 'number', true)] },
   { name: 'Card', group: 'layout', label: '卡片', fields: [field('children', 'children'), field('title', 'string', true)] },
   { name: 'Box', group: 'layout', label: '容器', fields: [field('children', 'children'), field('padding', 'number', true)] },
+  { name: 'Tabs', group: 'layout', label: '标签页', fields: [field('name', 'string'), field('labels', 'strings'), field('children', 'children'), field('value', 'reactiveNumber', true)] },
+  { name: 'Accordion', group: 'layout', label: '折叠区', fields: [field('name', 'string'), field('label', 'string'), field('children', 'children'), field('value', 'reactiveBoolean', true)] },
   { name: 'Divider', group: 'layout', label: '分隔线', fields: [] },
   { name: 'Spacer', group: 'layout', label: '间距', fields: [field('size', 'number', true)] },
   { name: 'Title', group: 'text', label: '标题', fields: [field('text', 'string'), field('level', 'number', true)] },
@@ -26,7 +34,8 @@ export const GENUI_COMPONENTS: GenUIComponent[] = [
   { name: 'NumberInput', group: 'forms', label: '数字输入', fields: [field('name', 'string'), field('label', 'string'), field('value', 'reactiveNumber', true)] },
   { name: 'Select', group: 'forms', label: '选择框', fields: [field('name', 'string'), field('label', 'string'), field('options', 'strings'), field('value', 'reactiveString', true)] },
   { name: 'Checkbox', group: 'forms', label: '复选框', fields: [field('name', 'string'), field('label', 'string'), field('value', 'reactiveBoolean', true)] },
-  { name: 'Slider', group: 'forms', label: '滑块', fields: [field('name', 'string'), field('label', 'string'), field('min', 'number'), field('max', 'number'), field('value', 'reactiveNumber', true)] },
+  { name: 'Slider', group: 'forms', label: '滑块', fields: [field('name', 'string'), field('label', 'string'), field('min', 'number'), field('max', 'number'), field('value', 'reactiveNumberOrRange', true), field('step', 'number', true)] },
+  { name: 'SwitchGroup', group: 'forms', label: '开关组', fields: [field('name', 'string'), field('label', 'string'), field('options', 'strings'), field('value', 'reactiveStrings', true)] },
   { name: 'DatePicker', group: 'forms', label: '日期', fields: [field('name', 'string'), field('label', 'string'), field('value', 'reactiveString', true)] },
   { name: 'Button', group: 'forms', label: '按钮', fields: [field('label', 'string'), field('action', 'action', true)] },
   { name: 'Form', group: 'forms', label: '表单', fields: [field('children', 'children'), field('name', 'string', true)] },
@@ -64,6 +73,7 @@ export const GENUI_CAPABILITIES = [
 ] as const;
 export interface GenUIConfiguration {
   enabled: boolean;
+  usage: GenUIUsage;
   components: string[];
   features: Record<GenUIFeature, boolean>;
   capabilities: string[];
@@ -74,6 +84,7 @@ export function normalizeGenUIConfiguration(value?: unknown): GenUIConfiguration
   const capabilityNames = new Set<string>(GENUI_CAPABILITIES.map(capability => capability.name));
   return {
     enabled: input.enabled === true,
+    usage: input.usage === 'explicit' || input.usage === 'prefer' ? input.usage : 'auto',
     components: Array.isArray(input.components) ? [...new Set(input.components)].filter(name => names.has(name)) : GENUI_COMPONENTS.filter(component => !['charts', 'maps', 'math', 'media'].includes(component.group)).map(component => component.name),
     features: Object.fromEntries(Object.entries(GENUI_FEATURES).map(([name, feature]) => [name, typeof input.features?.[name as GenUIFeature] === 'boolean' ? input.features[name as GenUIFeature] : feature.enabled])) as GenUIConfiguration['features'],
     capabilities: Array.isArray(input.capabilities) ? [...new Set(input.capabilities)].filter(name => capabilityNames.has(name)) : GENUI_CAPABILITIES.map(capability => capability.name),
@@ -83,17 +94,21 @@ export const genUIConfigurationKey = (configuration: unknown) => JSON.stringify(
 export function genUIRuntimeConfigurationKey(configuration: unknown): string {
   const config = normalizeGenUIConfiguration(configuration);
   const { showSource, ...features } = config.features;
-  return JSON.stringify({ ...config, features });
+  return JSON.stringify({ enabled: config.enabled, components: config.components, features, capabilities: config.capabilities });
 }
 export function exposedGenUIFields(component: GenUIComponent, config: GenUIConfiguration): GenUIField[] {
-  return component.fields.filter(prop => prop.type !== 'action' || config.features.actions || config.features.state).map(prop => config.features.state ? prop : { ...prop, type: prop.type.replace(/^reactive/, '').toLowerCase() });
+  return component.fields.filter(prop => prop.type !== 'action' || config.features.actions || config.features.state).map(prop => config.features.state ? prop : { ...prop, type: ({ reactiveStrings: 'strings', reactiveNumberOrRange: 'numberOrRange' }[prop.type] ?? prop.type.replace(/^reactive/, '').toLowerCase()) });
 }
 export function buildGenUIInstructions(value: unknown): string {
   const config = normalizeGenUIConfiguration(value);
   if (!config.enabled) return '';
   const components = GENUI_COMPONENTS.filter(component => config.components.includes(component.name));
-  const lines = ['生成式界面：需要交互界面时，在 openui 代码围栏内输出 OpenUI Lang；普通解释继续使用 Markdown。', 'OpenUI 由 root = Component(...) 开始，每个语句独立一行。位置参数严格按以下签名排列，可引用其他语句名。'];
+  const lines = [GENUI_USAGE[config.usage].instruction, '生成式界面使用 openui 代码围栏输出 OpenUI Lang。', 'OpenUI 由 root = Component(...) 开始，每个语句独立一行。位置参数严格按以下签名排列，可引用其他语句名。'];
   for (const component of components) lines.push(`${component.name}(${exposedGenUIFields(component, config).map(prop => `${prop.name}${prop.optional ? '?' : ''}:${prop.type}`).join(', ')})`);
+  if (components.some(component => component.name === 'Tabs')) lines.push('Tabs的labels与children按相同顺序对应，value为从0开始的选中项；切换标签页保留各页输入。');
+  if (components.some(component => component.name === 'Accordion')) lines.push('Accordion的value是是否展开；将较长的辅助内容放入折叠区。');
+  if (components.some(component => component.name === 'SwitchGroup')) lines.push('SwitchGroup的value为已开启选项的字符串数组，各选项可独立切换。');
+  if (components.some(component => component.name === 'Slider')) lines.push('Slider的value可为单个数值或[起点,终点]；step设置步长，默认为1，范围端点不能交叉。');
   if (config.features.state) lines.push('本地状态用 $变量声明并传入 reactive 参数；例如 $name = ""，input = Input("name", "姓名", $name)。');
   if (config.features.actions) lines.push('按钮动作可用 @ToAssistant("用户意图")；在当前用户点击后，将表单状态返回会话。');
   if (config.features.state) lines.push('本地变量可使用 @Set($变量, 值) 与 @Reset($变量)，按钮点击只在本地更新。');
