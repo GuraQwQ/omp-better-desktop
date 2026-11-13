@@ -1,5 +1,5 @@
 diff --git a/packages/coding-agent/src/prompts/system/mid-run-todo-nudge.md b/packages/coding-agent/src/prompts/system/mid-run-todo-nudge.md
-index 4851cf7a73..9c6eec2a70 100644
+index 4851cf7a7394565bfbdbdc175a2a5930e6507826..9c6eec2a70aa57c1f3d07246ebb5ab972d5e8eee 100644
 --- a/packages/coding-agent/src/prompts/system/mid-run-todo-nudge.md
 +++ b/packages/coding-agent/src/prompts/system/mid-run-todo-nudge.md
 @@ -1,3 +1,7 @@
@@ -12,7 +12,7 @@ index 4851cf7a73..9c6eec2a70 100644
  </system-reminder>
 diff --git a/packages/coding-agent/src/prompts/system/programmatic-tool-use.md b/packages/coding-agent/src/prompts/system/programmatic-tool-use.md
 deleted file mode 100644
-index 737c842e26..0000000000
+index 737c842e262f198c2d6d90ddc1fc8a83444e62cf..0000000000000000000000000000000000000000
 --- a/packages/coding-agent/src/prompts/system/programmatic-tool-use.md
 +++ /dev/null
 @@ -1,7 +0,0 @@
@@ -24,7 +24,7 @@ index 737c842e26..0000000000
 -
 -Simple actions stay direct. Stop a batch at decisions or missing information; preserve the original tests and completion criteria.
 diff --git a/packages/coding-agent/src/prompts/system/project-prompt.md b/packages/coding-agent/src/prompts/system/project-prompt.md
-index 65a7793224..d4e49bac59 100644
+index 65a7793224c9af3e11f7ed1d4100888d740481b7..d4e49bac59c58f4a3df4f647f083e876f5d313f1 100644
 --- a/packages/coding-agent/src/prompts/system/project-prompt.md
 +++ b/packages/coding-agent/src/prompts/system/project-prompt.md
 @@ -57,7 +57,9 @@ Additional workspace directories. This CURRENT workspace state supersedes worksp
@@ -38,22 +38,21 @@ index 65a7793224..d4e49bac59 100644
  </critical>
  
 diff --git a/packages/coding-agent/src/prompts/system/system-prompt.md b/packages/coding-agent/src/prompts/system/system-prompt.md
-index 20cef214f7..0f5d4ec596 100644
+index 793fed8ec00a13ac145fde8031cc54c25b7cea60..f8c1ed273600e3bb8685e568cf8152f891cfc0c0 100644
 --- a/packages/coding-agent/src/prompts/system/system-prompt.md
 +++ b/packages/coding-agent/src/prompts/system/system-prompt.md
-@@ -94,16 +94,32 @@ Write JSON args as `content` to `xd://<tool>` via `{{toolRefs.write}}`. Invalid
+@@ -96,10 +96,19 @@ Write JSON args as `content` to xd://<tool> via `{{toolRefs.write}}`. Invalid ar
  
- § Tool Policy
+ ⁂ Tool Policy
  # General
 +{{#if promptGuidance}}
-+Resolve prerequisites and material uncertainty; batch independent calls. Retry failed or incomplete steps with a changed approach, retaining successful results until their inputs change.
++Resolve prerequisites and material uncertainty; batch independent calls. Retry failed or incomplete steps with a changed approach, retaining successful results until their inputs change. Once the change is verified, stop and report; no extra audits or broad checks unless asked.
 +{{else}}
- SHOULD resolve prerequisites, parallelize independent calls. Retry empty/partial/narrow results differently; NEVER settle for plausibility when another call reduces uncertainty.
+ Every turn costs seconds: batch all independent reads/searches/checks into one turn. Once the change is verified, stop and report; no extra audits, broad suites, or repo-wide checks unless asked. SHOULD resolve prerequisites, parallelize independent calls. Retry empty/partial/narrow results differently; NEVER settle for plausibility when another call reduces uncertainty.
 +{{/if}}
- {{#has tools "task"}}- User says `parallel` or `parallelize` → MUST use `{{toolRefs.task}}` subagents; parallel tool calls insufficient.{{/has}}
  
  # Tool I/O
- - Prefer relative `path`-like fields.
+ - Prefer relative paths.
 +{{#if promptGuidance}}
 +{{#has tools "read"}}
 +- When a read reports a resolved path, use that path in external commands; do not infer filesystem location from a shortened read target.
@@ -61,6 +60,9 @@ index 20cef214f7..0f5d4ec596 100644
 +{{/if}}
  {{#if intentTracing}}- Most tools take `{{intentField}}`: {{#if intentGuidance}}{{intentGuidance}}{{else}}capitalized 2–6-word present-participle intent (e.g. "Reading model role settings").{{/if}}{{/if}}
  {{#if secretsEnabled}}- `$$HASH$$`, `$$HASH:CASE$$`, `$$NAME_HASH:CASE$$` output tokens: opaque strings.{{/if}}
+ {{#if resultShaping}}
+@@ -107,6 +116,12 @@ Every turn costs seconds: batch all independent reads/searches/checks into one t
+ {{/if}}
  
  # Specialized Tools
 +{{#if promptGuidance}}
@@ -68,31 +70,28 @@ index 20cef214f7..0f5d4ec596 100644
 +{{#has tools "eval"}}
 +- `{{toolRefs.eval}}` may compose those tools for deterministic processing. JS eval's compiled `process.execPath` is OMP; imported objects may belong to another VM realm.
 +{{/has}}
-+{{else}}
- MUST use specialized tool over shell equivalent:
 +{{/if}}
  {{#has tools "read"}}- File/directory reads: `{{toolRefs.read}}` (directory lists entries).{{/has}}
- {{#has tools "edit"}}- Surgical edits: `{{toolRefs.edit}}`.{{/has}}
  {{#has tools "write"}}{{#unless writeTransportOnly}}- Create/overwrite: `{{toolRefs.write}}`.{{/unless}}{{/has}}
-@@ -206,9 +222,14 @@ Inline first. Fan out only when 2+ independent slices each cost more than a hand
- - Tool failure or intervening file change: re-read before acting.
- 
- # 3. Decompose
+ {{#has tools "lsp"}}
+@@ -192,8 +207,13 @@ Inline first. Fan out only when 2+ independent slices each cost more than a hand
+ - Exported symbol changes: MUST run `{{toolRefs.lsp}}` references first.
+ {{/has}}
+ - Tool failed or file changed underneath? Re-read first.
 +{{#if promptGuidance}}
 +{{#has tools "todo"}}- Track non-trivial work with concise todos covering the request. Apply the progress rules in `{{toolRefs.todo}}`; never infer semantic completion from a tool's success alone.
 +{{/has}}
 +{{else}}
  {{#has tools "todo"}}- Update todos; skip trivial requests.
- - NEVER make a todo-only turn: send `todo` in the same response as the turn's real call (parallel tool calls); `init` with first work, `done` with next action/verification.
  {{/has}}
 +{{/if}}
+ {{#has tools "ask"}}- Ask before destructive commands or deleting unrelated code you didn't write; code your change makes obsolete is in scope.{{else}}- NEVER run destructive git commands or delete unrelated code you didn't write; code your change makes obsolete is in scope.{{/has}}
  
- # 4. Implement
- - Prefer existing files; review as user.
-@@ -221,6 +242,13 @@ Main agent verifies once after all subagents land; parallel runs storm the CPU a
- - Changes complete → yield; name the checks main agent should run.
+ {{#if subagent}}
+@@ -202,6 +222,13 @@ Inline first. Fan out only when 2+ independent slices each cost more than a hand
+ - Done → yield, naming the checks to run.
  {{else}}
- # 5. Verify
+ # 2. Verify
 +{{#if promptGuidance}}
 +Verify significant changes against the requested behavior using the project's relevant checks; add a focused smoke run where tests do not exercise the actual path. Combine checks after related edits.
 +- Use an observed failure as the baseline; reproduce only when more evidence is needed to identify or verify the fix.
@@ -100,19 +99,19 @@ index 20cef214f7..0f5d4ec596 100644
 +- UI/TUI/CLI changes require observing the affected surface. If no suitable runtime exists, report that limit and validate the reachable behavior.
 +- Keep existing regression coverage. Add permanent tests for meaningful behavior and uncertain boundaries; use local probes for incidental implementation details.
 +{{else}}
- Non-trivial work: NEVER yield without a smoke run: run the thing, exercise the changed path, observe the result. Tests alone are not proof.
- - Investigation: run it; output proves it; no tests.
- - UI: verify actual surface.
-@@ -240,6 +268,7 @@ Non-trivial work: NEVER yield without a smoke run: run the thing, exercise the c
- - NEVER test wiring/copies/forwarding/mock echoes/source text/incidental defaults, tautologies, bare not-throw, non-empty/length-grew, duplicate same-path rows. Use throwaway scripts.
- - Existing wording/implementation/incidental-behavior tests: MUST delete, NEVER re-pin regardless of author.
+ Run the narrowest check that exercises the change, once. Investigation: the output is the proof; no tests.
+ - UI: verify the actual surface.
+ {{#if browserEnabled}}
+@@ -219,6 +246,7 @@ Run the narrowest check that exercises the change, once. Investigation: the outp
+ - New tests MUST catch plausible consumer-visible bugs; deterministic, isolated, full-suite-safe. NEVER test wiring, echoes, source text, incidental defaults, tautologies, bare not-throw, length-grew.
+ - Tests your change breaks: update contract tests; delete wording/implementation ones regardless of author, NEVER re-pin.
  {{/if}}
 +{{/if}}
  
- # 6. Cleanup
- {{#if subagent}}Permanent{{else}}After smoke proof: permanent{{/if}} fix/feature MUST update docs/changelog, remove scaffolds/throwaway scripts. Investigation: no tests/docs. NEVER pre-plan cleanup todos.
+ # 3. Cleanup
+ {{#if subagent}}Permanent{{else}}After smoke proof: permanent{{/if}} fix/feature: update docs/changelog; delete throwaway scripts.
 diff --git a/packages/coding-agent/src/prompts/tools/todo.md b/packages/coding-agent/src/prompts/tools/todo.md
-index 638e9ae238..0801df12b5 100644
+index a5629d2a81924a5dd8db8bf6a7501526d9e6ce23..f48944772307af236f8ab93db2f3d48d4da5432e 100644
 --- a/packages/coding-agent/src/prompts/tools/todo.md
 +++ b/packages/coding-agent/src/prompts/tools/todo.md
 @@ -1,4 +1,8 @@
@@ -122,13 +121,13 @@ index 638e9ae238..0801df12b5 100644
  `todo` NEVER takes a turn of its own: emit it in the same response as your next real tool call (parallel tool calls), `init` beside the first read or action, `done`/`start` beside the next action or check. A response whose only call is `todo` wastes a full model round trip.
 +{{/if}}
  Tasks identified by verbatim content, NEVER generated IDs (task-1). Unique, stable task/phase names; lost text: view, NEVER guess.
+ `append` requires `items`; omitted `phase` uses the in-progress task's phase, else the first pending task's phase, else the last phase, else a new `Tasks` phase. Supply `phase` to target another phase; an empty name is invalid.
  Before work, init for 3+ steps, requested task sets, or new instructions. MUST list EVERY user item separately (phased/numbered/bulleted/N); NEVER omit or remember leftovers.
- After successful mutation: no active means earliest pending starts (phase order); multiple active means only earliest stays. Blocked NEVER starts automatically; unblock returns pending. Done out of order may rewind pointer but NEVER reopen completed. Mark done immediately; follow phase order.
 diff --git a/packages/coding-agent/src/sdk.ts b/packages/coding-agent/src/sdk.ts
-index 9ec207c1a8..2b966c3908 100644
+index 9fb784f2c5d87df21b32aeb691be7e84a1a413f4..4476b00adaf79b342a6865dcf7af22eee44c8582 100644
 --- a/packages/coding-agent/src/sdk.ts
 +++ b/packages/coding-agent/src/sdk.ts
-@@ -222,6 +222,7 @@ import {
+@@ -226,6 +226,7 @@ import {
  	USER_INTERRUPT_LABEL,
  	wrapSteeringForModel,
  } from "./session/messages";
@@ -136,7 +135,7 @@ index 9ec207c1a8..2b966c3908 100644
  import {
  	capArchiveFrameBytes,
  	clampProviderContextImageBytes,
-@@ -428,6 +429,7 @@ import {
+@@ -442,6 +443,7 @@ import {
  	cfgSnapcompactSystemPrompt,
  	cfgSnapcompactToolResults,
  	cfgTokenOptimizationProgrammatic,
@@ -144,7 +143,7 @@ index 9ec207c1a8..2b966c3908 100644
  	cfgTokenOptimizationSkillCacheReuse,
  	cfgWorkspaceAdditionalDirectories,
  } from "./session/context-settings";
-@@ -1421,8 +1423,8 @@ export interface BuildSystemPromptOptions {
+@@ -1444,8 +1446,8 @@ export interface BuildSystemPromptOptions {
  	systemPromptTemplate?: string;
  	appendPrompt?: string;
  	inlineToolDescriptors?: boolean;
@@ -155,7 +154,7 @@ index 9ec207c1a8..2b966c3908 100644
  	includeWorkspaceTree?: boolean;
  	/** Include the read-only security:// resource inventory entry. Default: false. */
  	securityEnabled?: boolean;
-@@ -1453,7 +1455,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
+@@ -1476,7 +1478,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
  		contextFiles: options.contextFiles,
  		appendSystemPrompt: options.appendPrompt,
  		inlineToolDescriptors: options.inlineToolDescriptors,
@@ -164,7 +163,7 @@ index 9ec207c1a8..2b966c3908 100644
  		includeWorkspaceTree: options.includeWorkspaceTree,
  		securityEnabled: options.securityEnabled,
  		evalPreludes: options.evalPreludes,
-@@ -4425,7 +4427,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+@@ -4444,7 +4446,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
  				skillsSettings: cfgSkills.get(settings),
  				inlineToolDescriptors,
  				nativeTools,
@@ -173,7 +172,7 @@ index 9ec207c1a8..2b966c3908 100644
  				intentField: cfgToolsIntentTracing.get(settings) ? INTENT_FIELD : undefined,
  				// Spotlight ranks output against the call's intent: experiment sessions ask what each call's output is for.
  				intentGuidance: spotlightExperiment ? SPOTLIGHT_INTENT_GUIDANCE : undefined,
-@@ -4655,7 +4657,10 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+@@ -4679,7 +4681,10 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
  		// Final convertToLlm: live provider replay drops API-level refusal errors,
  		// then applies secret obfuscation to the remaining outbound context.
  		const convertToLlmFinal = (messages: AgentMessage[]): Message[] => {
@@ -186,7 +185,7 @@ index 9ec207c1a8..2b966c3908 100644
  			return obfuscateMessages(obfuscator, converted);
  		};
 diff --git a/packages/coding-agent/src/session/context-settings.ts b/packages/coding-agent/src/session/context-settings.ts
-index 51f19ed16b..0e589558ab 100644
+index 04db8f9164ac6b456d7d440445d161a3066eb9ed..61a9b174ff7aafeb9e8903cf70395e37f209bdb5 100644
 --- a/packages/coding-agent/src/session/context-settings.ts
 +++ b/packages/coding-agent/src/session/context-settings.ts
 @@ -29,9 +29,21 @@ export const cfgTokenOptimizationProgrammatic = register({
@@ -214,7 +213,7 @@ index 51f19ed16b..0e589558ab 100644
  });
  
 diff --git a/packages/coding-agent/src/session/todo-tracker.ts b/packages/coding-agent/src/session/todo-tracker.ts
-index e1d85b42e1..a72df7453f 100644
+index b96bf127f8c012a0d2b89e4a6c12e9d7cde67999..54e1058b8332135fd05de1d6558e7b6fdd4d8c72 100644
 --- a/packages/coding-agent/src/session/todo-tracker.ts
 +++ b/packages/coding-agent/src/session/todo-tracker.ts
 @@ -2,6 +2,7 @@ import type { Agent, AgentMessage, AgentTool } from "@oh-my-pi/pi-agent-core";
@@ -225,7 +224,7 @@ index e1d85b42e1..a72df7453f 100644
  import eagerTaskPrompt from "../prompts/system/eager-task.md" with { type: "text" };
  import eagerTodoPrompt from "../prompts/system/eager-todo.md" with { type: "text" };
  import midRunTodoNudgePrompt from "../prompts/system/mid-run-todo-nudge.md" with { type: "text" };
-@@ -339,6 +340,7 @@ export class TodoTracker {
+@@ -340,6 +341,7 @@ export class TodoTracker {
  		this.#midRunNudgeCount++;
  		const { toolRefs } = this.#buildEagerPreludeContext();
  		const reminder = prompt.render(midRunTodoNudgePrompt, {
@@ -234,7 +233,7 @@ index e1d85b42e1..a72df7453f 100644
  			incompleteCount: incomplete.length,
  			plural: incomplete.length !== 1,
 diff --git a/packages/coding-agent/src/system-prompt.ts b/packages/coding-agent/src/system-prompt.ts
-index 7cffb1ab00..32c29a32cb 100644
+index 3c8f3b0bce4431d239bbaaa2317fd50c97434010..4eee5b4b274e160ca0e578c2b65d03d31f89966e 100644
 --- a/packages/coding-agent/src/system-prompt.ts
 +++ b/packages/coding-agent/src/system-prompt.ts
 @@ -38,7 +38,6 @@ import pragmaticPersonality from "./prompts/system/personalities/pragmatic.md" w
@@ -242,11 +241,11 @@ index 7cffb1ab00..32c29a32cb 100644
  import systemPromptTemplate from "./prompts/system/system-prompt.md" with { type: "text" };
  import userAppendPromptTemplate from "./prompts/system/user-append.md" with { type: "text" };
 -import programmaticToolPrompt from "./prompts/system/programmatic-tool-use.md" with { type: "text" };
- import { normalizeConcurrencyLimit } from "./task/parallel";
+ import type { SystemPromptSource, SystemPromptSources } from "@oh-my-pi/pi-tui/status-line/context-usage";
  import type { ActiveRepoContext } from "@oh-my-pi/pi-tui/status-line/host";
  import { XD_URL_PREFIX } from "@oh-my-pi/pi-tui/tools/xd-url";
-@@ -46,12 +45,16 @@ import { resolveActiveRepoContext } from "./utils/active-repo-context";
- import { normalizePromptPath } from "./utils/prompt-path";
+@@ -48,12 +47,16 @@ import { expandTilde } from "./tools/path-utils";
+ import { matchModelPattern, type ModelPatternEntry } from "./utils/model-patterns";
  import { AGENTS_MD_LIMIT, buildWorkspaceTree, type WorkspaceTree } from "./workspace-tree";
  import { combine } from "./config/registry";
 -import { cfgBashAutoBackgroundEnabled } from "./exec/settings";
@@ -262,9 +261,9 @@ index 7cffb1ab00..32c29a32cb 100644
 +	cfgToolsFormat,
 +} from "./session/context-settings";
  import {
+ 	cfgEncourageEdits,
  	cfgIncludeModelInPrompt,
- 	cfgIncludeWorkspaceTree,
-@@ -81,6 +84,8 @@ export const cfgSystemPromptInputs = combine({
+@@ -86,6 +89,8 @@ export const cfgSystemPromptInputs = combine({
  	inlineToolDescriptors: cfgInlineToolDescriptors,
  	toolsFormat: cfgToolsFormat,
  	programmatic: cfgTokenOptimizationProgrammatic,
@@ -273,7 +272,7 @@ index 7cffb1ab00..32c29a32cb 100644
  	intentTracing: cfgToolsIntentTracing,
  	xdevDocs: cfgToolsXdevDocs,
  	xdevInlineDevices: cfgToolsXdevInlineDevices,
-@@ -531,8 +536,8 @@ export interface BuildSystemPromptOptions {
+@@ -543,8 +548,8 @@ export interface BuildSystemPromptOptions {
  	 * `namespace functions { … }` catalog. Default: true
  	 */
  	nativeTools?: boolean;
@@ -284,18 +283,18 @@ index 7cffb1ab00..32c29a32cb 100644
  	/** Skills settings for discovery. */
  	skillsSettings?: SkillsSettings;
  	/** Working directory. Default: getProjectDir() */
-@@ -1001,6 +1006,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
- 
+@@ -1096,6 +1101,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
+ 		: (resolvedSystemPromptTemplate ?? systemPromptTemplate);
  	const environment = getEnvironmentInfo();
  	const data = {
 +		promptGuidance: options.promptGuidance === true,
  		systemPromptCustomization: effectiveSystemPromptCustomization,
  		customPrompt: resolvedCustomPrompt,
  		appendPrompt: resolvedAppendPrompt ?? "",
-@@ -1069,9 +1075,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
- 		rendered = prompt.render(systemPromptTemplate, data);
+@@ -1163,9 +1169,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
  	}
- 	const systemPrompt = [rendered];
+ 	const systemPrompt = [rendered.text];
+ 	const sources = trackedSources(rendered, 0, sourceIdentities);
 -	if (options.programmatic && data.tools.includes("eval")) {
 -		systemPrompt.push(prompt.render(programmaticToolPrompt, data).trim());
 -	}
@@ -303,7 +302,7 @@ index 7cffb1ab00..32c29a32cb 100644
  		const guidance = prelude.guidance?.trim();
  		if (guidance) systemPrompt.push(guidance);
 diff --git a/packages/coding-agent/src/tools/todo.ts b/packages/coding-agent/src/tools/todo.ts
-index 17acdf6ca6..b49e82cffa 100644
+index 13c994ec7838707be870dd566858581b79f65c0b..642e174480bf3ec5312f511e9243c47db15160b6 100644
 --- a/packages/coding-agent/src/tools/todo.ts
 +++ b/packages/coding-agent/src/tools/todo.ts
 @@ -12,6 +12,7 @@ import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallb
@@ -314,7 +313,7 @@ index 17acdf6ca6..b49e82cffa 100644
  import type { ToolSession } from "../sdk";
  import type { SessionEntry } from "../session/session-entries";
  
-@@ -715,7 +716,11 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
+@@ -661,7 +662,11 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
  	readonly approval = "read" as const;
  	readonly label = "Todo";
  	readonly summary = "Write a structured todo list to track progress within a session";
@@ -327,7 +326,7 @@ index 17acdf6ca6..b49e82cffa 100644
  	readonly parameters = todoSchema;
  	readonly concurrency = "exclusive";
  	readonly strict = true;
-@@ -724,9 +729,7 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
+@@ -670,9 +675,7 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
  	readonly lenientArgValidation = true;
  
  	readonly loadMode = "discoverable";

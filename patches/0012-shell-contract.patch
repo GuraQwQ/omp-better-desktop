@@ -29,7 +29,7 @@ index 74d23c6de8..8f13bb6d1c 100644
 +
 +/** 描述解析失败不影响纯读取会话；真正执行时仍沿用原配置错误。 */
 +export function describeBashShellRouting(settings: Settings): string {
-+	const ordinary = "Local non-PTY commands use embedded brush-core with Bash syntax.";
++	const ordinary = "Local non-PTY commands use embedded Bash (pi-shell).";
 +	try {
 +		const { shellConfig } = resolveBashShellRouting(settings);
 +		const shell = shellConfig.shell;
@@ -119,20 +119,19 @@ index 2319d2bf65..6a2a404603 100644
 --- a/packages/coding-agent/src/prompts/tools/bash.md
 +++ b/packages/coding-agent/src/prompts/tools/bash.md
 @@ -1,4 +1,5 @@
--Persistent shell: one fact command/pipeline; dependencies use `&&`.
+-Persistent bash 5.3.
 +{{#if shellContract}}{{shellContract}}
-+{{/if}}Persistent shell: one fact command/pipeline; dependencies use `&&`.
- {{#if hasEval}}Scripts/heredocs/`$(…)`/complex pipelines → `eval`.{{else}}Scripts/heredocs/`$(…)`/complex flow → dedicated tool or checked-in script.{{/if}}
- `cwd`, not `cd`; `pty` only interactive.
++{{/if}}Persistent bash 5.3.
+ cwd will reset after each turn, don't rely on cd; `pty` = interactive.
  Internal URIs work as paths for builtins/coreutils, redirects, globs.
+ In-process builtins, ahead of PATH: {{join builtins ", "}}.
 diff --git a/packages/coding-agent/src/tools/bash.ts b/packages/coding-agent/src/tools/bash.ts
 index 9e01fc2bcf..6eb0ce6fa1 100644
 --- a/packages/coding-agent/src/tools/bash.ts
 +++ b/packages/coding-agent/src/tools/bash.ts
-@@ -21,7 +21,7 @@ import { isEnoent, logger, prompt } from "@oh-my-pi/pi-utils";
+@@ -21,6 +21,6 @@ import { isEnoent, logger, prompt } from "@oh-my-pi/pi-utils";
  import { isPosixShell } from "@oh-my-pi/pi-utils/procmgr";
  import { raceJobSettlement, resolveAutoBackgroundWaitMs } from "../async";
- import type { Settings } from "../config/settings";
 -import { applyDirenvPreflight, type BashResult, executeBash } from "../exec/bash-executor";
 +import { applyDirenvPreflight, type BashResult, describeBashShellRouting, executeBash } from "../exec/bash-executor";
  import { InternalUrlRouter } from "../internal-urls";

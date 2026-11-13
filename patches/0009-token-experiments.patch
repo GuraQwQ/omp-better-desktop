@@ -81,7 +81,7 @@ index 64e5d68a44..f901e92aae 100644
 +	cfgTokenOptimizationSkillCacheReuse,
  	cfgWorkspaceAdditionalDirectories,
  } from "./session/context-settings";
- import {
+ import { cfgTaskBatch, cfgTaskDisabledAgents, cfgTaskEager, ovnfsCommand } from "./task/settings";
 @@ -1418,6 +1420,8 @@ export interface BuildSystemPromptOptions {
  	systemPromptTemplate?: string;
  	appendPrompt?: string;
@@ -171,7 +171,7 @@ index 4bada8e1f2..7cffb1ab00 100644
  import systemPromptTemplate from "./prompts/system/system-prompt.md" with { type: "text" };
  import userAppendPromptTemplate from "./prompts/system/user-append.md" with { type: "text" };
 +import programmaticToolPrompt from "./prompts/system/programmatic-tool-use.md" with { type: "text" };
- import { normalizeConcurrencyLimit } from "./task/parallel";
+ import type { SystemPromptSource, SystemPromptSources } from "@oh-my-pi/pi-tui/status-line/context-usage";
  import type { ActiveRepoContext } from "@oh-my-pi/pi-tui/status-line/host";
  import { XD_URL_PREFIX } from "@oh-my-pi/pi-tui/tools/xd-url";
 @@ -50,7 +51,7 @@ import { cfgEvalAutoBackgroundEnabled } from "./eval/settings";
@@ -181,8 +181,8 @@ index 4bada8e1f2..7cffb1ab00 100644
 -import { cfgToolsFormat } from "./session/context-settings";
 +import { cfgTokenOptimizationProgrammatic, cfgToolsFormat } from "./session/context-settings";
  import {
+ 	cfgEncourageEdits,
  	cfgIncludeModelInPrompt,
- 	cfgIncludeWorkspaceTree,
 @@ -79,6 +80,7 @@ export const cfgSystemPromptInputs = combine({
  	includeWorkspaceTree: cfgIncludeWorkspaceTree,
  	inlineToolDescriptors: cfgInlineToolDescriptors,
@@ -200,10 +200,11 @@ index 4bada8e1f2..7cffb1ab00 100644
  	/** Skills settings for discovery. */
  	skillsSettings?: SkillsSettings;
  	/** Working directory. Default: getProjectDir() */
-@@ -1065,6 +1069,9 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
- 		rendered = prompt.render(systemPromptTemplate, data);
+@@ -1065,7 +1069,10 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
+ 		rendered = prompt.renderTracked(systemPromptTemplate, data, sourceItems);
  	}
- 	const systemPrompt = [rendered];
+ 	const systemPrompt = [rendered.text];
+ 	const sources = trackedSources(rendered, 0, sourceIdentities);
 +	if (options.programmatic && data.tools.includes("eval")) {
 +		systemPrompt.push(prompt.render(programmaticToolPrompt, data).trim());
 +	}

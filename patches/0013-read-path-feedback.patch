@@ -67,8 +67,8 @@ index 5c96d6eb78..f3dd04acb3 100644
 +import { cfgTokenOptimizationPromptGuidance } from "./context-settings";
 +import { withReadPathFeedback } from "./read-path-feedback";
  import { IMAGE_ATTACHMENT_DESCRIPTION_TYPE } from "./queued-messages";
- import type { SessionContext, TranscriptSessionContextOptions } from "./session-context";
- import type { CostGateApi } from "./cost-gate";
+ import {
+ 	getReadableCompactionEntry,
 @@ -203,7 +205,10 @@ export class SessionProviderBoundary {
  
  	/** Converts side-request messages through the session's secret boundary. */
