@@ -9,6 +9,7 @@ import Select from './Select';
 import './settings-presets.css';
 
 type Context = { id: string; snapshot: PresetSettings; state: PresetState; key: string };
+type InitialSave = { name: string; id?: string };
 type Props = { preferences: Preferences; sessionId?: string; ensureSession?: () => Promise<string>; changePreferences: (patch: Partial<Preferences>) => Promise<Preferences> };
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
 const cancelled = () => new DOMException('Cancelled', 'AbortError');
@@ -18,14 +19,18 @@ export default function SettingsPresets({ preferences, sessionId, ensureSession,
   const [context, setContext] = useState<Context>();
   const [choice, setChoice] = useState('');
   const [name, setName] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [working, setBusy] = useState(false);
+  const [initialSave, setInitialSave] = useState<InitialSave>();
+  const initialSaveRef = useRef<InitialSave | undefined>(undefined);
+  const busy = working || !!initialSave;
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const epoch = useRef(0);
   const loadingRevision = useRef(0);
   const previousSession = useRef(sessionId);
-  const live = useRef({ preferences, ensureSession, changePreferences, busy }); live.current = { preferences, ensureSession, changePreferences, busy };
+  const live = useRef({ preferences, ensureSession, changePreferences, busy, sessionId }); live.current = { preferences, ensureSession, changePreferences, busy, sessionId };
+  const cancelInitialSave = () => { initialSaveRef.current = undefined; setInitialSave(undefined); };
   const load = async (): Promise<Context> => {
     const current = epoch.current;
     const revision = ++loadingRevision.current;
@@ -42,12 +47,14 @@ export default function SettingsPresets({ preferences, sessionId, ensureSession,
   const showError = (value: unknown) => { if (!(value instanceof DOMException && value.name === 'AbortError')) setError(value instanceof Error ? value.message : String(value)); };
   useEffect(() => {
     epoch.current++; setContext(undefined); setError(''); setNotice('');
-    if (previousSession.current && previousSession.current !== sessionId) setChoice('');
+    if (previousSession.current && previousSession.current !== sessionId) { setChoice(''); cancelInitialSave(); }
+    else if (initialSaveRef.current?.id && sessionId && initialSaveRef.current.id !== sessionId) cancelInitialSave();
     previousSession.current = sessionId;
     const current = epoch.current;
-    if (sessionId) { setBusy(true); void load().catch(showError).finally(() => { if (current === epoch.current) setBusy(false); }); }
+    if (sessionId) { setBusy(true); void load().catch(value => { if (current === epoch.current) { cancelInitialSave(); showError(value); } }).finally(() => { if (current === epoch.current) setBusy(false); }); }
     return () => { epoch.current++; };
   }, [sessionId]);
+  useEffect(() => () => { initialSaveRef.current = undefined; }, []);
   useEffect(() => {
     const refresh = () => { if (sessionId && !live.current.busy) void load().catch(showError); };
     window.addEventListener('focus', refresh);
@@ -107,18 +114,34 @@ export default function SettingsPresets({ preferences, sessionId, ensureSession,
     } catch (value) { showError(value); if (current === epoch.current) await load().catch(() => {}); }
     finally { if (current === epoch.current) { setBusy(false); setProgress(''); } }
   };
-  const save = async () => {
-    if (!name.trim() || busy) return;
+  const saveCurrent = async (savedName: string, loaded?: Context) => {
     const current = epoch.current; setBusy(true); setError(''); setNotice('');
     try {
-      const target = await load();
-      if (target.state.custom.some(preset => preset.name.toLocaleLowerCase() === name.trim().toLocaleLowerCase())) throw new Error(zh ? '该预设名称已存在，请换一个名称。' : 'A preset with this name already exists. Choose another name.');
-      const preset: SettingsPreset = { id: `user:${crypto.randomUUID()}`, name: name.trim(), desktop: presetDesktopValues(live.current.preferences), omp: presetGlobalValues(target.snapshot) };
+      const target = loaded ?? await load();
+      if (target.state.custom.some(preset => preset.name.toLocaleLowerCase() === savedName.toLocaleLowerCase())) throw new Error(zh ? '该预设名称已存在，请换一个名称。' : 'A preset with this name already exists. Choose another name.');
+      const preset: SettingsPreset = { id: `user:${crypto.randomUUID()}`, name: savedName, desktop: presetDesktopValues(live.current.preferences), omp: presetGlobalValues(target.snapshot) };
       await persist(target, { version: 1, custom: [...target.state.custom, preset], active: { id: preset.id, fingerprint: settingsPresetFingerprint(target.snapshot, live.current.preferences) } });
       if (current === epoch.current) { setName(''); setChoice(''); setNotice(zh ? '已保存当前设置。' : 'Current settings saved.'); }
     } catch (value) { showError(value); }
     finally { if (current === epoch.current) setBusy(false); }
   };
+  const save = async () => {
+    if (!name.trim() || busy) return;
+    if (sessionId) { await saveCurrent(name.trim()); return; }
+    const intent: InitialSave = { name: name.trim() };
+    initialSaveRef.current = intent; setInitialSave(intent); setError(''); setNotice('');
+    try {
+      const id = await live.current.ensureSession?.();
+      if (initialSaveRef.current !== intent) return;
+      if (!id) throw new Error(zh ? '请先选择项目，再读取全局设置。' : 'Choose a project to load global settings.');
+      if (live.current.sessionId && live.current.sessionId !== id) throw cancelled();
+      intent.id = id; setInitialSave({ ...intent });
+    } catch (value) { if (initialSaveRef.current === intent) { cancelInitialSave(); showError(value); } }
+  };
+  useEffect(() => {
+    if (!initialSave?.id || !context || initialSave.id !== context.id || initialSaveRef.current?.id !== context.id) return;
+    cancelInitialSave(); void saveCurrent(initialSave.name, context);
+  }, [initialSave, context]);
   const select = (id: string) => { setChoice(id); setError(''); setNotice(''); if (!context) { setBusy(true); void load().catch(showError).finally(() => setBusy(false)); } };
   return <section className="settings-presets" aria-label={zh ? '全局设置预设' : 'Global settings presets'}>
     <div className="settings-section-heading"><h3>{zh ? '工作预设' : 'Work presets'}</h3><button className="icon-button" title={zh ? '读取当前设置' : 'Read current settings'} aria-label={zh ? '读取当前设置' : 'Read current settings'} disabled={busy} onClick={() => { setBusy(true); void load().catch(showError).finally(() => setBusy(false)); }}><RefreshCw size={14} /></button></div>
