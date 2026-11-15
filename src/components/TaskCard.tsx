@@ -17,7 +17,7 @@ export default function TaskCard({ id }: { id: string }) {
     const read = () => {
       if (document.hidden) return;
       const current = ++revision;
-      void request<Json>('card.get', { id }).then(value => { if (!disposed && current === revision && !document.hidden) { setCard(value); setError(''); } }).catch(error => { if (!disposed && current === revision) setError(String(error)); });
+      void request('card.get', { id }).then(value => { if (!disposed && current === revision && !document.hidden) { setCard(value); setError(''); } }).catch(error => { if (!disposed && current === revision) setError(String(error)); });
     };
     void listen<Json>('desktop-card-change', ({ payload }) => { if (!disposed && !document.hidden) { revision++; setCard(payload); setError(''); } }).then(unlisten => { if (disposed) unlisten(); else { stop = unlisten; read(); } }).catch(error => { if (!disposed) { setError(String(error)); read(); } });
     document.addEventListener('visibilitychange', read);

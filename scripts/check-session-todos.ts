@@ -8,7 +8,7 @@ const parsed = readTodoPhases(phases)!;
 assert.deepEqual(summarizeTodos(parsed), { total: 2, completed: 1, current: parsed[0].tasks[1], allClosed: false });
 assert.equal(readTodoPhases([{ tasks: [{ content: '不虚构状态', status: 'unknown' }] }]), undefined);
 const message: Message = { id: 'todo', role: 'toolResult', toolName: 'todo', content: '', details: { op: 'init', phases } };
-const session: SessionView = { id: 'A', cwd: 'D:/fixture', status: 'ready', state: {}, messages: [message], pending: [] };
+const session: SessionView = { id: 'A', title: '测试会话', cwd: 'D:/fixture', status: 'ready', state: {}, messages: [message], pending: [] };
 assert.deepEqual(sessionTodoPhases(session), parsed);
 assert.deepEqual(sessionTodoPhases({ ...session, state: { todoPhases: [] } }), []);
 const updated = applyEvent(session, { type: 'tool_execution_end', toolCallId: 'todo-live', toolName: 'todo', result: { details: { op: 'init', phases } } });

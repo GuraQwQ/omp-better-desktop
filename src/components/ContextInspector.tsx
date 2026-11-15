@@ -76,7 +76,7 @@ export default function ContextInspector({ session, language, close, exiting = f
     setLoading(true); setState(null); setStats(null); setErrors([]); setCapturedAt('');
     void Promise.allSettled([
       session.historyOnly ? Promise.resolve(null) : rpc<Json>(session.id, 'get_state'),
-      session.historyOnly ? session.path ? request<Json>('session.stats', { path: session.path }) : Promise.resolve(null) : rpc<Json>(session.id, 'get_session_stats'),
+      session.historyOnly ? session.path ? request('session.stats', { path: session.path }) : Promise.resolve(null) : rpc<Json>(session.id, 'get_session_stats'),
     ]).then(([stateResult, statsResult]) => {
       if (cancelled || currentIdentity.current !== identity) return;
       if (stateResult.status === 'fulfilled') setState(stateResult.value);

@@ -21,7 +21,7 @@ export default function CommandPalette({ t, language, sessionId, cwd, close, sen
   useEffect(() => {
     const available = cwd ? (sessionId ? Promise.resolve(sessionId) : ensureSession()).then(id => { runningSession.current = id; return rpc(id, 'get_available_commands'); }) : Promise.resolve({ commands: [] });
     Promise.all([request('command.catalog'), available]).then(([catalog, available]) => {
-      const list = Array.isArray(catalog) ? catalog : catalog.commands ?? catalog.entries ?? [];
+      const list = catalog;
       const dynamic = available.commands ?? available;
       setEntries(mergeCommandEntries(list, dynamic));
     }).catch(onError);
@@ -73,7 +73,7 @@ export default function CommandPalette({ t, language, sessionId, cwd, close, sen
         if (args.trim().startsWith('[')) argumentList = JSON.parse(args);
         else argumentList = args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g)?.map(arg => arg.replace(/^(["'])(.*)\1$/, '$2')) ?? [];
       }
-      const result = await request<Json>('command.cli', { cwd, args: [selected.name, ...argumentList] });
+      const result = await request('command.cli', { cwd, args: [selected.name, ...argumentList] });
       setOutput([result.stdout, result.stderr].filter(Boolean).join('\n') || t.emptyOutput);
     } catch (error) { onError(error); } finally { setBusy(false); }
   };

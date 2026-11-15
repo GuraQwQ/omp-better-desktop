@@ -62,14 +62,7 @@ jobs:
           python-version: "3.12"
       - run: bun install --frozen-lockfile
       - run: bun run check
-      - run: bun scripts/check-build-scope.ts --self-test
-      - name: 核心行为检查
-        shell: pwsh
-        run: |
-          foreach ($script in @('check-clean.ts', 'check-provider-config.ts', 'check-questions.ts', 'check-message-display.ts')) {
-            bun "scripts/$script"
-            if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          }
+      - run: bun run check:behavior
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
         if: steps.scope.outputs.host == 'true'
       - name: 构建并检查 Windows 发行输入

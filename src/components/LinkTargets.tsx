@@ -47,7 +47,7 @@ export function LinkTargets({ cwd, language, onOpenFile, children }: { cwd: stri
   useEffect(() => {
     if (!selected) return;
     let cancelled = false;
-    if (selected.target.kind === 'file' && native) void request<{ isFile: boolean }>('system.path_info', { path: selected.target.path }).then(value => { if (!cancelled) setIsFile(value.isFile); }).catch(value => { if (!cancelled) setError(String(value)); });
+    if (selected.target.kind === 'file' && native) void request('system.path_info', { path: selected.target.path }).then(value => { if (!cancelled) setIsFile(value.isFile); }).catch(value => { if (!cancelled) setError(String(value)); });
     const outside = (event: PointerEvent) => { if (!menu.current?.contains(event.target as Node) && !selected.anchor.contains(event.target as Node)) close(); };
     const scroll = (event: Event) => { if (!menu.current?.contains(event.target as Node)) close(); };
     const resize = () => close();

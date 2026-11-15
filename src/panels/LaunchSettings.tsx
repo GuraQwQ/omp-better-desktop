@@ -18,7 +18,7 @@ export default function LaunchSettings({ cwd, language, reconnect }: { cwd: stri
   useEffect(() => {
     const current = ++revision.current;
     setLoading(true); setNotice(''); setError('');
-    request<Json>('launch.get', { cwd }).then(profile => { if (current === revision.current) setValue({ ...empty, ...profile }); }).catch(error => { if (current === revision.current) setError(String(error)); }).finally(() => { if (current === revision.current) setLoading(false); });
+    request('launch.get', { cwd }).then(profile => { if (current === revision.current) setValue({ ...empty, ...profile }); }).catch(error => { if (current === revision.current) setError(String(error)); }).finally(() => { if (current === revision.current) setLoading(false); });
     return () => { revision.current++; };
   }, [cwd]);
   const change = (key: keyof typeof empty, next: unknown) => { setValue(old => ({ ...old, [key]: next })); setNotice(''); };

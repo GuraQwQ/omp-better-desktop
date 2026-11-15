@@ -15,8 +15,8 @@ export default function Notes({ session, selection, selectionNonce, onReference,
   useEffect(() => {
     const scope = ++generation.current;
     setReady(false); setNotes([]); setWorking(false); setQuote(selection ?? ''); setNote(''); draftRevision.current++;
-    void request<Json[] | null>('desktop.state.get', { key }).then(value => {
-      if (scope === generation.current) { setNotes(value ?? []); setReady(true); }
+    void request('desktop.state.get', { key }).then(value => {
+      if (scope === generation.current) { setNotes(Array.isArray(value) ? value : []); setReady(true); }
     }).catch(error => { if (scope === generation.current) errorHandler.current(error); });
     return () => { generation.current++; };
   }, [key]);

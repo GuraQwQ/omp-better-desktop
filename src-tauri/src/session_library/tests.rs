@@ -158,6 +158,42 @@ fn after_pages_are_bounded_and_handle_empty_or_exhausted_history() {
 }
 
 #[test]
+fn single_session_checks_preserve_roots_and_ignore_unrelated_logs() {
+    let fixture = Fixture::new();
+    let ordinary = fixture.omp();
+    let rows = [json!({"type":"session","id":"selected","cwd":"D:/项目"})];
+    let profile = fixture.log("omp/profiles/test/agent/sessions/one.jsonl", &rows);
+    let external = fixture.log("external/one.jsonl", &rows);
+    let configured = fixture.log("configured/one.jsonl", &rows);
+    fs::write(fixture.root.join("desktop.json"), serde_json::to_vec(&json!({"sessionDirectories":[external.parent().unwrap()],"launchProfiles":{"test":{"sessionDir":configured.parent().unwrap()}}})).unwrap()).unwrap();
+    let unrelated = fixture
+        .root
+        .join("omp/agent/sessions/project/unrelated.jsonl");
+    fs::write(&unrelated, [0xff]).unwrap();
+    for path in [ordinary, profile, external, configured] {
+        let request = json!({"path":path,"archived":true});
+        archive(&fixture.root, &request).unwrap();
+        assert_eq!(
+            validate_delete(&fixture.root, &request).unwrap(),
+            fs::canonicalize(&path).unwrap()
+        );
+    }
+    let attachment = fixture.log("omp/agent/attachments/fake.jsonl", &rows);
+    let headerless = fixture.log(
+        "omp/agent/sessions/project/headerless.jsonl",
+        &[json!({"type":"message"})],
+    );
+    for path in [attachment, headerless] {
+        let request = json!({"path":path,"archived":true});
+        assert!(archive(&fixture.root, &request).is_err());
+        assert!(validate_delete(&fixture.root, &request).is_err());
+        assert!(path.exists());
+    }
+    assert_eq!(fs::read(unrelated).unwrap(), [0xff]);
+    history::clear_cache(&fixture.root);
+}
+
+#[test]
 fn archive_is_idempotent_and_restores_missing_sources() {
     let fixture = Fixture::new();
     let path = fixture.omp();

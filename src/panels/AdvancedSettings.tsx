@@ -3,6 +3,7 @@ import { request } from '../lib/bridge';
 import { displayPath } from '../lib/display-path';
 import { localizeError } from '../lib/i18n';
 import type { Language } from '../lib/types';
+import type { DesktopRequestArgs } from '../lib/desktop-commands';
 import RequestCaptures from '../components/RequestCaptures';
 import './advanced-settings.css';
 
@@ -26,12 +27,12 @@ export default function AdvancedSettings({ language }: { language: Language }) {
   useEffect(() => {
     let cancelled = false;
     setError('');
-    void request<CaptureStatus>('requests.status').then(value => { if (!cancelled) setStatus(value); }).catch(error => { if (!cancelled) setError(String(error)); });
+    void request('requests.status').then(value => { if (!cancelled) setStatus(value); }).catch(error => { if (!cancelled) setError(String(error)); });
     return () => { cancelled = true; };
   }, [revision]);
-  const act = async (type: string, fields = {}) => {
+  const act = async (...args: DesktopRequestArgs<'requests.configure' | 'requests.clear'>) => {
     setWorking(true); setError('');
-    try { setStatus(await request<CaptureStatus>(type, fields)); setRevision(value => value + 1); } catch (error) { setError(String(error)); } finally { setWorking(false); }
+    try { setStatus(await request(...args)); setRevision(value => value + 1); } catch (error) { setError(String(error)); } finally { setWorking(false); }
   };
   const mb = (bytes: number) => new Intl.NumberFormat(language === 'zh' ? 'zh-CN' : 'en-US', { maximumFractionDigits: 1 }).format(bytes / 1024 / 1024);
   return <div className="advanced-settings"><h2>{text.title}</h2>

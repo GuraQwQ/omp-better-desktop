@@ -1,4 +1,4 @@
-import { request } from './bridge';
+import { request, rpc } from './bridge';
 import type { ComposerAttachment } from './attachments';
 import type { BtwHistoryRecord } from '../generated/rpc-wire';
 import type { DesktopEvent, Json, SessionView } from './types';
@@ -25,8 +25,8 @@ interface Snapshot {
 }
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 const backend = {
-  prepare: (value: Json) => request<{ message: string; images: { type: 'image'; data: string; mimeType: string }[]; warnings?: string[] }>('attachment.btw', value),
-  history: (id: string) => request<{ records: BtwHistoryRecord[] }>('session.rpc', { id, command: { type: 'get_btw_history' } }),
+  prepare: (value: { message: string; attachments: ComposerAttachment[] }) => request('attachment.btw', value),
+  history: (id: string) => rpc<{ records: BtwHistoryRecord[] }>(id, 'get_btw_history'),
 };
 
 export class SideQuestionSession {

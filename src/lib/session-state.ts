@@ -12,6 +12,7 @@ export function normalizeMessage(value: Json, fallback: string): Message {
 }
 
 export function enrichToolMessages(messages: Message[]): Message[] {
+  if (!messages.some(message => message.toolCallId && (message.args === undefined || !message.toolName))) return messages;
   const calls = new Map<string, { name?: string; arguments?: unknown }>();
   for (const message of messages) if (Array.isArray(message.content)) {
     for (const block of message.content) if (block?.type === 'toolCall' && block.id) calls.set(block.id, block);
@@ -24,7 +25,8 @@ export function enrichToolMessages(messages: Message[]): Message[] {
 export const normalizeHistoryMessages = (messages: Json[], prefix: string): Message[] => enrichToolMessages(messages.map((message, index) => normalizeMessage({ ...message, entryId: message.id }, `${prefix}-${index}`)));
 
 function toolMetadataChanged(event: Json): boolean {
-  return event.type.startsWith('tool_execution_') || ['message_start', 'message_update', 'message_end'].includes(event.type) && (
+  if (event.assistantMessageEvent?.type === 'toolcall_delta' && !Array.isArray(event.message?.content)) return false;
+  return ['message_start', 'message_update', 'message_end'].includes(event.type) && (
     ['tool', 'toolResult'].includes(event.message?.role) || event.assistantMessageEvent?.type?.startsWith('toolcall_') ||
     Array.isArray(event.message?.content) && event.message.content.some((block: Json) => block?.type === 'toolCall')
   );
@@ -136,7 +138,7 @@ function reduceEvent(session: SessionView, event: Json): SessionView {
     if (index >= 0) messages[index] = { ...messages[index], ...message };
     else messages.push(message);
     const phases = todoPhasesFromMessage(message);
-    return { ...session, ...(phases ? { state: { ...session.state, todoPhases: phases } } : {}), messages };
+    return { ...session, ...(phases ? { state: { ...session.state, todoPhases: phases } } : {}), messages: message.args === undefined || !message.toolName ? enrichToolMessages(messages) : messages };
   }
   return session;
 }

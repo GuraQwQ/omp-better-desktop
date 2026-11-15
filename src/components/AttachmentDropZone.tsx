@@ -46,7 +46,7 @@ export default function AttachmentDropZone({ children, disabled, language, addFi
       if (!native || disabled || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'v' || event.altKey || event.repeat) return;
       const current = { files: false }; paste.current = current;
       const insert = addPrepared;
-      void request<ComposerAttachment[]>('attachment.clipboard').then(items => { if (!current.files && items.length) insert(items); }).catch(onError);
+      void request('attachment.clipboard').then(items => { if (!current.files && items.length) insert(items); }).catch(onError);
     }}>
     {children}
     {over && !disabled && <div className="attachment-drop-hint">{language === 'zh' ? '松开以添加附件' : 'Drop to attach'}</div>}

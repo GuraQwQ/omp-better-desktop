@@ -88,7 +88,7 @@ export default function CustomProviders({ bootstrap, t, cwd, sessionId, ensureSe
     const current = ++contextRevision.current;
     revision.current++;
     setConfiguration(null); setWorking(''); loadFields();
-    try { const result = await request<Configuration>('providers.config', { operation: 'list', cwd }); if (current === contextRevision.current) { setConfiguration(result); setError(''); } }
+    try { const result = await request('providers.config', { operation: 'list', cwd }); if (current === contextRevision.current) { setConfiguration(result); setError(''); } }
     catch (error) { if (current === contextRevision.current) setError(error instanceof Error ? error.message : String(error)); }
   }, [cwd]);
   useEffect(() => { if (bootstrap.runtime) void load(); return () => { revision.current++; contextRevision.current++; }; }, [bootstrap.dataRoot, !!bootstrap.runtime, load]);
@@ -102,7 +102,7 @@ export default function CustomProviders({ bootstrap, t, cwd, sessionId, ensureSe
     const current = ++revision.current;
     setWorking('fetch'); setError('');
     try {
-      const result = await request<{ models: (Json & { id: string; name?: string })[] }>('providers.discover', { cwd, provider: { id, api, baseUrl, apiKey, options } });
+      const result = await request('providers.discover', { cwd, provider: { id, api, baseUrl, apiKey, options } });
       if (revision.current === current) {
         if (result.models.length) { setModels(result.models); setCheckedModels(new Set(currentIds.current)); setModelQuery(''); setModelPicker(true); }
         else setError(t.providerNoModels);
@@ -136,7 +136,7 @@ export default function CustomProviders({ bootstrap, t, cwd, sessionId, ensureSe
     const current = contextRevision.current; revision.current++; setWorking('save'); setError(''); setNotice('');
     try {
       const settings = Object.fromEntries(ids.map(model => [model, { ...modelSettings[model], compat: jsonObject(modelCompat[model] ?? '', `${model} ${text.compatibility}`, t.invalidJson) }]));
-      const result = await request<Configuration>('providers.config', { operation: 'save', cwd, provider: { id, api, baseUrl, apiKey, options: { ...options, compat: jsonObject(compat, text.compatibility, t.invalidJson) }, modelIds: ids, modelSettings: settings } });
+      const result = await request('providers.config', { operation: 'save', cwd, provider: { id, api, baseUrl, apiKey, options: { ...options, compat: jsonObject(compat, text.compatibility, t.invalidJson) }, modelIds: ids, modelSettings: settings } });
       modelCatalog.invalidate();
       if (current !== contextRevision.current) return;
       setConfiguration(result);
@@ -149,7 +149,7 @@ export default function CustomProviders({ bootstrap, t, cwd, sessionId, ensureSe
   const remove = async () => {
     if (!selected || locked) return;
     const current = contextRevision.current; revision.current++; setWorking('delete'); setError(''); setNotice('');
-    try { const result = await request<Configuration>('providers.config', { operation: 'delete', cwd, provider: { id: selected } }); modelCatalog.invalidate(); if (current === contextRevision.current) { setConfiguration(result); loadFields(); setConfirmDelete(false); setNotice([text.removed, ...(result.refreshErrors ?? [])].join('\n')); } }
+    try { const result = await request('providers.config', { operation: 'delete', cwd, provider: { id: selected } }); modelCatalog.invalidate(); if (current === contextRevision.current) { setConfiguration(result); loadFields(); setConfirmDelete(false); setNotice([text.removed, ...(result.refreshErrors ?? [])].join('\n')); } }
     catch (error) { if (current === contextRevision.current) setError(error instanceof Error ? error.message : String(error)); }
     finally { if (current === contextRevision.current) setWorking(''); }
   };

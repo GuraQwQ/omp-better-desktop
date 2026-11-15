@@ -6,7 +6,7 @@ import { applyEvent, isSessionRunning } from '../src/lib/session-state';
 import type { Json, SessionView } from '../src/lib/types';
 
 const ask: Json = { type: 'extension_ui_request', method: 'ask', id: 'question-1', async: true, questions: [{ id: 'target', recommended: 0, options: [{ label: 'A' }] }] };
-const session = (id: string): SessionView => ({ id, cwd: '/project', path: '/one.jsonl', messages: [], pending: [], status: 'running', state: { isStreaming: true, isSettled: false } });
+const session = (id: string): SessionView => ({ id, title: '测试会话', cwd: '/project', path: '/one.jsonl', messages: [], pending: [], status: 'running', state: { isStreaming: true, isSettled: false } });
 let first = updateQuestionDraft(applyEvent(session('first'), ask), ask.id, draft => ({ ...draft, value: '保留输入' }));
 assert.equal(isSessionRunning(first), true);
 assert.deepEqual(createQuestionDraft(ask).answers, {});

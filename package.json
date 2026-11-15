@@ -7,14 +7,15 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "bun scripts/fetch-agent-icons.ts && tsc --noEmit && vite build",
-    "check": "tsc --noEmit",
+    "check": "tsc --noEmit && tsc --project tsconfig.scripts.json",
     "desktop": "tauri",
     "prepare:upstream": "bun scripts/prepare-upstream.ts",
     "update:upstream": "bun scripts/update-upstream.ts",
     "build:runtime": "bun scripts/build-runtime.ts",
     "smoke:runtime": "bun scripts/smoke-runtime.ts",
     "build:desktop": "bun scripts/build-runtime.ts --bundle-desktop",
-    "clean": "bun scripts/clean.ts"
+    "clean": "bun scripts/clean.ts",
+    "check:behavior": "bun scripts/check-behavior.ts"
   },
   "dependencies": {
     "@openuidev/react-lang": "^1.0.2",

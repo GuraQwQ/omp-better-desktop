@@ -237,16 +237,14 @@ fn store(root: &Path, request: &Value) -> Result<Value, String> {
     let bytes = STANDARD
         .decode(text(request, "data")?)
         .map_err(|e| format!("附件 {name} 的内容不是有效 Base64：{e}"))?;
+    let _upload = crate::storage::storage_lock(root)?;
     let base = attachment_root(root);
     fs::create_dir_all(&base).map_err(|e| context("无法创建附件目录", &base, e))?;
     let directory = base.join(uuid::Uuid::new_v4().to_string());
-    fs::create_dir(&directory).map_err(|e| context("无法创建附件目录", &directory, e))?;
     let target = directory.join(name);
-    let pending = directory.join(if name == ".upload.pending" {
-        ".upload-2.pending"
-    } else {
-        ".upload.pending"
-    });
+    let staging = root.join("cache/attachment-uploads");
+    fs::create_dir_all(&staging).map_err(|e| context("无法创建附件暂存目录", &staging, e))?;
+    let pending = staging.join(format!("{}.pending", uuid::Uuid::new_v4()));
     let write = (|| {
         let mut file = OpenOptions::new()
             .write(true)
@@ -257,6 +255,7 @@ fn store(root: &Path, request: &Value) -> Result<Value, String> {
             .and_then(|_| file.sync_all())
             .map_err(|e| context("无法保存附件", &pending, e))?;
         drop(file);
+        fs::create_dir(&directory).map_err(|e| context("无法创建附件目录", &directory, e))?;
         fs::rename(&pending, &target).map_err(|e| context("无法提交附件", &target, e))
     })();
     if let Err(error) = write {
@@ -381,6 +380,68 @@ pub fn execute(root: &Path, request: &Value) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upload_waits_for_cache_cleanup_before_committing() {
+        let root =
+            std::env::temp_dir().join(format!("omp-attachment-lock-{}", uuid::Uuid::new_v4()));
+        let cleaning = crate::storage::storage_lock(&root).unwrap();
+        let (ready, started) = std::sync::mpsc::channel();
+        let (finished, result) = std::sync::mpsc::channel();
+        let target = root.clone();
+        let upload = std::thread::spawn(move || {
+            ready.send(()).unwrap();
+            finished
+                .send(store(
+                    &target,
+                    &json!({"name":"材料.txt","data":STANDARD.encode("附件内容")}),
+                ))
+                .unwrap();
+        });
+        started.recv().unwrap();
+        assert!(
+            result
+                .recv_timeout(std::time::Duration::from_millis(100))
+                .is_err()
+        );
+        drop(cleaning);
+        let saved = result
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        upload.join().unwrap();
+        crate::storage::clean_cache(&root).unwrap();
+        assert_eq!(
+            fs::read_to_string(saved["path"].as_str().unwrap()).unwrap(),
+            "附件内容"
+        );
+        assert!(root.starts_with(std::env::temp_dir()));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn cache_cleanup_preserves_committed_attachments_with_pending_names() {
+        let root = std::env::temp_dir().join(format!("omp-attachments-{}", uuid::Uuid::new_v4()));
+        for name in [".upload.pending", ".upload-2.pending", "材料.txt"] {
+            let result = store(
+                &root,
+                &json!({"name":name,"data":STANDARD.encode("附件内容")}),
+            )
+            .unwrap();
+            let path = PathBuf::from(result["path"].as_str().unwrap());
+            let staging = root.join("cache/attachment-uploads");
+            assert!(fs::read_dir(&staging).unwrap().next().is_none());
+            fs::write(staging.join("interrupted.pending"), "未提交内容").unwrap();
+            crate::storage::clean_cache(&root).unwrap();
+            assert!(!staging.exists());
+            assert_eq!(fs::read_to_string(&path).unwrap(), "附件内容");
+            discard(&root, &json!({"managed":true,"path":path})).unwrap();
+            discard(&root, &json!({"managed":true,"path":path})).unwrap();
+            assert!(!path.exists());
+        }
+        assert!(root.starts_with(std::env::temp_dir()));
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn btw_reads_material_and_bounds_text_without_losing_utf8() {

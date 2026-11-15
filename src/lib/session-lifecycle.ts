@@ -53,14 +53,14 @@ export class SessionLifecycle {
     const intent = { visible: !!options.visible };
     const promise = (async () => {
       if (options.restart && source && !source.historyOnly && !this.isReleased(source.id)) {
-        const closed = await this.transport.request<Json>('session.close', { id: source.id });
+        const closed = await this.transport.request('session.close', { id: source.id });
         source = { ...clearQuestions(this.current[source.id] ?? source), path: closed.path ?? undefined, historyOnly: true };
         this.put(source);
       }
       const existing = Object.values(this.current).find(value => !value.historyOnly && !this.isReleased(value.id) && (source?.path ? sessionKey(value) === sessionKey(source) : value.hidden && !value.messages.length && sessionPathKey(value.cwd) === sessionPathKey(cwd) && (options.canReuse?.(value) ?? true)));
       const recovering = this.recovering.get(key);
       if (recovering && this.isReleased(recovering.id)) this.recovering.delete(key);
-      const opened = existing ?? this.recovering.get(key) ?? await this.transport.request<Json>('session.open', { cwd, path: source?.path });
+      const opened = existing ?? this.recovering.get(key) ?? await this.transport.request('session.open', { cwd, path: source?.path });
       let page: Json | undefined;
       let btw: Json = { records: [] };
       if (!this.isReleased(opened.id)) {
@@ -147,9 +147,9 @@ export class SessionLifecycle {
   }
 
   async readMessages(id: string, path: string, limit = 100): Promise<Json> {
-    const page = await this.transport.request<Json>('session.history', { path, limit: Math.min(limit, 256) });
+    const page = await this.transport.request('session.history', { path, limit: Math.min(limit, 256) });
     while (page.nextCursor && page.messages.length < limit) {
-      const earlier = await this.transport.request<Json>('session.history', { path, cursor: page.nextCursor, limit: Math.min(limit - page.messages.length, 256) });
+      const earlier = await this.transport.request('session.history', { path, cursor: page.nextCursor, limit: Math.min(limit - page.messages.length, 256) });
       page.messages = [...earlier.messages, ...page.messages]; page.nextCursor = earlier.nextCursor;
     }
     if (page.messages.some((message: Json) => Array.isArray(message.content) && message.content.some((block: Json) => block.type === 'image' && typeof block.data === 'string' && block.data.startsWith('blob:')))) {
@@ -225,8 +225,8 @@ export class SessionLifecycle {
     const pending = this.historyPages.get(key); if (pending) return pending;
     const promise = (async () => {
       try {
-        const page = await this.transport.request<{ messages: Json[]; nextCursor?: string }>('session.history', { path: source.path, cursor: source.nextCursor, limit: 100 });
-        if (identity === this.identities.get(id)) this.update(id, current => prependHistoryPage(current, source, page));
+        const page = await this.transport.request('session.history', { path: source.path!, cursor: source.nextCursor, limit: 100 });
+        if (identity === this.identities.get(id)) this.update(id, current => prependHistoryPage(current, source, { ...page, nextCursor: page.nextCursor ?? undefined }));
       } catch (error) { if (identity === this.identities.get(id)) throw error; }
     })();
     this.historyPages.set(key, promise);

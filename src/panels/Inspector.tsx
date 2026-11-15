@@ -36,7 +36,7 @@ export default function Inspector({ tab, session, cwd, t, language, onError, clo
     const current = () => fileRevision.current === revision && currentFileScope.current === fileScope;
     setFile(name); setContent(''); setFileLoading(true);
     try {
-      const value = await request<string>('workspace.read', { cwd, path: name });
+      const value = await request('workspace.read', { cwd, path: name });
       if (current()) setContent(value);
     } catch (error) { if (current()) { setFile(''); onError(error); } }
     finally { if (current()) setFileLoading(false); }
