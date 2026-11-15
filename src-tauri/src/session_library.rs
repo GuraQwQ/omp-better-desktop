@@ -75,15 +75,8 @@ fn archive(root: &Path, request: &Value) -> Result<Value, String> {
     let path = text(request, "path")?;
     let archived = request["archived"].as_bool().ok_or("缺少 archived")?;
     let snapshot = if archived {
-        let canonical = history::session_path(root, Path::new(path))?;
-        let key = path_key(&canonical.to_string_lossy());
         Some(
-            history::list(root, None)?
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|session| path_key(session["path"].as_str().unwrap_or_default()) == key)
-                .cloned()
+            history::session_summary(root, Path::new(path))?
                 .ok_or("会话已移动或删除，请刷新列表。")?,
         )
     } else {
@@ -215,13 +208,7 @@ pub fn validate_delete(root: &Path, request: &Value) -> Result<PathBuf, String> 
         supplied.to_owned()
     } else {
         let path = history::session_path(root, supplied)?;
-        let key = path_key(&path.to_string_lossy());
-        if !history::list(root, None)?
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|session| path_key(session["path"].as_str().unwrap_or_default()) == key)
-        {
+        if history::session_summary(root, &path)?.is_none() {
             return Err(
                 "请选择会话列表中的 OMP 会话。 / Choose an OMP conversation from the list.".into(),
             );

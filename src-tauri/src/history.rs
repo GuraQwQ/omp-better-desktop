@@ -258,25 +258,44 @@ fn find_sessions(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
     Ok(())
 }
 
+fn session_directories(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut directories = vec![root.join("omp/agent/sessions")];
+    directories.extend(crate::launch::session_roots(root)?);
+    let profiles = root.join("omp/profiles");
+    if profiles.is_dir() {
+        for profile in fs::read_dir(profiles).map_err(|e| e.to_string())? {
+            directories.push(
+                profile
+                    .map_err(|e| e.to_string())?
+                    .path()
+                    .join("agent/sessions"),
+            );
+        }
+    }
+    Ok(directories)
+}
+
+pub fn session_summary(root: &Path, path: &Path) -> Result<Option<Value>, String> {
+    let root = fs::canonicalize(root).map_err(|e| e.to_string())?;
+    let path = session_path(&root, path)?;
+    let listed = session_directories(&root)?.iter().any(|directory| {
+        fs::canonicalize(directory).is_ok_and(|directory| {
+            directory.is_dir() && path.starts_with(directory) && path.is_file()
+        })
+    });
+    if !listed {
+        return Ok(None);
+    }
+    let stamp = file_stamp(&path).map_err(|e| e.to_string())?;
+    summary(&path, stamp)
+}
+
 pub fn list(root: &Path, cwd: Option<&str>) -> Result<Value, String> {
     let root = fs::canonicalize(root).map_err(|e| e.to_string())?;
     let canonical_cwd = cwd.and_then(|cwd| fs::canonicalize(cwd).ok());
     let mut files = Vec::new();
-    find_sessions(&root.join("omp/agent/sessions"), &mut files)?;
-    for directory in crate::launch::session_roots(&root)? {
+    for directory in session_directories(&root)? {
         find_sessions(&directory, &mut files)?;
-    }
-    let profiles = root.join("omp/profiles");
-    if profiles.is_dir() {
-        for profile in fs::read_dir(profiles).map_err(|e| e.to_string())? {
-            find_sessions(
-                &profile
-                    .map_err(|e| e.to_string())?
-                    .path()
-                    .join("agent/sessions"),
-                &mut files,
-            )?;
-        }
     }
     files.sort();
     files.dedup();

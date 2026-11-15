@@ -93,9 +93,19 @@ fn database(root: &Path) -> Result<Connection, String> {
     connection
         .busy_timeout(Duration::from_secs(5))
         .map_err(|error| error.to_string())?;
+    let version: u32 = connection
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    if version == 1 {
+        return Ok(connection);
+    }
+    if version > 1 {
+        return Err("生成式 UI 数据格式较新，请更新应用后读取。".into());
+    }
     let transaction = connection
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|error| error.to_string())?;
+    // 等待初始化锁后复读版本，避免重复初始化或覆盖较新的格式。
     let version: u32 = transaction
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(|error| error.to_string())?;
@@ -273,6 +283,16 @@ mod tests {
         fs::write(preferences_path,serde_json::to_vec(&json!({"preferences":{"generativeUI":{"enabled":true,"features":{"persistence":true},"capabilities":[]}}})).unwrap()).unwrap();
         let request = json!({"type":"genui.save","id":"view","source":"root=Text(\"你好\")","kind":"openui","state":{"name":"中文"},"baseRevision":null});
         let saved = execute(&root, &request).unwrap();
+        let mut writer = database(&root).unwrap();
+        let transaction = writer
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .unwrap();
+        assert_eq!(
+            read(&database(&root).unwrap(), "view").unwrap(),
+            Some(saved.clone())
+        );
+        transaction.rollback().unwrap();
+        drop(writer);
         assert!(
             execute(&root, &request)
                 .unwrap_err()

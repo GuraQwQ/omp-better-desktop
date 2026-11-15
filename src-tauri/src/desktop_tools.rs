@@ -27,25 +27,56 @@ fn now() -> i64 {
 
 fn database(root: &Path) -> Result<Connection> {
     fs::create_dir_all(root).map_err(|error| error.to_string())?;
-    let connection =
+    let mut connection =
         Connection::open(root.join("desktop-tools.sqlite3")).map_err(|error| error.to_string())?;
     connection
         .busy_timeout(Duration::from_secs(5))
         .map_err(|error| error.to_string())?;
-    connection.execute_batch("PRAGMA journal_mode=WAL;
+    let version: u32 = connection
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    let journal: String = connection
+        .pragma_query_value(None, "journal_mode", |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    if version >= 2 && journal.eq_ignore_ascii_case("wal") {
+        return Ok(connection);
+    }
+    // 仅初始化时复用数据锁，避免并发切换 WAL 导致锁升级冲突。
+    let _initialization = crate::storage::storage_lock(root)?;
+    let journal: String = connection
+        .pragma_query_value(None, "journal_mode", |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    if !journal.eq_ignore_ascii_case("wal") {
+        connection
+            .execute_batch("PRAGMA journal_mode=WAL;")
+            .map_err(|error| error.to_string())?;
+    }
+    let version: u32 = connection
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    if version >= 2 {
+        return Ok(connection);
+    }
+    let transaction = connection
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|error| error.to_string())?;
+    // 等待初始化锁期间，其他连接可能已经完成迁移。
+    let version: u32 = transaction
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    if version < 2 {
+        transaction.execute_batch("
         CREATE TABLE IF NOT EXISTS artifacts(id TEXT PRIMARY KEY, cwd TEXT NOT NULL, path TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, created_at INTEGER NOT NULL, UNIQUE(cwd,path));
         CREATE TABLE IF NOT EXISTS state(key TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS schedules(id TEXT PRIMARY KEY, name TEXT NOT NULL, cwd TEXT NOT NULL, prompt TEXT NOT NULL, next_at INTEGER NOT NULL, interval_minutes INTEGER, enabled INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY, job_id TEXT NOT NULL, job TEXT NOT NULL, status TEXT NOT NULL, claimed_at INTEGER NOT NULL, started_at INTEGER, finished_at INTEGER, session_id TEXT, path TEXT, error TEXT);
         CREATE UNIQUE INDEX IF NOT EXISTS one_running_job ON runs(job_id) WHERE status='running';
         CREATE INDEX IF NOT EXISTS due_schedules ON schedules(enabled,next_at);
-").map_err(|error| error.to_string())?;
-    let version: i64 = connection
-        .pragma_query_value(None, "user_version", |row| row.get(0))
-        .map_err(|error| error.to_string())?;
-    if version < 2 {
-        connection.execute_batch("BEGIN IMMEDIATE; DELETE FROM state WHERE key GLOB 'card:card-*'; PRAGMA user_version=2; COMMIT;").map_err(|error| error.to_string())?;
+        DELETE FROM state WHERE key GLOB 'card:card-*';
+        PRAGMA user_version=2;
+        ").map_err(|error| error.to_string())?;
     }
+    transaction.commit().map_err(|error| error.to_string())?;
     Ok(connection)
 }
 
@@ -649,6 +680,81 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         root
     }
+    #[test]
+    fn database_initialization_resumes_and_keeps_warm_reads_available() {
+        let root = directory();
+        let connection = Connection::open(root.join("desktop-tools.sqlite3")).unwrap();
+        connection.execute_batch("CREATE TABLE state(key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO state VALUES('card:card-old','1'),('state:keep','2'); PRAGMA user_version=1;").unwrap();
+        drop(connection);
+        let barrier = std::sync::Barrier::new(2);
+        std::thread::scope(|scope| {
+            let workers: Vec<_> = (0..2)
+                .map(|_| {
+                    let root = &root;
+                    let barrier = &barrier;
+                    scope.spawn(move || {
+                        barrier.wait();
+                        database(root).unwrap();
+                    })
+                })
+                .collect();
+            for worker in workers {
+                worker.join().unwrap();
+            }
+        });
+        let connection = Connection::open(root.join("desktop-tools.sqlite3")).unwrap();
+        connection
+            .execute_batch("PRAGMA journal_mode=DELETE;")
+            .unwrap();
+        drop(connection);
+        let mut writer = database(&root).unwrap();
+        assert_eq!(
+            writer
+                .pragma_query_value(None, "journal_mode", |row| row.get::<_, String>(0))
+                .unwrap(),
+            "wal"
+        );
+        assert_eq!(
+            writer
+                .query_row(
+                    "SELECT count(*) FROM sqlite_master WHERE type='table'",
+                    [],
+                    |row| row.get::<_, u32>(0)
+                )
+                .unwrap(),
+            4
+        );
+        assert_eq!(
+            writer
+                .query_row(
+                    "SELECT count(*) FROM state WHERE key='card:card-old'",
+                    [],
+                    |row| row.get::<_, u32>(0)
+                )
+                .unwrap(),
+            0
+        );
+        let transaction = writer
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .unwrap();
+        let reader = database(&root).unwrap();
+        assert_eq!(
+            reader
+                .query_row(
+                    "SELECT value FROM state WHERE key='state:keep'",
+                    [],
+                    |row| row.get::<_, String>(0)
+                )
+                .unwrap(),
+            "2"
+        );
+        transaction.rollback().unwrap();
+        drop(reader);
+        drop(writer);
+        assert!(root.starts_with(std::env::temp_dir()));
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn registry_state_and_export_keep_local_files() {
         let root = directory();
