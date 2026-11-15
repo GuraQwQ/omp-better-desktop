@@ -2,6 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "allowJs": true,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": ["vite/client", "bun"]
   },
   "include": ["scripts"]

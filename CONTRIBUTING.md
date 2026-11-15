@@ -10,7 +10,7 @@
 bun run check
 ```
 
-行为改动只运行对应的 `scripts/check-*.ts`，复用已有用例覆盖关键失败与恢复路径，通过后不重复跑其余套件。`bun run check:behavior` 自动发现全部本地行为检查，与 CI 使用同一入口；构建范围脚本以 `--self-test` 运行。Rust 改动执行格式检查及 `cargo check --manifest-path src-tauri/Cargo.toml --tests -j 1`，复用已有非系统盘构建目录；需要进程验收时只运行对应测试。完整桌面构建、上游运行时构建和实际二进制烟测留给发行验证或 `.github/workflows/check.yml`，本地仅在这些行为本身发生变化且轻量检查无法验证时运行。
+行为改动只运行对应的 `scripts/check-*.ts`，复用已有用例覆盖关键失败与恢复路径，通过后不重复跑其余套件。`bun run check:behavior` 沿用 Git 忽略规则自动发现项目行为检查，与 CI 使用同一入口；构建范围脚本以 `--self-test` 运行。脚本类型库按 Bun 的 ES2023 能力配置。Rust 改动执行格式检查及 `cargo check --manifest-path src-tauri/Cargo.toml --tests -j 1`，复用已有非系统盘构建目录；需要进程验收时只运行对应测试。完整桌面构建、上游运行时构建和实际二进制烟测留给发行验证或 `.github/workflows/check.yml`，本地仅在这些行为本身发生变化且轻量检查无法验证时运行。
 
 本机 `test/` 保留忽略规则，公开 CI 不依赖该目录。提交使用中文说明。PR 写明用户可见变化、验证结果与仍未验证的外部服务。Issue 模板提供复现信息入口。
 
