@@ -8,6 +8,7 @@
   --weight-bold: 650;
   --radius-surface: 12px;
   --radius-control: 8px;
+  --radius-action: 6px;
   --radius-item: 4px;
   --surface: #fcfcfb;
   --surface-raised: #ffffff;
@@ -27,6 +28,7 @@
   --input-focus: #98ac94;
   --selection: #dce8d5;
   --success: #36734c;
+  --warning: #9a5b13;
   --danger: #a23d32;
   --error-surface: #fff1ed;
   --user-message: #f0f2ed;
@@ -35,6 +37,7 @@
   --diff-added: #edf6ed;
   --diff-removed: #fff0ed;
   --shadow: 0 8px 28px #1e2a201a;
+  --shadow-panel: var(--shadow);
   --focus-ring: inset 0 0 0 1px var(--focus), 0 0 0 3px color-mix(in srgb, var(--focus) 24%, transparent);
   --motion-fast: 140ms;
   --motion-feedback: 90ms;
@@ -68,6 +71,7 @@
   --input-focus: #66795c;
   --selection: #445a3b;
   --success: #98c39c;
+  --warning: #dfb274;
   --danger: #edaa9b;
   --error-surface: #372723;
   --user-message: #22281f;

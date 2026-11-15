@@ -23,5 +23,5 @@
 .settings-import-entry { display: flex; justify-content: flex-end; margin-bottom: 10px; }
 .settings-nav { overflow-y: auto; }
 .settings-nav small { display: block; padding: 20px 12px 7px; }
-.settings-nav small:first-child { padding-top: 0; }
+.settings-nav > div:first-child > small { padding-top: 0; }
 @media (max-width: 620px) { .settings-nav small { display: none; } .setting-record { grid-template-columns: minmax(60px, 1fr) minmax(60px, 1fr) auto; } }
