@@ -70,3 +70,20 @@ assert.deepEqual(snapshotUpdate.messages, [final]);
 const failed = applyEvents(started, [update({ type: 'error', error: { ...final, stopReason: 'error', errorMessage: '连接中断' } })]);
 assert.equal(failed.messages[0].errorMessage, '连接中断');
 console.log('官方增量事件保留工具参数流、签名、图片与最终消息，重复开始不会累加旧内容');
+
+let historicalCallReads = 0;
+const toolSession: SessionView = { ...session, messages: [
+  { id: 'old', role: 'assistant', content: [{ type: 'toolCall', get id() { historicalCallReads++; return 'call'; }, name: 'read', arguments: { path: '中文.ts' } }] },
+] };
+const recovered = applyEvents(toolSession, [{ type: 'tool_execution_update', toolCallId: 'call', partialResult: { content: [] } }]);
+assert.equal(recovered.messages.length, 2);
+assert.equal(recovered.messages[1].toolName, 'read');
+assert.deepEqual(recovered.messages[1].args, { path: '中文.ts' });
+assert(historicalCallReads > 0);
+historicalCallReads = 0;
+const continued = applyEvents(recovered, [{ type: 'tool_execution_update', toolCallId: 'call', partialResult: { content: [{ type: 'text', text: '结果' }] } }]);
+assert.equal(historicalCallReads, 0);
+assert.equal(continued.messages[1].partialResult.content[0].text, '结果');
+applyEvents({ ...continued, messages: [...continued.messages, ...started.messages] }, [update({ type: 'toolcall_delta', contentIndex: 2, delta: '"中文.ts"}' })]);
+assert.equal(historicalCallReads, 0);
+console.log('工具更新可补建消息并恢复元数据，后续输出与参数增量不再扫描历史工具块');

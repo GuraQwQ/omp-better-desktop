@@ -8,7 +8,7 @@ export async function readContextMessages(session: SessionView, current: () => b
   const cursors = new Set<string>();
   let cursor: string | undefined;
   do {
-    const page = await request<{ messages: Json[]; nextCursor?: string | null }>('session.history', { path: session.path, cursor, limit: 256 });
+    const page = await request('session.history', { path: session.path, cursor, limit: 256 });
     if (!current()) return;
     pages.push(page.messages);
     cursor = page.nextCursor ?? undefined;

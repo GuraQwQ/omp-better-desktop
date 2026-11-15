@@ -45,10 +45,10 @@ export default function Settings({ bootstrap, t, sessionId, cwd = '', ensureSess
     setConnectionError('');
     try { await connect.current?.(); } catch (error) { if (error instanceof DOMException && error.name === 'AbortError') return; setConnectionError(error instanceof Error ? error.message : String(error)); onError(error); }
   };
-  const reload = async () => update(await request<Bootstrap>('bootstrap'));
+  const reload = async () => update(await request('bootstrap'));
   const preference = (patch: Partial<Preferences>) => {
     const saving = preferenceQueue.current.then(async () => {
-      const preferences = await request<Preferences>('preferences.set', { patch });
+      const preferences = await request('preferences.set', { patch });
       update(current => ({ ...current, preferences }));
       return preferences;
     });
@@ -62,7 +62,7 @@ export default function Settings({ bootstrap, t, sessionId, cwd = '', ensureSess
   const importFolder = (path: string) => {
     setImportResult(null); setImportDetails(false);
     return perform('import', async () => {
-      const result = await request<ImportResult>('data.import', { path });
+      const result = await request('data.import', { path });
       modelCatalog.invalidate();
       setImportResult({ path, result });
       await reload();
@@ -87,7 +87,7 @@ export default function Settings({ bootstrap, t, sessionId, cwd = '', ensureSess
         {tab === 'general' && <><SettingsPresets preferences={bootstrap.preferences} sessionId={sessionId} ensureSession={ensureSession} changePreferences={preference} /><GeneralPreferences bootstrap={bootstrap} t={t} change={patch => void preference(patch).catch(onError)} /></>}
         {tab === 'appearance' && <AppearancePreferences bootstrap={bootstrap} t={t} change={patch => void preference(patch).catch(onError)} />}
         {tab === 'runtime' && <><h2>{t.runtime}</h2><div className="runtime-status"><span className={`status-dot ${bootstrap.runtime ? 'connected' : ''}`} /><strong>{bootstrap.runtime ? `${t.installed} / OMP ${bootstrap.runtime.version}` : t.notInstalled}</strong></div><p>{t.installText}</p>{bootstrap.runtime && <code className="path-value">{displayPath(bootstrap.runtime.path)}</code>}{bootstrap.runtime && <div className="settings-actions"><button className="quiet-button" disabled={!!working} onClick={() => perform('install', async () => { const path = await pickPath(true); if (!path) return ''; await request('runtime.install', { path }); await reload(); })}><Download size={15} />{t.choosePackage}</button><button className="quiet-button" disabled={!!working || !bootstrap.runtime} onClick={() => perform('rollback', async () => { await request('runtime.rollback'); await reload(); })}>{t.rollback}</button></div>}<div className="setting-row"><strong>{t.clean}</strong><button className="quiet-button" disabled={!!working} onClick={() => perform('clean', () => request('runtime.clean'))}>{t.clean}</button></div></>}
-        {tab === 'data' && <><h2>{t.data}</h2><p>{t.setupDescription}</p><div className="settings-actions"><button className="secondary-button" disabled={!!working} onClick={() => perform('discover', async () => { setFound(await request<Json[]>('data.discover')); })}><RefreshCw size={14} />{t.discover}</button><button className="quiet-button" disabled={!!working} onClick={async () => { try { const path = await pickPath(); if (path) await importFolder(path); } catch (e) { onError(e); } }}><FolderOpen size={14} />{t.importFolder}</button></div>{found.map(source => <div className="source-row" key={source.path}><div><code>{displayPath(source.path)}</code><small>{source.sessionCount ?? 0} {t.history.toLowerCase()}</small></div><button className="secondary-button" disabled={!!working} onClick={() => importFolder(source.path)}>{t.importData}</button></div>)}{importResult && <section className={`import-status${importResult.result.completed ? ' is-complete' : ''}`} aria-label={t.importData} role="status">
+        {tab === 'data' && <><h2>{t.data}</h2><p>{t.setupDescription}</p><div className="settings-actions"><button className="secondary-button" disabled={!!working} onClick={() => perform('discover', async () => { setFound(await request('data.discover')); })}><RefreshCw size={14} />{t.discover}</button><button className="quiet-button" disabled={!!working} onClick={async () => { try { const path = await pickPath(); if (path) await importFolder(path); } catch (e) { onError(e); } }}><FolderOpen size={14} />{t.importFolder}</button></div>{found.map(source => <div className="source-row" key={source.path}><div><code>{displayPath(source.path)}</code><small>{source.sessionCount ?? 0} {t.history.toLowerCase()}</small></div><button className="secondary-button" disabled={!!working} onClick={() => importFolder(source.path)}>{t.importData}</button></div>)}{importResult && <section className={`import-status${importResult.result.completed ? ' is-complete' : ''}`} aria-label={t.importData} role="status">
           <strong>{importResult.result.completed ? t.importComplete : t.importIncomplete}</strong>
           <p>{t.importCopied} {importResult.result.copied} / {t.importSkipped} {importResult.result.skipped}</p>
           {!importResult.result.completed && <p>{importResult.result.conflicts.length ? t.importConflictHint : t.importChanging}</p>}

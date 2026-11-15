@@ -105,7 +105,7 @@ export default function GenerativeUI({ source, kind = 'openui', id, sessionId, s
     let cancelled = false, token = '';
     if (!config.enabled || !htmlDocument || isStreaming && !config.features.streaming) { setDocumentUrl(''); return; }
     if (!native) { setDocumentUrl(htmlDocument.url); return; }
-    void request<{token:string}>('genui.document',{html:htmlDocument.html,csp:htmlDocument.csp}).then(document => {
+    void request('genui.document',{html:htmlDocument.html,csp:htmlDocument.csp}).then(document => {
       token = document.token;
       if (cancelled) { void request('genui.document.release',{token}).catch(() => {}); return; }
       setDocumentUrl(convertFileSrc(token,'genui'));

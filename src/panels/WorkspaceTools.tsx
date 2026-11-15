@@ -6,6 +6,10 @@ import type { Language } from '../lib/types';
 import '@xterm/xterm/css/xterm.css';
 import './workspace-tools.css';
 
+type GitRequest = import('../lib/desktop-commands').DesktopRequestArgs<'git.status' | 'git.stage' | 'git.unstage' | 'git.commit'>;
+type WorktreeRequest = import('../lib/desktop-commands').DesktopRequestArgs<'worktree.list' | 'worktree.add' | 'worktree.remove'>;
+type ShellRequest = import('../lib/desktop-commands').DesktopRequestArgs<'shell.open' | 'shell.rename' | 'shell.close'>;
+
 type Tab = 'search' | 'git' | 'worktrees' | 'editor' | 'terminals';
 type OpenFile = { path: string; line?: number; nonce?: number };
 type Props = { cwd: string; language: Language; initialTab?: Tab; onProject?: (path: string) => void; onOpenFile?: (path: string, line?: number) => void; openFile?: OpenFile };
@@ -78,18 +82,18 @@ function WorkspaceGit({ cwd, language, open }: PanelProps & { open: (path: strin
   const [preview, setPreview] = useState<{ path: string; diff: string; staged: boolean }>();
   const revision = useRef(0);
   const previewRevision = useRef(0);
-  const run = async (type = 'git.status', fields: Record<string, unknown> = {}) => {
+  const run = async (...args: GitRequest) => {
     const current = ++revision.current; setBusy(true); setError(''); setNotice('');
     try {
-      const result = await request(type, { cwd, ...fields });
+      const result = await request(...args);
       if (current !== revision.current) return;
-      setItems((result.status ?? result).items ?? []);
-      if (type === 'git.commit') { setCommit(''); setNotice(result.output); setPreview(undefined); }
-      else if (type !== 'git.status') setPreview(undefined);
+      setItems(('status' in result ? result.status : result).items);
+      if ('output' in result) { setCommit(''); setNotice(result.output); setPreview(undefined); }
+      else if (args[0] !== 'git.status') setPreview(undefined);
     } catch (error) { if (current === revision.current) setError(message(error)); }
     finally { if (current === revision.current) setBusy(false); }
   };
-  useEffect(() => { void run(); return () => { revision.current++; previewRevision.current++; }; }, [cwd]);
+  useEffect(() => { void run('git.status', { cwd }); return () => { revision.current++; previewRevision.current++; }; }, [cwd]);
   const show = async (item: GitItem, staged: boolean) => {
     const current = ++previewRevision.current; setError('');
     try {
@@ -101,9 +105,9 @@ function WorkspaceGit({ cwd, language, open }: PanelProps & { open: (path: strin
     const selected = items.filter(item => staged ? item.staged : item.unstaged);
     const type = staged ? 'git.unstage' : 'git.stage';
     const paths = (list: GitItem[]) => [...new Set(list.flatMap(item => item.original ? [item.path, item.original] : [item.path]))];
-    return <section className="workspace-git-group"><header><strong>{staged ? zh ? '已暂存' : 'Staged' : zh ? '工作区改动' : 'Workspace changes'} <small>{selected.length}</small></strong><button className="quiet-button" disabled={busy || !selected.length} onClick={() => void run(type, { paths: paths(selected) })}>{staged ? zh ? '全部取消暂存' : 'Unstage all' : zh ? '全部暂存' : 'Stage all'}</button></header>{selected.map(item => <div className="workspace-git-file" key={item.path}><button title={item.path} onClick={() => void show(item, staged)}><code>{staged ? item.status[0] : item.status[1]}</code><span>{item.path}</span></button><button className="icon-button" aria-label={`${staged ? zh ? '取消暂存' : 'Unstage' : zh ? '暂存' : 'Stage'} ${item.path}`} disabled={busy} onClick={() => void run(type, { paths: paths([item]) })}>{staged ? <X size={14} /> : <Plus size={14} />}</button></div>)}</section>;
+    return <section className="workspace-git-group"><header><strong>{staged ? zh ? '已暂存' : 'Staged' : zh ? '工作区改动' : 'Workspace changes'} <small>{selected.length}</small></strong><button className="quiet-button" disabled={busy || !selected.length} onClick={() => void run(type, { cwd, paths: paths(selected) })}>{staged ? zh ? '全部取消暂存' : 'Unstage all' : zh ? '全部暂存' : 'Stage all'}</button></header>{selected.map(item => <div className="workspace-git-file" key={item.path}><button title={item.path} onClick={() => void show(item, staged)}><code>{staged ? item.status[0] : item.status[1]}</code><span>{item.path}</span></button><button className="icon-button" aria-label={`${staged ? zh ? '取消暂存' : 'Unstage' : zh ? '暂存' : 'Stage'} ${item.path}`} disabled={busy} onClick={() => void run(type, { cwd, paths: paths([item]) })}>{staged ? <X size={14} /> : <Plus size={14} />}</button></div>)}</section>;
   };
-  return <div className="workspace-tool-content"><div className="workspace-tool-actions"><button className="quiet-button" disabled={busy} onClick={() => void run()}><RefreshCw size={14} />{zh ? '刷新' : 'Refresh'}</button><span className="workspace-tool-hint" aria-live="polite">{busy ? zh ? '正在处理…' : 'Working…' : zh ? `${items.length} 个改动文件` : `${items.length} changed files`}</span></div>{error && <p className="workspace-tool-error" role="alert">{error}</p>}{notice && <p className="workspace-tool-hint" role="status">{notice}</p>}{group(true)}{group(false)}<form className="workspace-commit" onSubmit={event => { event.preventDefault(); void run('git.commit', { message: commit }); }}><label>{zh ? '提交说明' : 'Commit message'}<textarea value={commit} onChange={event => setCommit(event.target.value)} rows={3} /></label><button className="secondary-button" disabled={busy || !commit.trim() || !items.some(item => item.staged)}><GitCommitHorizontal size={14} />{zh ? '提交已暂存改动' : 'Commit staged changes'}</button></form>{preview && <section className="workspace-git-preview"><header><strong>{preview.path}</strong><button className="quiet-button" onClick={() => open(preview.path)}><FileCode2 size={14} />{zh ? '编辑' : 'Edit'}</button></header><pre className="workspace-tool-pre">{preview.diff || (zh ? '没有文本差异，文件可能已移除或为二进制。' : 'No text diff. The file may be removed or binary.')}</pre></section>}</div>;
+  return <div className="workspace-tool-content"><div className="workspace-tool-actions"><button className="quiet-button" disabled={busy} onClick={() => void run('git.status', { cwd })}><RefreshCw size={14} />{zh ? '刷新' : 'Refresh'}</button><span className="workspace-tool-hint" aria-live="polite">{busy ? zh ? '正在处理…' : 'Working…' : zh ? `${items.length} 个改动文件` : `${items.length} changed files`}</span></div>{error && <p className="workspace-tool-error" role="alert">{error}</p>}{notice && <p className="workspace-tool-hint" role="status">{notice}</p>}{group(true)}{group(false)}<form className="workspace-commit" onSubmit={event => { event.preventDefault(); void run('git.commit', { cwd, message: commit }); }}><label>{zh ? '提交说明' : 'Commit message'}<textarea value={commit} onChange={event => setCommit(event.target.value)} rows={3} /></label><button className="secondary-button" disabled={busy || !commit.trim() || !items.some(item => item.staged)}><GitCommitHorizontal size={14} />{zh ? '提交已暂存改动' : 'Commit staged changes'}</button></form>{preview && <section className="workspace-git-preview"><header><strong>{preview.path}</strong><button className="quiet-button" onClick={() => open(preview.path)}><FileCode2 size={14} />{zh ? '编辑' : 'Edit'}</button></header><pre className="workspace-tool-pre">{preview.diff || (zh ? '没有文本差异，文件可能已移除或为二进制。' : 'No text diff. The file may be removed or binary.')}</pre></section>}</div>;
 }
 
 type Worktree = { path: string; branch?: string; head?: string; detached?: boolean; locked?: boolean };
@@ -113,19 +117,19 @@ function WorkspaceWorktrees({ cwd, language, onProject }: PanelProps & Pick<Prop
   const [path, setPath] = useState(''); const [branch, setBranch] = useState(''); const [ref, setRef] = useState('HEAD');
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [remove, setRemove] = useState('');
   const revision = useRef(0);
-  const run = async (type = 'worktree.list', fields: Record<string, unknown> = {}) => {
+  const run = async (...args: WorktreeRequest) => {
     const current = ++revision.current; setBusy(true); setError('');
     try {
-      const result = await request(type, { cwd, ...fields });
-      const list = type === 'worktree.add' ? await request<Worktree[]>('worktree.list', { cwd }) : result;
+      const result = await request(...args);
+      const list = Array.isArray(result) ? result : await request('worktree.list', { cwd });
       if (current !== revision.current) return;
       setItems(list); setRemove('');
-      if (type === 'worktree.add') { setPath(''); setBranch(''); }
+      if (args[0] === 'worktree.add') { setPath(''); setBranch(''); }
     } catch (error) { if (current === revision.current) setError(message(error)); }
     finally { if (current === revision.current) setBusy(false); }
   };
-  useEffect(() => { void run(); return () => { revision.current++; }; }, [cwd]);
-  return <div className="workspace-tool-content"><div className="workspace-tool-actions"><button className="quiet-button" disabled={busy} onClick={() => void run()}><RefreshCw size={14} />{zh ? '刷新工作树' : 'Refresh worktrees'}</button></div>{error && <p className="workspace-tool-error" role="alert">{error}</p>}<div className="workspace-worktrees">{items.map((item, index) => <article key={item.path}><strong>{item.branch || (zh ? '分离 HEAD' : 'Detached HEAD')}</strong><code>{item.path}</code><div className="workspace-tool-actions"><button className="quiet-button" disabled={!onProject || normalizedPath(item.path) === normalizedPath(cwd)} onClick={() => onProject?.(item.path)}>{zh ? '打开项目' : 'Open project'}</button>{index > 0 && <button className="quiet-button" disabled={busy || item.locked || normalizedPath(item.path) === normalizedPath(cwd)} onClick={() => setRemove(item.path)}><Trash2 size={13} />{zh ? '移除' : 'Remove'}</button>}</div>{remove === item.path && <div className="workspace-tool-confirm"><p>{zh ? '移除这个工作树目录？Git 历史和分支会保留。' : 'Remove this worktree directory? Git history and branches remain.'}</p><button className="secondary-button" disabled={busy} onClick={() => void run('worktree.remove', { path: item.path })}>{zh ? '移除工作树' : 'Remove worktree'}</button><button className="quiet-button" onClick={() => setRemove('')}>{zh ? '取消' : 'Cancel'}</button></div>}</article>)}</div><form className="workspace-worktree-form" onSubmit={event => { event.preventDefault(); void run('worktree.add', { path, branch, ref }); }}><strong>{zh ? '创建独立工作树' : 'Create an independent worktree'}</strong><label>{zh ? '新目录完整路径' : 'New directory absolute path'}<input value={path} onChange={event => setPath(event.target.value)} placeholder="D:\projects\task-worktree" required /></label><label>{zh ? '新分支名称（可选）' : 'New branch name (optional)'}<input value={branch} onChange={event => setBranch(event.target.value)} /></label><label>{zh ? '起始 Git 引用' : 'Starting Git ref'}<input value={ref} onChange={event => setRef(event.target.value)} placeholder="HEAD" /></label><button className="secondary-button" disabled={busy || !path.trim()}><Plus size={14} />{zh ? '创建工作树' : 'Create worktree'}</button></form></div>;
+  useEffect(() => { void run('worktree.list', { cwd }); return () => { revision.current++; }; }, [cwd]);
+  return <div className="workspace-tool-content"><div className="workspace-tool-actions"><button className="quiet-button" disabled={busy} onClick={() => void run('worktree.list', { cwd })}><RefreshCw size={14} />{zh ? '刷新工作树' : 'Refresh worktrees'}</button></div>{error && <p className="workspace-tool-error" role="alert">{error}</p>}<div className="workspace-worktrees">{items.map((item, index) => <article key={item.path}><strong>{item.branch || (zh ? '分离 HEAD' : 'Detached HEAD')}</strong><code>{item.path}</code><div className="workspace-tool-actions"><button className="quiet-button" disabled={!onProject || normalizedPath(item.path) === normalizedPath(cwd)} onClick={() => onProject?.(item.path)}>{zh ? '打开项目' : 'Open project'}</button>{index > 0 && <button className="quiet-button" disabled={busy || item.locked || normalizedPath(item.path) === normalizedPath(cwd)} onClick={() => setRemove(item.path)}><Trash2 size={13} />{zh ? '移除' : 'Remove'}</button>}</div>{remove === item.path && <div className="workspace-tool-confirm"><p>{zh ? '移除这个工作树目录？Git 历史和分支会保留。' : 'Remove this worktree directory? Git history and branches remain.'}</p><button className="secondary-button" disabled={busy} onClick={() => void run('worktree.remove', { cwd, path: item.path })}>{zh ? '移除工作树' : 'Remove worktree'}</button><button className="quiet-button" onClick={() => setRemove('')}>{zh ? '取消' : 'Cancel'}</button></div>}</article>)}</div><form className="workspace-worktree-form" onSubmit={event => { event.preventDefault(); void run('worktree.add', { cwd, path, branch, ref }); }}><strong>{zh ? '创建独立工作树' : 'Create an independent worktree'}</strong><label>{zh ? '新目录完整路径' : 'New directory absolute path'}<input value={path} onChange={event => setPath(event.target.value)} placeholder="D:\projects\task-worktree" required /></label><label>{zh ? '新分支名称（可选）' : 'New branch name (optional)'}<input value={branch} onChange={event => setBranch(event.target.value)} /></label><label>{zh ? '起始 Git 引用' : 'Starting Git ref'}<input value={ref} onChange={event => setRef(event.target.value)} placeholder="HEAD" /></label><button className="secondary-button" disabled={busy || !path.trim()}><Plus size={14} />{zh ? '创建工作树' : 'Create worktree'}</button></form></div>;
 }
 
 type Document = { path: string; content: string; saved: string; revision: string; encoding: string; newline: string };
@@ -150,7 +154,7 @@ function WorkspaceEditor({ cwd, language, target }: PanelProps & { target?: Open
   useEffect(() => { editorCache.set(cacheKey, { documents, active }); }, [cacheKey, documents, active]);
   useEffect(() => {
     mounted.current = true;
-    request<string[]>('workspace.files', { cwd }).then(files => { if (mounted.current) setFiles(files); }).catch(error => { if (mounted.current) setError(message(error)); });
+    request('workspace.files', { cwd }).then(files => { if (mounted.current) setFiles(files); }).catch(error => { if (mounted.current) setError(message(error)); });
     const beforeUnload = (event: BeforeUnloadEvent) => { if (liveDocuments.current.some(document => document.content !== document.saved)) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('beforeunload', beforeUnload);
     return () => { mounted.current = false; window.removeEventListener('beforeunload', beforeUnload); };
@@ -243,16 +247,16 @@ function WorkspaceTerminals({ cwd, language }: PanelProps) {
   const zh = language === 'zh';
   const [shells, setShells] = useState<Shell[]>([]); const [active, setActive] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [name, setName] = useState('');
   const mounted = useRef(true);
-  const load = async () => { const next = await request<Shell[]>('shell.list', { cwd }); if (mounted.current) { setShells(next); setActive(active => next.some(shell => shell.id === active) ? active : next[0]?.id ?? ''); } };
+  const load = async () => { const next = await request('shell.list', { cwd }); if (mounted.current) { setShells(next); setActive(active => next.some(shell => shell.id === active) ? active : next[0]?.id ?? ''); } };
   useEffect(() => { mounted.current = true; void load().catch(error => { if (mounted.current) setError(message(error)); }); return () => { mounted.current = false; }; }, [cwd]);
-  const act = async (type: string, fields: Record<string, unknown>) => {
+  const act = async (...args: ShellRequest) => {
     setBusy(true); setError('');
-    try { const next = await request(type, { cwd, ...fields }); await load(); if (mounted.current && type === 'shell.open') { setActive(next.id); setName(''); } }
+    try { const next = await request(...args); await load(); if (mounted.current && args[0] === 'shell.open' && next) { setActive(next.id); setName(''); } }
     catch (error) { if (mounted.current) setError(message(error)); }
     finally { if (mounted.current) setBusy(false); }
   };
   const selected = shells.find(shell => shell.id === active);
-  return <div className="workspace-tool-content workspace-terminals"><div className="workspace-tool-form"><input aria-label={zh ? '终端名称' : 'Terminal name'} placeholder={zh ? '终端名称（可选）' : 'Terminal name (optional)'} value={name} onChange={event => setName(event.target.value)} /><button className="secondary-button" disabled={busy} onClick={() => void act('shell.open', { name: name.trim() || `${zh ? '终端' : 'Terminal'} ${shells.length + 1}` })}><Plus size={14} />{zh ? '新建' : 'New'}</button>{selected && name.trim() && <button className="quiet-button" disabled={busy} onClick={() => void act('shell.rename', { id: active, name: name.trim() })}>{zh ? '重命名' : 'Rename'}</button>}</div><div className="workspace-document-tabs">{shells.map(shell => <div key={shell.id} className={active === shell.id ? 'active' : ''}><button onClick={() => setActive(shell.id)}>{shell.name}{!shell.running && <small>{zh ? '已退出' : 'Exited'}</small>}</button><button className="icon-button" disabled={busy} aria-label={`${zh ? '关闭' : 'Close'} ${shell.name}`} onClick={() => void act('shell.close', { id: shell.id })}><X size={12} /></button></div>)}</div>{error && <p className="workspace-tool-error" role="alert">{error}</p>}{active ? <ShellView key={active} id={active} onError={error => setError(message(error))} onExit={() => setShells(shells => shells.map(shell => shell.id === active ? { ...shell, running: false } : shell))} /> : <p className="workspace-tool-hint">{zh ? '新建终端，在当前项目目录运行命令。' : 'Create a terminal to run commands in this project.'}</p>}</div>;
+  return <div className="workspace-tool-content workspace-terminals"><div className="workspace-tool-form"><input aria-label={zh ? '终端名称' : 'Terminal name'} placeholder={zh ? '终端名称（可选）' : 'Terminal name (optional)'} value={name} onChange={event => setName(event.target.value)} /><button className="secondary-button" disabled={busy} onClick={() => void act('shell.open', { cwd, name: name.trim() || `${zh ? '终端' : 'Terminal'} ${shells.length + 1}` })}><Plus size={14} />{zh ? '新建' : 'New'}</button>{selected && name.trim() && <button className="quiet-button" disabled={busy} onClick={() => void act('shell.rename', { id: active, name: name.trim() })}>{zh ? '重命名' : 'Rename'}</button>}</div><div className="workspace-document-tabs">{shells.map(shell => <div key={shell.id} className={active === shell.id ? 'active' : ''}><button onClick={() => setActive(shell.id)}>{shell.name}{!shell.running && <small>{zh ? '已退出' : 'Exited'}</small>}</button><button className="icon-button" disabled={busy} aria-label={`${zh ? '关闭' : 'Close'} ${shell.name}`} onClick={() => void act('shell.close', { id: shell.id })}><X size={12} /></button></div>)}</div>{error && <p className="workspace-tool-error" role="alert">{error}</p>}{active ? <ShellView key={active} id={active} onError={error => setError(message(error))} onExit={() => setShells(shells => shells.map(shell => shell.id === active ? { ...shell, running: false } : shell))} /> : <p className="workspace-tool-hint">{zh ? '新建终端，在当前项目目录运行命令。' : 'Create a terminal to run commands in this project.'}</p>}</div>;
 }
 
 function ShellView({ id, onError, onExit }: { id: string; onError: (error: unknown) => void; onExit: () => void }) {
@@ -271,7 +275,7 @@ function ShellView({ id, onError, onExit }: { id: string; onError: (error: unkno
       if (native) unsubscribe = await listen<ShellEvent>('desktop-shell', ({ payload }) => { if (disposed || payload.id !== id) return; if (!ready) pending.push(payload); else apply(payload); });
       if (disposed) { unsubscribe?.(); return; }
       terminal.onData(data => { void request('shell.write', { id, data }).catch(error => callbacks.current.onError(error)); });
-      const snapshot = await request<{ data: string; seq: number; running: boolean }>('shell.read', { id });
+      const snapshot = await request('shell.read', { id });
       if (disposed) return;
       terminal.write(snapshot.data); seq = snapshot.seq; ready = true;
       pending.forEach(apply); pending.length = 0;

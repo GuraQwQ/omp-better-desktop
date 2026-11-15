@@ -15,8 +15,8 @@ export default function Reviews({ session, onPrompt, onError }: { session?: Sess
   useEffect(() => {
     const scope = ++generation.current;
     setReady(false); setReport(null); setInput(''); setWorking(false);
-    void request<ReviewReport | null>('desktop.state.get', { key }).then(value => {
-      if (scope === generation.current) { setReport(value); setReady(true); }
+    void request('desktop.state.get', { key }).then(value => {
+      if (scope === generation.current) { setReport(value == null ? null : parseReview(JSON.stringify(value))); setReady(true); }
     }).catch(error => { if (scope === generation.current) errorHandler.current(error); });
     return () => { generation.current++; };
   }, [key]);

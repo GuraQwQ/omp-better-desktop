@@ -64,7 +64,7 @@ export default function SideQuestions(props: Props) {
     const { id, generation } = currentThread; setAttaching(true); setError('');
     try {
       const path = await pickPath(directory); if (!path || !active.current) return;
-      const items = await request<ComposerAttachment[]>('attachment.paths', { paths: [path] });
+      const items = await request('attachment.paths', { paths: [path] });
       if (active.current) conversation.addAttachments(id, generation, items);
     } catch (error) { if (active.current) setError(error instanceof Error ? error.message : String(error)); }
     finally { if (active.current) setAttaching(false); }

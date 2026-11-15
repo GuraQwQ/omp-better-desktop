@@ -9,7 +9,7 @@ export class ModelCatalog {
   private readonly entries = new Map<string, Entry>();
   generation = 0;
 
-  constructor(private readonly fetchModels = (cwd: string) => request<ModelCatalogResult>('models.list', { cwd })) {}
+  constructor(private readonly fetchModels = (cwd: string) => request('models.list', { cwd })) {}
 
   peek(key: string): ModelCatalogResult | undefined { return this.entries.get(key)?.result; }
 

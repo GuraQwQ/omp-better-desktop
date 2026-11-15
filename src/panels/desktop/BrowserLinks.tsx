@@ -12,15 +12,15 @@ export default function BrowserLinks({ onError, language = 'zh' }: { language?: 
   const errorHandler = useRef(onError); errorHandler.current = onError;
   useEffect(() => {
     const scope = ++generation.current;
-    void request<Json[] | null>('desktop.state.get', { key: 'browser-history' }).then(value => {
-      if (scope === generation.current) { setLinks(value ?? []); setReady(true); }
+    void request('desktop.state.get', { key: 'browser-history' }).then(value => {
+      if (scope === generation.current) { setLinks(Array.isArray(value) ? value : []); setReady(true); }
     }).catch(error => { if (scope === generation.current) errorHandler.current(error); });
     return () => { generation.current++; };
   }, []);
   const open = async (value: string) => {
     const scope = generation.current; setWorking(true);
     try {
-      const result = await request<Json>('browser.open', { url: /^[a-z]+:/i.test(value) ? value : `https://${value}` });
+      const result = await request('browser.open', { url: /^[a-z]+:/i.test(value) ? value : `https://${value}` });
       if (scope !== generation.current) return;
       const next = [{ url: result.url, at: Date.now() }, ...links.filter(link => link.url !== result.url)].slice(0, 50);
       await request('desktop.state.set', { key: 'browser-history', value: next });

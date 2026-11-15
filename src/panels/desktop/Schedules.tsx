@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Plus, RefreshCw } from 'lucide-react';
 import { request } from '../../lib/bridge';
-import type { Json, SessionSummary } from '../../lib/types';
+import type { SessionSummary } from '../../lib/types';
+import type { DesktopCommands, DesktopRequestArgs } from '../../lib/desktop-commands';
+type ScheduleJob = DesktopCommands['schedule.save']['input']['job'];
 
 export default function Schedules({ cwd, onOpen, onError }: { cwd: string; onOpen: (summary: SessionSummary, messageId?: string) => void; onError: (error: unknown) => void }) {
-  const [data, setData] = useState<Json>({ jobs: [], runs: [] });
-  const [editing, setEditing] = useState<Json | null>(null);
+  const [data, setData] = useState<DesktopCommands['schedule.list']['output']>({ jobs: [], runs: [] });
+  const [editing, setEditing] = useState<ScheduleJob | null>(null);
   const [working, setWorking] = useState(false);
   const generation = useRef(0);
   const listRevision = useRef(0);
@@ -14,7 +16,7 @@ export default function Schedules({ cwd, onOpen, onError }: { cwd: string; onOpe
   const reload = async () => {
     const scope = generation.current;
     const revision = ++listRevision.current;
-    const value = await request<Json>('schedule.list');
+    const value = await request('schedule.list');
     if (scope === generation.current && revision === listRevision.current) setData(value);
   };
   useEffect(() => {
@@ -24,14 +26,16 @@ export default function Schedules({ cwd, onOpen, onError }: { cwd: string; onOpe
     poll(); const timer = setInterval(poll, 5000);
     return () => { generation.current++; listRevision.current++; clearInterval(timer); };
   }, [cwd]);
-  const perform = async (type: string, fields: Json): Promise<boolean> => {
+  const perform = async (...args: DesktopRequestArgs<'schedule.save' | 'schedule.remove' | 'schedule.retry'>): Promise<boolean> => {
     if (operation.current) return false;
     const scope = generation.current;
     operation.current = true; listRevision.current++; setWorking(true);
     try {
       // 表单中的零间隔表示一次性任务，持久化协议用 null 表达。
-      const payload = type === 'schedule.save' ? { ...fields, job: { ...fields.job, intervalMinutes: fields.job.intervalMinutes === 0 ? null : fields.job.intervalMinutes } } : fields;
-      await request(type, payload);
+      if (args[0] === 'schedule.save') {
+        const job = args[1].job;
+        await request('schedule.save', { job: { ...job, intervalMinutes: job.intervalMinutes === 0 ? null : job.intervalMinutes } });
+      } else await request(...args);
       if (scope !== generation.current) return false;
       try { await reload(); } catch (error) { if (scope === generation.current) errorHandler.current(error); }
       return scope === generation.current;
@@ -49,8 +53,8 @@ export default function Schedules({ cwd, onOpen, onError }: { cwd: string; onOpe
       <label className="desktop-field">重复间隔（分钟，0 为一次）<input min={0} step={1} disabled={working} type="number" value={editing.intervalMinutes ?? 0} onChange={event => setEditing({ ...editing, intervalMinutes: Number(event.target.value) })} /></label>
       <div className="desktop-tool-actions"><button className="primary-button" disabled={working}>保存</button><button type="button" className="quiet-button" disabled={working} onClick={() => setEditing(null)}>取消</button></div>
     </form>}
-    {data.jobs.map((job: Json) => <article className="desktop-record" key={job.id}><h3>{job.name}</h3><code>{job.cwd}</code><p>{job.prompt}</p><small>{new Date(job.nextAt).toLocaleString()}{job.intervalMinutes ? ` · 每 ${job.intervalMinutes} 分钟` : ''}</small><div className="desktop-tool-actions"><label><input type="checkbox" checked={job.enabled} disabled={working} onChange={event => void perform('schedule.save', { job: { ...job, enabled: event.target.checked } })} />启用</label><button className="quiet-button" disabled={working} onClick={() => setEditing(job)}>编辑</button><button className="quiet-button" disabled={working} onClick={() => void perform('schedule.remove', { id: job.id })}>删除计划</button></div></article>)}
+    {data.jobs.map(job => <article className="desktop-record" key={job.id}><h3>{job.name}</h3><code>{job.cwd}</code><p>{job.prompt}</p><small>{new Date(job.nextAt).toLocaleString()}{job.intervalMinutes ? ` · 每 ${job.intervalMinutes} 分钟` : ''}</small><div className="desktop-tool-actions"><label><input type="checkbox" checked={job.enabled} disabled={working} onChange={event => void perform('schedule.save', { job: { ...job, enabled: event.target.checked } })} />启用</label><button className="quiet-button" disabled={working} onClick={() => setEditing(job)}>编辑</button><button className="quiet-button" disabled={working} onClick={() => void perform('schedule.remove', { id: job.id })}>删除计划</button></div></article>)}
     <h3>运行记录</h3>
-    {data.runs.map((run: Json) => <article className="desktop-record" key={run.runId}><strong>{run.job?.name ?? '定时任务'}</strong><small>{run.status} · {new Date(run.startedAt ?? run.claimedAt).toLocaleString()}</small>{run.error && <p>{run.error}</p>}<div className="desktop-tool-actions">{run.path && run.job?.cwd && <button className="quiet-button" onClick={() => onOpen({ id: run.sessionId || run.runId, path: run.path, cwd: run.job.cwd, title: run.job.name })}>打开会话</button>}{['error', 'interrupted'].includes(run.status) && <button className="quiet-button" disabled={working} onClick={() => void perform('schedule.retry', { runId: run.runId })}>重试</button>}</div></article>)}
+    {data.runs.map(run => <article className="desktop-record" key={run.runId}><strong>{run.job?.name ?? '定时任务'}</strong><small>{run.status} · {new Date(run.startedAt ?? run.claimedAt).toLocaleString()}</small>{run.error && <p>{run.error}</p>}<div className="desktop-tool-actions">{run.path && run.job?.cwd && <button className="quiet-button" onClick={() => onOpen({ id: run.sessionId || run.runId, path: run.path!, cwd: run.job.cwd, title: run.job.name })}>打开会话</button>}{['error', 'interrupted'].includes(run.status) && <button className="quiet-button" disabled={working} onClick={() => void perform('schedule.retry', { runId: run.runId })}>重试</button>}</div></article>)}
   </>;
 }

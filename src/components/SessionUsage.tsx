@@ -53,7 +53,7 @@ export default function SessionUsage({ session, language, cache, onAdvanced }: {
         // 合并事件刷新，并等待旧会话请求结束，避免重叠及最终用量被漏掉。
         if (inFlight.current) await inFlight.current.catch(() => {});
         if (cancelled) break;
-        const pending = historyOnly ? request<SessionStats>('session.stats', { path }) : rpc<SessionStats>(id, 'get_session_stats');
+        const pending = historyOnly ? request('session.stats', { path: path! }) : rpc<SessionStats>(id, 'get_session_stats');
         inFlight.current = pending;
         try {
           const stats = await pending;

@@ -40,7 +40,7 @@ export default function ComposerInput({ value, onChange, onSend, onRecall, disab
     if (!mentionOpen) return;
     let cancelled = false;
     setError(''); setListing(null);
-    void request<string[]>('workspace.files', { cwd }).then(files => { if (!cancelled) setListing({ cwd, files }); }).catch(error => { if (!cancelled) setError(error instanceof Error ? error.message : String(error)); });
+    void request('workspace.files', { cwd }).then(files => { if (!cancelled) setListing({ cwd, files }); }).catch(error => { if (!cancelled) setError(error instanceof Error ? error.message : String(error)); });
     return () => { cancelled = true; };
   }, [cwd, mentionOpen]);
   useEffect(() => { if (slashOpen) onOpen.current?.(); }, [slashOpen]);

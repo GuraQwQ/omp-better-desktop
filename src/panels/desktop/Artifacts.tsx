@@ -21,7 +21,7 @@ export default function Artifacts({ cwd, onError }: { cwd: string; onError: (err
   const reload = async () => {
     const scope = generation.current;
     const revision = ++listRevision.current;
-    const result = await request<{ items: Json[] }>('artifact.list', { cwd });
+    const result = await request('artifact.list', { cwd });
     if (scope === generation.current && revision === listRevision.current) setItems(result.items);
   };
   useEffect(() => {
@@ -36,7 +36,7 @@ export default function Artifacts({ cwd, onError }: { cwd: string; onError: (err
     const revision = ++detailRevision.current;
     setLoading(true); setSelected(null);
     try {
-      const item = await request<Json>('artifact.read', { id });
+      const item = await request('artifact.read', { id });
       if (scope === generation.current && revision === detailRevision.current) setSelected(item);
     } catch (error) { if (scope === generation.current && revision === detailRevision.current) errorHandler.current(error); }
     finally { if (scope === generation.current && revision === detailRevision.current) setLoading(false); }
@@ -47,7 +47,7 @@ export default function Artifacts({ cwd, onError }: { cwd: string; onError: (err
       const path = await pickPath(false);
       if (!path || scope !== generation.current) return;
       const revision = ++listRevision.current;
-      const result = await request<{ items: Json[] }>('artifact.add', { cwd, path });
+      const result = await request('artifact.add', { cwd, path });
       if (scope !== generation.current || revision !== listRevision.current) return;
       setItems(result.items);
       const item = result.items.find(item => item.path.replaceAll('\\', '/').toLowerCase() === path.replaceAll('\\', '/').toLowerCase());

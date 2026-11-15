@@ -20,7 +20,7 @@ function CaptureBody({ id, language }: { id: string; language: Language }) {
   const [error, setError] = useState('');
   useEffect(() => {
     let cancelled = false;
-    void request<Json>('requests.read', { id }).then(value => { if (!cancelled) setValue(value); }).catch(error => { if (!cancelled) setError(String(error)); });
+    void request('requests.read', { id }).then(value => { if (!cancelled) setValue(value); }).catch(error => { if (!cancelled) setError(String(error)); });
     return () => { cancelled = true; };
   }, [id]);
   return error ? <p role="alert">{localizeError(error, language)}</p> : value ? <>{value.bodyUnavailable && <p role="status">{language === 'zh' ? '此记录无法取得请求正文：' : 'Request body unavailable: '}{value.bodyUnavailable}</p>}<Original value={value} language={language} /></> : <p role="status">{words(language).loading}</p>;
@@ -35,7 +35,7 @@ export default function RequestCaptures({ language, session, revision = 0, onRef
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setError(''); setRecords([]);
-    void request<CaptureRecord[]>('requests.list', session ? { sessionId: session.id, path: session.path } : {})
+    void request('requests.list', session ? { sessionId: session.id, path: session.path } : {})
       .then(records => { if (!cancelled) setRecords(records); }).catch(error => { if (!cancelled) setError(String(error)); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [session?.id, session?.path, revision, refresh]);

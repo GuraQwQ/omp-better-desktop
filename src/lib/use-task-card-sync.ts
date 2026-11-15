@@ -28,7 +28,7 @@ export function useTaskCardSync(sessions: Record<string, SessionView>, enabled: 
         if (!disposed) { sent.current.delete(payload); setOpened(values => values.filter(id => id !== payload)); }
       });
       if (disposed) { close(); return; } cleanup.push(close);
-      const ids = await request<string[]>('card.list');
+      const ids = await request('card.list');
       if (!disposed) setOpened(values => [...new Set([...values, ...ids])]);
     };
     void attach().catch(error => { if (!disposed) latest.current.onError(error); });
@@ -48,7 +48,7 @@ export function useTaskCardSync(sessions: Record<string, SessionView>, enabled: 
         sent.current.set(id, signature);
         const token = {}, version = generation.current;
         inflight.current.set(id, token);
-        void request<{ open: boolean }>('card.sync', { id, value }).then(result => {
+        void request('card.sync', { id, value }).then(result => {
           if (generation.current !== version) return;
           if (!result.open) { sent.current.delete(id); setOpened(values => values.filter(value => value !== id)); }
           failures.current = 0;

@@ -94,7 +94,7 @@ function MessageSearch({ language, cwd, onOpen, onReference, onArchiveChange, wo
     if (!spec.query) { setResult(undefined); return; }
     setSubmitted(spec); setLoading(true); setError(''); setNotice('');
     try {
-      const value = await request<Page<SearchItem>>('session.search', { ...spec, cwd, cursor });
+      const value = await request('session.search', { ...spec, cwd, cursor });
       if (current === revision.current) setResult(previous => ({ ...value, items: cursor ? [...(previous?.items ?? []), ...value.items] : value.items }));
     } catch (error) { if (current === revision.current) setError(failure(error, language)); }
     finally { if (current === revision.current) setLoading(false); }
@@ -103,7 +103,7 @@ function MessageSearch({ language, cwd, onOpen, onReference, onArchiveChange, wo
     const current = revision.current; setBusy(`${item.session.path}:${item.messageId}`); setError('');
     try {
       if (action === 'quote') {
-        const page = await request<{ messages: Message[] }>('session.locate', { path: item.session.path, messageId: item.messageId, limit: 1 });
+        const page = await request('session.locate', { path: item.session.path, messageId: item.messageId, limit: 1 });
         const message = page.messages.find(message => message.id === item.messageId);
         if (message && current === revision.current) onReference(reference(item.session, message));
       } else {
@@ -135,7 +135,7 @@ function Archives({ language, cwd, onOpen, onArchiveChange, onSessionAction, wor
   const revision = useRef(0);
   const load = async () => {
     const current = ++revision.current; setLoading(true); setError('');
-    try { const value = await request<ArchivedSession[]>('session.archives'); if (current === revision.current) setItems(value); }
+    try { const value = await request('session.archives'); if (current === revision.current) setItems(value); }
     catch (error) { if (current === revision.current) setError(failure(error, language)); }
     finally { if (current === revision.current) setLoading(false); }
   };
@@ -152,7 +152,7 @@ function Archives({ language, cwd, onOpen, onArchiveChange, onSessionAction, wor
   const act = async (item: SessionListEntry, action: SessionAction) => {
     if (action === 'restore') return restore(item);
     if (onSessionAction) { await onSessionAction(item, action); await load(); return; }
-    if (action === 'delete') { const result = await request<{ warning?: string }>('session.delete', { path: item.path }); if (result.warning) setNotice(result.warning); }
+    if (action === 'delete') { const result = await request('session.delete', { path: item.path }); if (result.warning) setNotice(result.warning); }
     else await request('session.pin', { path: item.path, pinned: action === 'pin' });
     await load(); onArchiveChange?.();
   };
@@ -166,7 +166,7 @@ function UsageTrends({ cwd, language, words }: { cwd?: string; language: Languag
   const revision = useRef(0);
   const load = async () => {
     const current = ++revision.current; setLoading(true); setError('');
-    try { const result = await request<UsageSummary>('usage.summary', { cwd, from: from || undefined, to: to || undefined }); if (current === revision.current) setValue(result); }
+    try { const result = await request('usage.summary', { cwd, from: from || undefined, to: to || undefined }); if (current === revision.current) setValue(result); }
     catch (error) { if (current === revision.current) setError(failure(error, language)); }
     finally { if (current === revision.current) setLoading(false); }
   };
@@ -179,7 +179,7 @@ function UsageTrends({ cwd, language, words }: { cwd?: string; language: Languag
 }
 
 function ExternalSessions({ language, cwd, onReference, words }: Props & { words: Words }) {
-  const [source, setSource] = useState('codex'); const [home, setHome] = useState(''); const [resolvedHome, setResolvedHome] = useState(''); const [query, setQuery] = useState('');
+  const [source, setSource] = useState<'codex' | 'zcode'>('codex'); const [home, setHome] = useState(''); const [resolvedHome, setResolvedHome] = useState(''); const [query, setQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
   const [page, setPage] = useState<Page<ExternalSession>>(); const [selected, setSelected] = useState<ExternalSession>();
   const [messages, setMessages] = useState<Message[]>([]); const [nextCursor, setNextCursor] = useState<string | null>(null); const [warnings, setWarnings] = useState<{ error: string }[]>([]);
@@ -191,7 +191,7 @@ function ExternalSessions({ language, cwd, onReference, words }: Props & { words
     const current = ++revision.current; setLoading(true); setError(''); setSelected(undefined);
     const searchQuery = cursor ? submittedQuery : query; setSubmittedQuery(searchQuery);
     try {
-      const result = await request<Page<ExternalSession> & { home: string }>('external.sessions', { source, home: home || undefined, query: searchQuery, cwd, cursor });
+      const result = await request('external.sessions', { source, home: home || undefined, query: searchQuery, cwd, cursor });
       if (current === revision.current) { setPage(previous => ({ ...result, items: cursor ? [...(previous?.items ?? []), ...result.items] : result.items })); setResolvedHome(result.home); }
     } catch (error) { if (current === revision.current) setError(failure(error, language)); }
     finally { if (current === revision.current) setLoading(false); }
@@ -199,13 +199,13 @@ function ExternalSessions({ language, cwd, onReference, words }: Props & { words
   const read = async (item: ExternalSession, cursor?: string) => {
     const current = ++revision.current; setSelected(item); setLoading(true); setError(''); if (!cursor) setMessages([]);
     try {
-      const result = await request<{ messages: Message[]; nextCursor: string | null; warnings: { error: string }[] }>('external.history', { source: item.source, home: resolvedHome || home || undefined, path: item.path, id: item.id, cursor });
+      const result = await request('external.history', { source: item.source, home: resolvedHome || home || undefined, path: item.path, id: item.id, cursor });
       if (current === revision.current) { setMessages(previous => cursor ? [...result.messages, ...previous] : result.messages); setNextCursor(result.nextCursor); setWarnings(result.warnings); }
     } catch (error) { if (current === revision.current) setError(failure(error, language)); }
     finally { if (current === revision.current) setLoading(false); }
   };
   const choose = async () => { try { const path = await pickPath(); if (path) setHome(path); } catch (error) { setError(failure(error, language)); } };
-  return <div aria-busy={loading}><p className="library-external-hint">{words.externalHint}</p><form className="library-external-form" onSubmit={event => { event.preventDefault(); void load(); }}><Select label={words.source} value={source} options={[{ value: 'codex', label: 'Codex' }, { value: 'zcode', label: 'ZCode' }]} disabled={loading} onChange={setSource} /><label className="library-query"><span>{words.directory}</span><input value={home} placeholder={words.defaultDirectory} disabled={loading} onChange={event => setHome(event.target.value)} /></label><button type="button" className="quiet-button" disabled={loading} onClick={() => void choose()}><FolderOpen size={14} />{words.browse}</button><label className="library-query"><span>{words.search}</span><input type="search" value={query} disabled={loading} onChange={event => setQuery(event.target.value)} /></label><button className="primary-button" type="submit" disabled={loading}>{words.read}</button></form>{error && <p role="alert" className="library-error">{error}</p>}{loading && <p className="library-empty" role="status">{words.loading}</p>}
+  return <div aria-busy={loading}><p className="library-external-hint">{words.externalHint}</p><form className="library-external-form" onSubmit={event => { event.preventDefault(); void load(); }}><Select label={words.source} value={source} options={[{ value: 'codex', label: 'Codex' }, { value: 'zcode', label: 'ZCode' }]} disabled={loading} onChange={value => setSource(value === 'zcode' ? 'zcode' : 'codex')} /><label className="library-query"><span>{words.directory}</span><input value={home} placeholder={words.defaultDirectory} disabled={loading} onChange={event => setHome(event.target.value)} /></label><button type="button" className="quiet-button" disabled={loading} onClick={() => void choose()}><FolderOpen size={14} />{words.browse}</button><label className="library-query"><span>{words.search}</span><input type="search" value={query} disabled={loading} onChange={event => setQuery(event.target.value)} /></label><button className="primary-button" type="submit" disabled={loading}>{words.read}</button></form>{error && <p role="alert" className="library-error">{error}</p>}{loading && <p className="library-empty" role="status">{words.loading}</p>}
     {selected ? <section className="library-external-preview" aria-label={words.preview}><div className="library-toolbar"><div><strong>{title(selected)}</strong><small className="library-path">{displayPath(selected.cwd)}</small></div><button className="quiet-button" type="button" onClick={() => { revision.current++; setSelected(undefined); setLoading(false); }}>{words.back}</button></div>{nextCursor && <button className="quiet-button" type="button" disabled={loading} onClick={() => void read(selected, nextCursor)}>{words.earlier}</button>}<div className="library-results">{messages.map(message => <article className="library-result" key={message.id}><div className="library-result-heading"><small>{message.role === 'user' ? words.user : words.assistant}</small><button className="quiet-button" type="button" onClick={() => onReference(reference(selected, message))}><Quote size={13} />{words.quote}</button></div><p className="library-message-body">{body(message)}</p></article>)}</div><Warnings words={words} items={warnings} /></section> : <>{page && !page.items.length && !loading && <p className="library-empty">{words.noExternal}</p>}<div className="library-results">{page?.items.map(item => <button type="button" className="library-external-row" key={`${item.source}:${item.id}`} onClick={() => void read(item)} disabled={loading}><span><strong>{title(item)}</strong><small>{displayPath(item.cwd)}</small></span><ArrowUpRight size={14} /></button>)}</div>{page?.nextCursor && <button type="button" className="quiet-button library-more" disabled={loading} onClick={() => void load(page.nextCursor!)}>{words.more}</button>}<Warnings words={words} items={page?.warnings} /></>}
   </div>;
 }
