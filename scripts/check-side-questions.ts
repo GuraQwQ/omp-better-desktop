@@ -125,7 +125,7 @@ console.log('旁问讨论：精确来源、幂等迁移、逐轮原生话题、�
 // 同一入口覆盖终态早于 ACK、清空后的迟到回包，以及卸载后的取消重试。
 const lifecycleStore = new SideQuestionStorage({ read: async () => null, write: async () => null });
 const lifecycle = new SideQuestionSession('生命周期', lifecycleStore, {
-  prepare: async value => ({ message: value.message, images: [] }), history: async () => ({ records: [] }),
+  prepare: async value => ({ message: value.message, images: [], warnings: [] }), history: async () => ({ records: [] }),
 });
 let sent = '', acknowledgement = deferred<{ record: BtwHistoryRecord; desktopSessionId: string }>();
 let cancelFails = false, cancelCount = 0;

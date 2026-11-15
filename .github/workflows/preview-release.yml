@@ -67,13 +67,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: bun install --frozen-lockfile
-      - name: 核心行为检查
-        shell: pwsh
-        run: |
-          foreach ($script in @('check-clean.ts', 'check-provider-config.ts', 'check-questions.ts')) {
-            bun "scripts/$script"
-            if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          }
+      - run: bun run check
+      - run: bun run check:behavior
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - run: bun run build:desktop
       - run: cargo test --manifest-path src-tauri/Cargo.toml --lib
