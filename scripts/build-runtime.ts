@@ -139,7 +139,7 @@ try {
   if (process.argv.includes('--bundle-desktop')) await run([bunExecutable, 'run', 'desktop', 'build', '--bundles', 'nsis'], projectRoot, env);
   await commit();
   cleanStage = true;
-  console.log('OMP ' + manifest.version + ' built, RPC-smoke tested, and synchronized.');
+  console.log('OMP ' + manifest.version + ' 已构建、检查并同步。');
 } catch (error) {
   try { await rollback(); cleanStage = true; }
   catch (recoveryError) { throw new AggregateError([error, recoveryError], `构建失败且恢复未完成，恢复文件保留在 ${stageRoot}`); }
