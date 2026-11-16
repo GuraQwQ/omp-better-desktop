@@ -80,6 +80,7 @@ export default function ComposerInput({ value, onChange, onSend, onRecall, disab
         if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey && performance.now() - compositionEndedAt.current < 500) { event.preventDefault(); compositionEndedAt.current = -Infinity; return; }
         if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.altKey) {
           event.preventDefault(); event.stopPropagation();
+          compositionEndedAt.current = -Infinity;
           const start = event.currentTarget.selectionStart, end = event.currentTarget.selectionEnd;
           newlineCaret.current = start + 1;
           onChange(value.slice(0, start) + '\n' + value.slice(end)); setDismissed(true);
