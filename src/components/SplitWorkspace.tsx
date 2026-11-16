@@ -30,7 +30,7 @@ export default function SplitWorkspace({ children, preview, closePreview, langua
   };
   useEffect(() => {
     if (!preview) { drag.current = null; setDragging(false); return; }
-    const observer = new ResizeObserver(() => setRatio(value => clamp(value ?? 1 - 360 / bounds().width)));
+    const observer = new ResizeObserver(() => setRatio(value => value === null ? null : clamp(value)));
     if (container.current) observer.observe(container.current);
     return () => observer.disconnect();
   }, [!!preview]);
@@ -49,17 +49,17 @@ export default function SplitWorkspace({ children, preview, closePreview, langua
     setRatio(clamp(drag.current.requested));
     if (drag.current.requested > .82) finish(false);
   };
-  const current = ratio ?? (bounds().width ? clamp(1 - 360 / bounds().width) : .64);
+  const current = ratio ?? (bounds().width ? clamp(1 - 380 / bounds().width) : .64);
   return <div ref={container} className={`split-workspace${preview ? ` has-preview is-${mode}` : ''}${swapped ? ' is-swapped' : ''}${dragging ? ' is-dragging' : ''}`} style={ratio === null ? undefined : { '--split-left': `${ratio * 100}%` } as CSSProperties}>
     {children}
     {preview && <><div ref={handle} className="workspace-divider" role="separator" aria-label={zh ? '调整聊天与预览宽度' : 'Resize chat and preview'} aria-orientation="vertical" aria-valuemin={Math.round(bounds().min * 100)} aria-valuemax={Math.round(bounds().max * 100)} aria-valuenow={Math.round(current * 100)} tabIndex={0}
       onPointerDown={event => { if (event.button !== 0) return; event.preventDefault(); event.currentTarget.focus(); drag.current = { pointer: event.pointerId, ratio, requested: current }; event.currentTarget.setPointerCapture(event.pointerId); setDragging(true); }}
       onPointerMove={move} onPointerUp={() => finish(false)} onPointerCancel={() => finish(true)} onLostPointerCapture={() => finish(true)}
-      onDoubleClick={() => setRatio(clamp(.5))} onKeyDown={event => {
+      title={zh ? '拖动调整宽度，双击恢复默认' : 'Drag to resize, double-click to reset'} onDoubleClick={() => setRatio(null)} onKeyDown={event => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'].includes(event.key)) return;
         event.preventDefault();
         if (event.key === 'End') { closePreview(); return; }
-        setRatio(clamp(event.key === 'Home' || event.key === 'Enter' ? .5 : current + (event.key === 'ArrowRight' ? .025 : -.025)));
+        setRatio(event.key === 'Home' || event.key === 'Enter' ? null : clamp(current + (event.key === 'ArrowRight' ? .025 : -.025)));
       }} />
       <div className="workspace-preview"><div className="workspace-preview-tools"><button className="quiet-button" aria-pressed={swapped} onClick={() => setSwapped(value => !value)}>{zh ? '左右换位' : 'Swap sides'}</button>{(['split', 'overlay', 'max'] as const).map(value => <button className="quiet-button" key={value} aria-pressed={mode === value} onClick={() => setMode(value)}>{value === 'split' ? zh ? '分栏' : 'Split' : value === 'overlay' ? zh ? '叠层' : 'Overlay' : zh ? '最大化' : 'Maximize'}</button>)}{mode !== 'split' && <button className="quiet-button" onClick={closePreview}>{zh ? '关闭' : 'Close'}</button>}</div>{preview}{dragging && <div className="preview-drag-shield" />}</div></>}
   </div>;

@@ -1,0 +1,17 @@
+.code-editor { --code-keyword: #82519a; --code-name: #245a86; --code-string: #865512; --code-literal: #356a56; flex: 1; min-height: 180px; overflow: hidden; position: relative; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); }
+:root[data-theme='dark'] .code-editor { --code-keyword: #c6a0d8; --code-name: #9dc3df; --code-string: #dfb274; --code-literal: #a5d8bb; }
+.code-editor-viewport { position: absolute; inset: 0; }
+.code-editor .cm-editor { height: 100%; font: 12px/1.75 var(--font-code); color: var(--text); background: var(--surface); }
+.code-editor .cm-scroller { overflow: auto; }
+.code-editor .cm-content { padding: 12px 0; caret-color: var(--accent); }
+.code-editor .cm-line { padding: 0 12px; }
+.code-editor .cm-gutters { background: var(--sidebar); border-right: 1px solid var(--line-soft); color: var(--muted); }
+.code-editor .cm-lineNumbers .cm-gutterElement { padding: 0 9px 0 12px; }
+.code-editor .cm-activeLine, .code-editor .cm-activeLineGutter { background: var(--hover); }
+.code-editor .cm-editor.cm-focused { outline: 1px solid var(--focus); outline-offset: -1px; }
+.code-editor .cm-selectionBackground, .code-editor .cm-editor.cm-focused .cm-selectionBackground { background: var(--selection); }
+.code-editor .cm-panels { background: var(--sidebar); color: var(--text); border-color: var(--line); }
+.code-editor .cm-search { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 26px 8px 8px; }
+.code-editor .cm-search label { display: inline-flex; align-items: center; gap: 4px; }
+.code-editor .cm-textfield { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-item); min-width: 80px; }
+.code-editor .cm-button { background: var(--hover); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-item); }
