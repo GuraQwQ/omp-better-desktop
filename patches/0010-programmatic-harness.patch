@@ -90,10 +90,11 @@ index dfecb6a..7bd2edc 100644
  import { disposeAllKernelSessions, disposeKernelSessionsByOwner } from "./eval/py/executor";
  import { defaultEvalSessionId } from "./eval/session-id";
  import type { EditMode } from "@oh-my-pi/pi-tui/tools/edit";
-@@ -2586,9 +2587,14 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+@@ -2586,10 +2587,15 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
  		let computerPrelude: EvalPreludeDefinition | undefined;
  		let ratchetPrelude: EvalPreludeDefinition | undefined;
  		let archivePrelude: EvalPreludeDefinition | undefined;
+ 		let commitPrelude: EvalPreludeDefinition | undefined;
 +		let readBatchPrelude: EvalPreludeDefinition | undefined;
  		const getEvalPreludes = (): readonly EvalPreludeDefinition[] => {
  			if (restrictToolNames || !toolRegistry.has("eval") || !activeToolNames.has("eval")) return [];
