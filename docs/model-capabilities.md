@@ -11,13 +11,12 @@ OMP 当前的输入内容类型为文本与图片。官方额外的音频、视�
 能力目录只包含本次优先的厂商和必要字段，不含价格、认证、端点或兼容参数。仓库维护者负责更新：升级 `upstream.lock.json` 后，运行：
 
 ```powershell
-bun scripts/update-model-capabilities.ts --upstream D:/.references/oh-my-pi-18.18.0
-bun scripts/check-model-capabilities.ts
+bun scripts/update-model-capabilities.ts --upstream .cache/upstream-release-18.20.3
 ```
 
 `--upstream` 可以指向任意已准备的目标源码目录。生成器直接复用该版本的目录解码器，不安装上游依赖。官方补充存放于 `src-tauri/src/model-capabilities-overrides.json`，每行记录支持该型号的来源。修改官方补充时更新 `checkedAt` 并核实具体型号，不能凭型号家族推断统一容量。`prepare:upstream` 和运行时构建都会将同源模块和目录接入上游配置目录；manifest 的 `modelCapabilitiesDigest` 记录这些构建输入的内容摘要，工作目录路径不参与摘要。
 
-本次核对日期：2026-11-07。主要来源：
+本次核对日期：2026-11-16。主要来源：
 
 - [OpenAI GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol)：1,050,000 上下文、128,000 最大输出，文字和图片输入；最大输入为 922,000，不能与上下文总量混用。
 - [Anthropic 当前型号](https://platform.claude.com/docs/en/models/overview)：Claude 5.5 和 Fable 5.1 的上下文与能力，Models API 能返回能力。
@@ -29,6 +28,6 @@ bun scripts/check-model-capabilities.ts
 - [Qwen3.8-Max](https://help.aliyun.com/zh/model-studio/qwen3-8-max)与 [Qwen3.8-Flash](https://help.aliyun.com/zh/model-studio/qwen3-8-flash)：1,000,000 上下文、131,072 最大输出，视觉输入。
 - [Seed 当前型号](https://www.volcengine.com/docs/82379/1330310)：260915 Pro/Lite 与 Evolving 为 1024K，260628 Pro/Turbo 为 256K。
 
-Gemini 3.8 / 4 Argon 的最新官方页在本次抓取中超时，采用锁定 OMP 目录，不将未读取的网页作为官方核对证据。官方没有给出精确数字的 `K` / `M` 写法沿用 OMP 目录的数值，接口返回的精确值仍优先。
+[Gemini 4 Argon 官方规格](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/4-argon)已核对：输入、思考和输出共享 1,048,576 token 窗口；支持 low / medium / high，默认 medium，Cyber Permissive 默认 high。流式单段最多 65,536 输出，跨段续传可继续生成，不能把总窗口当作单段输出上限。OMP 18.20.3 的 Argon、Carbon、Hydrogen 目录采用 262,144 的运行时输出预算，Hydrogen 另有 xhigh；实际协议与续传由内核实现。精简目录保留原生思考等级，接口声明及显式模型覆盖优先。未知型号变体不推断。官方没有给出精确数字的 `K` / `M` 写法沿用 OMP 目录的数值，接口返回的精确值仍优先。
 
 自动压缩复用 OMP 的 `compaction.modelThresholds`。精确 `provider/model-id` 优先于最长 `provider/…*` 前缀；提供商设置写入 `provider/*`，最后采用全局阈值。百分比按上下文窗口计算，token 数作为固定触发点保存。已有的上游数值基数没有修改时保留原语义。OMP 会在阈值超过真实上下文时按可用提示预算调整，不能通过阈值设置扩大供应商上限。

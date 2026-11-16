@@ -62,5 +62,12 @@ export function inferredModelCapabilities(id, supplied = {}) {
   const known = lookupModelCapabilities(id);
   const fields = { ...readModelCapabilities(known), ...readModelCapabilities(supplied) };
   const maxInputTokens = capabilitiesRecord(supplied) ? positiveTokens(supplied.maxInputTokens ?? supplied.inputTokenLimit ?? supplied.max_input_tokens) : undefined;
-  return { fields, maxInputTokens: maxInputTokens ?? known?.maxInputTokens, source: Object.keys(readModelCapabilities(supplied)).length ? (typeof supplied.capabilitySource === 'string' ? supplied.capabilitySource : 'api') : known?.source, modalities: known?.modalities ?? fields.input };
+  supplied = capabilitiesRecord(supplied) ? supplied : {};
+  const efforts = supplied.thinkingEfforts ?? supplied?.thinking?.efforts ?? (Array.isArray(supplied?.thinking) ? supplied.thinking : undefined) ?? known?.thinkingEfforts;
+  const thinkingEfforts = Array.isArray(efforts) ? [...new Set(efforts.filter(value => ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(value)))] : undefined;
+  const requestedDefault = supplied?.defaultThinkingLevel ?? supplied?.thinking?.defaultLevel ?? known?.defaultThinkingLevel;
+  const defaultThinkingLevel = thinkingEfforts?.includes(requestedDefault) ? requestedDefault : undefined;
+  const declaredModalities = supplied.modalities ?? supplied.input_modalities ?? supplied.architecture?.input_modalities;
+  const modalities = Array.isArray(declaredModalities) ? declaredModalities.filter(value => typeof value === 'string') : known?.modalities ?? fields.input;
+  return { fields, maxInputTokens: maxInputTokens ?? known?.maxInputTokens, source: Object.keys(readModelCapabilities(supplied)).length ? (typeof supplied.capabilitySource === 'string' ? supplied.capabilitySource : 'api') : known?.source, modalities, thinkingEfforts, defaultThinkingLevel };
 }

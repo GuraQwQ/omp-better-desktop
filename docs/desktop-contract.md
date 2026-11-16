@@ -71,9 +71,9 @@ MCP 与 SSH 使用资源自身的用户/项目作用域；第三方只读来源�
 | Codex | `.agents/skills`、`.codex/config.toml` 的 `[mcp_servers]` | `http_headers/env_http_headers/bearer_token_env_var` → 请求头；秒单位超时转毫秒；环境变量只在启用后的内存解析 |
 | Trae | `.trae/skills`、项目 `.trae/mcp.json`；存在时探测 `Trae/User/mcp.json` 与 `Trae CN/User/mcp.json` | 原生 MCP JSON 映射；全局路径作为候选，不保证各版本一致 |
 | ZCode | `.zcode/skills`、`~/.zcode/cli/config.json`、项目 `zcode.json/.zcode/config.json` | 读取 `mcp.servers`；映射 stdio/HTTP/SSE、`timeoutMs` 等字段 |
-| CC Switch | `~/.cc-switch/skills` 或共享 `.agents/skills`，`~/.cc-switch/cc-switch.db` | `mcp_servers.server_config` JSON 按行 ID 只读解析，正文始终留在原技能目录 |
+| CC Switch | `~/.cc-switch/skills` 或共享 `.agents/skills`，`~/.cc-switch/cc-switch.db` | `mcp_servers.server_config` JSON 按行 ID 只读解析，技能目录与所选 MCP 服务分别保存副本 |
 
-不支持的动态认证助手、令牌文件或授权类型会显示条目说明；这些条目可以保持链接，修正源配置后重新发现与链接再启用。
+不支持的动态认证助手、令牌文件或授权类型会显示条目说明；修正源配置后更新副本，再启用对应条目。
 
 格式依据（2026-10-31 核对）：[Gemini MCP](https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md)、[Claude MCP](https://code.claude.com/docs/en/mcp)、[Codex MCP](https://developers.openai.com/codex/mcp)、[Codex Skills](https://developers.openai.com/codex/skills)、[Antigravity MCP](https://antigravity.google/docs/mcp)、[Antigravity Skills](https://antigravity.google/docs/skills/)、[Trae MCP](https://docs.trae.ai/ide/add-mcp-servers)、[ZCode 配置](https://github.com/zai-org/ZCode/blob/a60ba6a7e5a06742270ca605f5d2cc2766afa7e1/apps/zcode-cli/docs/usage/03-config.md)、[CC Switch schema](https://github.com/farion1231/cc-switch/blob/e49d12a5f90b70107cc4e69b6621d2e218524890/src-tauri/src/database/schema.rs#L64)。Trae 全局路径交叉参考 [skill-buddy](https://github.com/konnga/skill-buddy/blob/main/packages/core/src/mcp/catalog.ts)。
 
@@ -95,7 +95,7 @@ Host module ownership: `storage.rs` implements runtime/data functions taking `ro
 
 前端 `SessionLifecycle` 集中管理会话建立、恢复、重连、身份、事件合并、状态快照、历史分页及请求顺序。同一来源的建立请求共享结果，无持久路径的草稿在运行 ID 替换后仍能定位连接；历史补齐失败保留可见身份并允许重试。本地操作即时发布，运行时事件按帧发布；后到的旧快照保留请求期间已经更新的字段。轻量刷新继承未完成的完整历史刷新，切换底层会话时合并新历史和期间到达的消息，并保持工具调用与结果配对。草稿与页面选择由界面管理，连接等待期间用户的新输入优先保留。
 
-桌面斜杠命令由 `resolveCommand` 统一解释来源、参数和执行去向，输入框与命令面板共用这份规则。原生 RPC 与 CLI 表单继续直接使用生成协议；扩展同名命令由其原生来源处理。MCP 的发现与运行时读取共用来源格式 Module，各来源 Adapter 集中处理原配置读取、停用状态和格式映射，导入登记继续负责链接与启停。
+桌面斜杠命令由 `resolveCommand` 统一解释来源、参数和执行去向，输入框与命令面板共用这份规则。原生 RPC 与 CLI 表单继续直接使用生成协议；扩展同名命令由其原生来源处理。MCP 的发现与运行时读取共用来源格式 Module，各来源 Adapter 集中处理原配置读取、停用状态和格式映射，导入登记负责副本与启停。
 
 OMP 的 RPC、CLI 和内置终端统一设置 `PI_NATIVES_DIR=<dataRoot>/cache/natives`，原生模块在此按版本解压和复用；临时目录统一为 `<dataRoot>/cache/tmp`。`runtime.clean` 沿用现有受管缓存清理规则，后续启动从内嵌资源重建。应用启动时按已保存的接管状态幂等刷新 CLI 入口，保留接管选择；单文件原子替换支持中断后重试。原有全局 OMP 缓存保持其原有归属。
 

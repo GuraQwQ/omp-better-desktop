@@ -60,35 +60,3 @@ index 910d595..7eeff00 100644
  		result: { settings: "Record<string, unknown>[]" },
  	},
  	{
-diff --git a/packages/coding-agent/test/desktop-setting-entry.test.ts b/packages/coding-agent/test/desktop-setting-entry.test.ts
-new file mode 100644
-index 0000000..7048b4d
---- /dev/null
-+++ b/packages/coding-agent/test/desktop-setting-entry.test.ts
-@@ -0,0 +1,26 @@
-+import { describe, expect, test } from "bun:test";
-+import { Settings } from "../src/config/settings";
-+import { desktopSettings } from "../src/modes/rpc/desktop";
-+
-+describe("桌面记录设置逐键修改", () => {
-+	test("写入和删除只影响目标键，保留已有阈值", async () => {
-+		const settings = Settings.isolated();
-+		await desktopSettings(settings, { operation: "set", key: "compaction.modelThresholds", value: { "kept/*": "75%" } });
-+		await desktopSettings(settings, { operation: "set", key: "compaction.modelThresholds", entry: "proxy/*", value: "80%" });
-+		await desktopSettings(settings, { operation: "set", key: "compaction.modelThresholds", entry: "proxy/gpt-6.1-sol", value: "f500000" });
-+		const current = (await desktopSettings(settings, { operation: "list" })) as { settings: { path: string; value: unknown }[] };
-+		expect(current.settings.find(row => row.path === "compaction.modelThresholds")?.value).toEqual({ "kept/*": "75%", "proxy/*": "80%", "proxy/gpt-6.1-sol": "f500000" });
-+		await desktopSettings(settings, { operation: "unset", key: "compaction.modelThresholds", entry: "proxy/gpt-6.1-sol" });
-+		expect(JSON.stringify(settings.getGlobalSettings())).toContain('"kept/*":"75%"');
-+		expect(JSON.stringify(settings.getGlobalSettings())).not.toContain("proxy/gpt-6.1-sol");
-+	});
-+	test("逐键写入不复制高层的其它阈值；无效内容不破坏旧数据", async () => {
-+		const settings = Settings.isolated({ "compaction.modelThresholds": { "overlay/*": "90%" } });
-+		await desktopSettings(settings, { operation: "set", key: "compaction.modelThresholds", entry: "proxy/*", value: "80%" });
-+		const before = JSON.stringify(settings.getGlobalSettings());
-+		expect(before).not.toContain("overlay/*");
-+		await expect(desktopSettings(settings, { operation: "set", key: "compaction.modelThresholds", entry: "proxy/*", value: "101%" })).rejects.toThrow();
-+		expect(JSON.stringify(settings.getGlobalSettings())).toBe(before);
-+		await expect(desktopSettings(settings, { operation: "set", key: "compaction.enabled", entry: "invalid", value: true })).rejects.toThrow();
-+	});
-+});

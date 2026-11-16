@@ -1,12 +1,82 @@
 use crate::{launch, platform::ProcessJob, sessions};
+use rusqlite::{Connection, OpenFlags};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
+    fs,
     io::Read,
-    path::Path,
+    path::{Path, PathBuf},
     process::Stdio,
     thread,
     time::{Duration, Instant},
 };
+
+fn snapshot(
+    root: &Path,
+    cwd: &Path,
+    launch: &launch::ResolvedLaunch,
+) -> Result<(PathBuf, String), String> {
+    let executable =
+        crate::storage::current_runtime(root)?.ok_or("Install the OMP runtime first.")?;
+    let mut signature = Sha256::new();
+    signature.update(executable.to_string_lossy().as_bytes());
+    for argument in &launch.arguments {
+        signature.update(argument.as_bytes());
+        signature.update([0]);
+    }
+    let mut files = Vec::new();
+    for directory in [&launch.agent_dir, &cwd.join(".omp")] {
+        for name in [
+            "models.yml",
+            "models.yaml",
+            "models.json",
+            "config.yml",
+            "config.yaml",
+            "config.json",
+        ] {
+            files.push(directory.join(name));
+        }
+    }
+    let auth_revision = Connection::open_with_flags(
+        launch.agent_dir.join("agent.db"),
+        OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .ok()
+    .and_then(|connection| {
+        connection
+            .query_row(
+                "SELECT revision FROM auth_change_revision WHERE id=1",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .ok()
+    })
+    .unwrap_or(0);
+    signature.update(auth_revision.to_le_bytes());
+    for argument in &launch.arguments {
+        if let Some(path) = argument.strip_prefix("--config=") {
+            files.push(cwd.join(path));
+        }
+    }
+    for file in files {
+        signature.update(file.to_string_lossy().as_bytes());
+        match fs::metadata(&file) {
+            Ok(metadata) => signature
+                .update(format!("{}:{:?}", metadata.len(), metadata.modified().ok()).as_bytes()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                signature.update(b"missing")
+            }
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    let key =
+        Sha256::digest(format!("{}\0{}", cwd.display(), launch.agent_dir.display()).as_bytes());
+    Ok((
+        root.join("cache/model-catalog")
+            .join(format!("{key:x}.json")),
+        format!("{:x}", signature.finalize()),
+    ))
+}
 
 fn read_pipe(mut pipe: impl Read) -> std::io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
@@ -14,22 +84,38 @@ fn read_pipe(mut pipe: impl Read) -> std::io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
-pub fn list(root: &Path, cwd: &Path) -> Result<Value, String> {
+pub fn list(root: &Path, cwd: &Path, refresh: bool) -> Result<Value, String> {
     let cwd = cwd.canonicalize().map_err(|error| error.to_string())?;
     if !cwd.is_dir() {
         return Err("Choose an existing project folder.".into());
     }
     let launch = launch::resolve(root, &cwd)?;
+    let cached = snapshot(root, &cwd, &launch).ok();
+    if !refresh && let Some((cache, signature)) = &cached {
+        if let Ok(bytes) = fs::read(&cache) {
+            if let Ok(saved) = serde_json::from_slice::<Value>(&bytes) {
+                if saved["signature"].as_str() == Some(signature)
+                    && saved["result"]["models"].is_array()
+                {
+                    return Ok(saved["result"].clone());
+                }
+            }
+        }
+    }
     let mut command = sessions::command(root)?;
     command
-        .current_dir(cwd)
+        .current_dir(&cwd)
         .args(
             launch
                 .arguments
                 .iter()
                 .filter(|argument| argument.starts_with("--profile=")),
         )
-        .args(["models", "--json"])
+        .args(if refresh {
+            vec!["models", "refresh", "--json"]
+        } else {
+            vec!["models", "--json", "--offline"]
+        })
         .args(
             launch
                 .arguments
@@ -114,5 +200,13 @@ pub fn list(root: &Path, cwd: &Path) -> Result<Value, String> {
             })
         })
         .ok_or("The model catalog returned an invalid response.")?;
-    Ok(json!({"models":models,"warning":warning}))
+    let result = json!({"models":models,"warning":warning});
+    if let Some((cache, signature)) = cached
+        && let Ok(_lock) = crate::storage::storage_lock(root)
+        && snapshot(root, &cwd, &launch).is_ok_and(|(_, current)| current == signature)
+        && let Ok(bytes) = serde_json::to_vec(&json!({"signature":signature,"result":result}))
+    {
+        let _ = crate::storage::atomic_write(&cache, &bytes);
+    }
+    Ok(result)
 }

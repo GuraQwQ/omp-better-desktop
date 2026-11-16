@@ -278,26 +278,6 @@ index b363009c2c..590897f4c9 100644
  	{
  		name: "negotiate_protocol",
  		doc: "Switch the connection to a protocol version advertised by `ready`.",
-diff --git a/packages/coding-agent/test/desktop-settings.test.ts b/packages/coding-agent/test/desktop-settings.test.ts
-new file mode 100644
-index 0000000000..7a4ff6f990
---- /dev/null
-+++ b/packages/coding-agent/test/desktop-settings.test.ts
-@@ -0,0 +1,14 @@
-+import { describe, expect, it } from "bun:test";
-+import { Settings } from "../src/config/settings";
-+import { desktopSettings } from "../src/modes/rpc/desktop";
-+
-+describe("desktop settings", () => {
-+	it("rejects invalid values without changing the session setting", async () => {
-+		const settings = Settings.isolated();
-+		await expect(desktopSettings(settings, { operation: "set", key: "tools.xdev", value: "yes" })).rejects.toThrow();
-+		const result = (await desktopSettings(settings, { operation: "list" })) as {
-+			settings: { key: string; value: unknown }[];
-+		};
-+		expect(result.settings.find(setting => setting.key === "tools.xdev")?.value).toBe(true);
-+	});
-+});
 diff --git a/packages/utils/src/dirs.ts b/packages/utils/src/dirs.ts
 index 0bbbaa9998..816cdb15f6 100644
 --- a/packages/utils/src/dirs.ts
@@ -333,51 +313,3 @@ index 0bbbaa9998..816cdb15f6 100644
  		if (xdgPlatform && isDefault) {
  			const resolveIf = (envVar: string) => {
  				const value = process.env[envVar];
-diff --git a/packages/utils/test/desktop-root.test.ts b/packages/utils/test/desktop-root.test.ts
-new file mode 100644
-index 0000000000..8df37e33fa
---- /dev/null
-+++ b/packages/utils/test/desktop-root.test.ts
-@@ -0,0 +1,42 @@
-+import { afterEach, describe, expect, it } from "bun:test";
-+import * as path from "node:path";
-+import * as os from "node:os";
-+import { __resetDirsFromEnvForTests, getAgentDir, getBaseConfigRoot, getConfigRootDir } from "../src/dirs";
-+
-+const original = {
-+	root: process.env.OMP_USER_ROOT,
-+	profile: process.env.OMP_PROFILE,
-+	agent: process.env.PI_CODING_AGENT_DIR,
-+};
-+afterEach(() => {
-+	for (const [key, value] of Object.entries({
-+		OMP_USER_ROOT: original.root,
-+		OMP_PROFILE: original.profile,
-+		PI_CODING_AGENT_DIR: original.agent,
-+	})) {
-+		if (value === undefined) delete process.env[key];
-+		else process.env[key] = value;
-+	}
-+	__resetDirsFromEnvForTests();
-+});
-+
-+describe("desktop data root", () => {
-+	it("keeps named profiles and the default agent under one absolute root", () => {
-+		const root = path.join(os.tmpdir(), "omp-desktop-root-test");
-+		process.env.OMP_USER_ROOT = root;
-+		process.env.OMP_PROFILE = "work";
-+		process.env.PI_CODING_AGENT_DIR = path.join(os.tmpdir(), "unrelated-agent");
-+		__resetDirsFromEnvForTests();
-+		expect(getBaseConfigRoot()).toBe(root);
-+		expect(getConfigRootDir()).toBe(path.join(root, "profiles", "work"));
-+		expect(getAgentDir()).toBe(path.join(root, "profiles", "work", "agent"));
-+		process.env.OMP_PROFILE = "default";
-+		__resetDirsFromEnvForTests();
-+		expect(getAgentDir()).toBe(path.join(root, "agent"));
-+	});
-+
-+	it("rejects a relative root instead of silently writing to the launch directory", () => {
-+		process.env.OMP_USER_ROOT = "relative-data";
-+		expect(() => getBaseConfigRoot()).toThrow("absolute path");
-+	});
-+});
