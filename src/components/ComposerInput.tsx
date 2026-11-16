@@ -77,7 +77,7 @@ export default function ComposerInput({ value, onChange, onSend, onRecall, disab
       onCompositionEnd={event => { composition.current = false; compositionEndedAt.current = performance.now(); setComposing(false); setCaret(event.currentTarget.selectionStart); }}
       onKeyDown={event => {
         if (composingInput(event.nativeEvent, composition.current)) return;
-        if (event.key === 'Enter' && performance.now() - compositionEndedAt.current < 500) { event.preventDefault(); compositionEndedAt.current = -Infinity; return; }
+        if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey && performance.now() - compositionEndedAt.current < 500) { event.preventDefault(); compositionEndedAt.current = -Infinity; return; }
         if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.altKey) {
           event.preventDefault(); event.stopPropagation();
           const start = event.currentTarget.selectionStart, end = event.currentTarget.selectionEnd;
