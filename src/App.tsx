@@ -619,7 +619,7 @@ export default function App() {
     }
     const panels: Record<string, InspectorTab> = { review: 'review', agents: 'agents', tasks: 'tasks', tree: 'tree' };
     if (surface && panels[surface]) { setSettingsOpen(false); setInspector(panels[surface]); return true; }
-    if (surface === 'sessions') { setSettingsOpen(false); setSidebar(true); return true; }
+    if (surface === 'sessions') { setSidebar(true); openPage('library'); return true; }
     return false;
   };
   const earlier = async () => {
