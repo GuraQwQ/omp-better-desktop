@@ -9,5 +9,5 @@ const runtimePaths = [
 
 export function buildScope(files: string[], workflowDispatch = false) {
   const runtime = workflowDispatch || files.some(file => file.startsWith('patches/') || file.startsWith('vendor/omp-rpc/') || file.startsWith('src/generated/') || runtimePaths.includes(file));
-  return { runtime, host: runtime || files.some(file => file.startsWith('src-tauri/')) };
+  return { runtime, host: runtime || files.some(file => file.startsWith('src-tauri/') || file.startsWith('extensions/')) };
 }

@@ -13,6 +13,9 @@ export const optionalFeatures = {
   cards: { label: '浮动桌面任务卡', enLabel: 'Floating task cards', hint: '在独立小窗口跟踪会话，点击返回任务。', enHint: 'Track a conversation in a small window and return to it.' },
   externalSessions: { label: '外部助手会话查看', enLabel: 'External assistant conversations', hint: '按需读取 Codex 和 ZCode 的本机会话。', enHint: 'Read local Codex and ZCode conversations on demand.' },
 } as const;
+export const advancedFeatures = {
+  swarm: { label: 'Swarm 多代理协作', enLabel: 'Swarm collaboration', hint: '建立协作目标，安排执行与验证成员，并通过公告板协调工作。', enHint: 'Set a shared goal, assign workers and verifiers, and coordinate through a message board.' },
+} as const;
 export function shortcutValue(id: keyof typeof shortcuts, custom?: Record<string, string>) { return custom?.[id] ?? shortcuts[id].value; }
 export function matchesShortcut(event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey'>, value: string) {
   const parts = value.toLowerCase().split('+').map(part => part.trim());

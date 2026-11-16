@@ -1,6 +1,7 @@
 import type { Json, Message, SessionView } from './types';
 import { todoPhasesFromMessage } from './session-todos';
 import { clearQuestions, removeQuestion } from './question-draft';
+import { reduceAgentEvent, mergeSwarmSnapshot } from './agents-state';
 
 export function isSessionRunning(session?: SessionView): boolean {
   return !!session && !session.historyOnly && (!!session.state.isStreaming || ['running', 'background'].includes(session.status) || session.state.isSettled === false);
@@ -48,6 +49,15 @@ export function returnFromTerminal(session: SessionView, runtimeReleased: boolea
 }
 
 function reduceEvent(session: SessionView, event: Json): SessionView {
+  if (['subagent_lifecycle', 'subagent_progress', 'subagent_event', 'irc_message'].includes(event.type)) {
+    const agents = reduceAgentEvent(session.agents, event, (messages, frame) => applyEvent({ id: '', cwd: session.cwd, title: '', messages, state: {}, status: '', pending: [] }, frame).messages);
+    return agents === session.agents ? session : { ...session, agents };
+  }
+  if (event.type === 'desktop_swarm') {
+    if (event.rootSessionId && session.state.sessionId && event.rootSessionId !== session.state.sessionId) return session;
+    const swarm = mergeSwarmSnapshot(event.snapshot, session.swarm, session.state.sessionId);
+    return swarm === session.swarm ? session : { ...session, swarm };
+  }
   if (event.type === 'desktop_status') {
     if (event.status === 'released' || event.status === 'disconnected') return { ...clearQuestions(session), path: event.path === null && !session.messages.length ? undefined : event.path ?? session.path, historyOnly: true, status: 'ready', state: { ...session.state, isStreaming: false, isSettled: true, activity: undefined, desktopRunStartedAt: undefined } };
     return { ...session, status: event.status };
@@ -62,7 +72,10 @@ function reduceEvent(session: SessionView, event: Json): SessionView {
   if (event.type === 'queue_update') return { ...session, state: { ...session.state, queuedMessages: { steering: event.steering ?? [], followUp: event.followUp ?? [], ...(event.liveSteered !== undefined ? { liveSteered: event.liveSteered } : {}) } } };
   if (event.type === 'available_commands_update') return { ...session, state: { ...session.state, availableCommands: event.commands ?? [] } };
   if (event.type === 'todo_auto_clear') return { ...session, state: { ...session.state, todoPhases: [] } };
-  if (event.type === 'session_info_update') return { ...(session.path && event.sessionFile !== undefined && event.sessionFile !== session.path ? clearQuestions(session) : session), title: event.title ?? event.sessionName ?? event.name ?? session.title, path: event.sessionFile === null ? undefined : event.sessionFile ?? session.path };
+  if (event.type === 'session_info_update') {
+    const changed = !!session.state.sessionId && !!event.sessionId && event.sessionId !== session.state.sessionId;
+    return { ...(changed || session.path && event.sessionFile !== undefined && event.sessionFile !== session.path ? clearQuestions(session) : session), ...(changed ? { agents: undefined, swarm: undefined } : {}), state: { ...session.state, ...(event.sessionId ? { sessionId: event.sessionId } : {}) }, title: event.title ?? event.sessionName ?? event.name ?? session.title, path: event.sessionFile === null ? undefined : event.sessionFile ?? session.path };
+  }
   if (event.type === 'btw_record') return { ...session, state: { ...session.state, btwRecords: [event.record, ...(session.state.btwRecords ?? []).filter((record: Json) => record.id !== event.record.id)] } };
   if (event.type === 'btw_delta') return { ...session, state: { ...session.state, btwRecords: (session.state.btwRecords ?? []).map((record: Json) => {
     if (record.id !== event.recordId) return record;
