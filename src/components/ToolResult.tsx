@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Check, ChevronRight, FileDiff, FileText, LoaderCircle, Square, TerminalSquare, X } from 'lucide-react';
+import { Check, ChevronRight, CircleHelp, Clock3, FileDiff, FileText, LoaderCircle, Minus, Square, TerminalSquare, X } from 'lucide-react';
 import { messageText } from '../lib/session-state';
 import { taskAgents, agentStatus, focusAgent, terminalAgent } from '../lib/agents-state';
 import { toolFailed } from '../lib/transcript-items';
+import { thinkflowReceipt, thinkflowStatusText } from '../lib/thinkflow-display';
 import { ToolGenerationRate } from './GenerationRate';
 import FileName from './FileName';
 import ZoomableImage from './ZoomableImage';
@@ -53,8 +54,9 @@ function ToolBody({ message, t, active }: { message: Message; t: Copy; active: b
   const path = text(details.resolvedPath) || text(details.finalUrl) || text(details.url) || text(details.path) || text(args.path) || text(args.file_path);
   const command = text(args.command);
   const files: Json[] = Array.isArray(details.perFileResults) ? details.perFileResults.map(record) : [];
-  const failed = toolFailed(message);
-  const exitCode = typeof details.exitCode === 'number' && Number.isFinite(details.exitCode) ? details.exitCode : !message.running && !failed && !details.async && !details.service && !details.timedOut ? 0 : null;
+  const receipt = thinkflowReceipt(details.thinkflow);
+  const failed = receipt ? receipt.status === 'error' : toolFailed(message);
+  const exitCode = typeof details.exitCode === 'number' && Number.isFinite(details.exitCode) ? details.exitCode : !message.running && !failed && !details.async && !details.service && !details.timedOut && (!receipt || receipt.status === 'success') ? 0 : null;
   const display = record(details.displayContent);
   const readText = !failed && typeof display.text === 'string' ? display.text : output;
   const numbers = Array.isArray(display.lineNumbers) ? display.lineNumbers : undefined;
@@ -84,14 +86,17 @@ export default function ToolResult({ message, t, active = true, expanded, onExpa
   const firstText = typeof message.content === 'string' ? message.content : message.content?.find(block => block?.type === 'text')?.text ?? '';
   const summary = (kind === 'bash' ? text(args.command) : path) || firstText.split('\n', 1)[0] || '';
   const fileSummary = !!path && ['read', 'write', 'edit', 'ast_edit'].includes(kind ?? '');
-  const failed = toolFailed(message);
+  const receipt = thinkflowReceipt(details.thinkflow);
+  const failed = receipt ? receipt.status === 'error' : toolFailed(message);
   const taskRunning = kind === 'task' && (details.async?.state === 'running' || taskAgents(message).some(agent => !terminalAgent(agent.status)));
+  const pending = receipt?.status === 'queued', unknown = receipt?.status === 'unknown', skipped = receipt?.status === 'skipped';
   const running = (!!message.running || taskRunning) && active && !failed;
-  const stopped = (!!message.running || taskRunning) && !active;
-  const status = failed ? t.statusLabels.error : running ? t.running : stopped ? t.stopped : t.done;
+  const stopped = receipt?.status === 'cancelled' || (!!message.running || taskRunning) && !active;
+  const status = receipt ? stopped && ['queued', 'running'].includes(receipt.status) ? t.stopped : thinkflowStatusText(receipt.status, t.agents === '代理') : failed ? t.statusLabels.error : running ? t.running : stopped ? t.stopped : t.done;
+  const label = receipt?.tool === 'protocol' ? t.agents === '代理' ? '协议提示' : 'Protocol notice' : toolLabel(kind, t);
   const Icon = kind === 'read' || kind === 'write' ? FileText : kind === 'edit' ? FileDiff : TerminalSquare;
   return <details data-message-id={message.id} className={`tool-result tool-structured ${failed ? 'is-error' : ''}`} open={open} onToggle={event => { if (event.target !== event.currentTarget) return; const next = event.currentTarget.open; setOwnOpen(next); onExpandedChange?.(next); }}>
-    <summary><ChevronRight size={12} aria-hidden="true" /><Icon size={14} aria-hidden="true" /><strong>{toolLabel(kind, t)}</strong>{fileSummary ? <TargetLink href={path}><FileName className="tool-summary" value={path} /></TargetLink> : <span className="tool-summary" title={summary.slice(0, 240)}>{summary.slice(0, 140)}</span>}{running && <ToolGenerationRate callId={message.toolCallId} />}<SideQuestionMarkers threads={sideQuestionThreads} onOpen={onSideQuestionThread} />{onReference && <ToolReferenceMenu t={t} onReference={onReference} canReferenceCall={canReferenceCall} />}<span className="tool-result-status" role="img" aria-label={status} title={status}>{failed ? <X size={13} /> : running ? <LoaderCircle className="spin" size={13} /> : stopped ? <Square size={12} /> : <Check size={13} />}</span></summary>
+    <summary><ChevronRight size={12} aria-hidden="true" /><Icon size={14} aria-hidden="true" /><strong>{label}</strong>{fileSummary ? <TargetLink href={path}><FileName className="tool-summary" value={path} /></TargetLink> : <span className="tool-summary" title={summary.slice(0, 240)}>{summary.slice(0, 140)}</span>}{unknown && <span>{status}</span>}{running && !pending && <ToolGenerationRate callId={message.toolCallId} />}<SideQuestionMarkers threads={sideQuestionThreads} onOpen={onSideQuestionThread} />{onReference && <ToolReferenceMenu t={t} onReference={onReference} canReferenceCall={canReferenceCall} />}<span className="tool-result-status" role="img" aria-label={status} title={status}>{failed ? <X size={13} /> : unknown ? <CircleHelp size={13} /> : skipped ? <Minus size={13} /> : stopped ? <Square size={12} /> : pending ? <Clock3 size={13} /> : running ? <LoaderCircle className="spin" size={13} /> : <Check size={13} />}</span></summary>
     <Collapse open={open}><ToolBody message={message} t={t} active={active} /></Collapse>
   </details>;
 }
