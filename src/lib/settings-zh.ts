@@ -1,6 +1,10 @@
 // 中文文案改编自 oh-my-pi-gui 的 schema-zh.ts 与 schema-option-zh.ts，并按当前 OMP 设置元数据校订。
 // Copyright (c) 2026 nornzach；MIT 许可及完整归属见 THIRD-PARTY-NOTICES.md。
 export const settingsZh: Record<string, { label: string; description?: string; options?: Record<string, string> }> = {
+  'thinkflow.enabled': {
+    label: 'ThinkFlow 流式工具执行',
+    description: '在生成期间按序执行完整的文本工具命令，仅在需要结果或执行失败时反馈。更改从下一次运行生效。',
+  },
   "tokenOptimization.skillCacheReuse": {
     "label": "复用技能描述缓存",
     "description": "共享缓存的会话协同压缩技能描述，减少重复调用；当前会话的描述保持不变。"

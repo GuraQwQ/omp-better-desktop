@@ -1,0 +1,911 @@
+diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
+--- a/packages/agent/src/agent-loop.ts
++++ b/packages/agent/src/agent-loop.ts
+@@ -59,6 +59,10 @@ import { LiveSteeringChannel } from "./live-steering";
+ import { agentPauseGate } from "./pause";
+ import { type AgentRunCoverage, type AgentRunSummary, ToolCallBlockedError } from "./run-collector";
+ import { SpeculativeOperationCoordinator } from "./speculative-execution";
++import { ThinkFlowQueue, ThinkFlowScanner, THINKFLOW_PROMPT, type ThinkFlowCommand, type ThinkFlowHost, type ThinkFlowReceipt } from './thinkflow';
++
++const thinkflowOutcomes = new WeakMap<AssistantMessage, { host: ThinkFlowHost; receipts: ThinkFlowReceipt[]; feedback: boolean; unknown: boolean; blocksNative: boolean }>();
++const THINKFLOW_FEEDBACK = Symbol('thinkflow-feedback');
+ import {
+ 	type AgentTelemetry,
+ 	failChatSpan,
+@@ -1601,6 +1605,14 @@ async function runLoopBody(
+ 					stream.push({ type: "message_end", message: snapshotAssistantMessage(message) });
+ 				}
+ 				newMessages.push(message);
++				const tfOutcome = thinkflowOutcomes.get(message);
++				const appendThinkFlowObservation = () => {
++					if (!tfOutcome?.receipts.length) return undefined;
++					const observation = tfOutcome.host.observation(tfOutcome.receipts);
++					currentContext.messages.push(observation); newMessages.push(observation);
++					stream.push({ type: 'message_start', message: observation }); stream.push({ type: 'message_end', message: observation });
++					return observation;
++				};
+ 
+ 				// The escalation choice (if any) applied to the call above; clear it so
+ 				// only the single escalation turn carries the forced choice.
+@@ -1646,8 +1658,11 @@ async function runLoopBody(
+ 							status: message.stopReason === "aborted" ? "aborted" : "error",
+ 						});
+ 					}
+-					await emitTurnEnd(stream, currentContext, message, toolResults, config, signal, { willContinue: false });
++					const observation = appendThinkFlowObservation();
++					const continueAfterFeedback = !!tfOutcome?.feedback && !tfOutcome.unknown && !signal?.aborted;
++					await emitTurnEnd(stream, currentContext, message, toolResults, config, signal, { willContinue: continueAfterFeedback, ...(observation ? { additionalMessages: [observation] } : {}) });
+ 					turnOpen = false;
++					if (continueAfterFeedback) { hasMoreToolCalls = true; continue; }
+ 
+ 					stream.push(buildAgentEndEvent(newMessages, telemetry, stepCounter.count));
+ 					stream.end(newMessages);
+@@ -1699,7 +1714,14 @@ async function runLoopBody(
+ 
+ 				const toolResults: ToolResultMessage[] = [];
+ 				const additionalMessages: AgentMessage[] = [];
+-				if (softNonCompliant && softRequiredTool !== undefined) {
++				if (tfOutcome?.blocksNative && toolCalls.length) {
++					for (const toolCall of toolCalls) {
++						const result = createAbortedToolResult(toolCall, stream, 'skipped', 'ThinkFlow 前序结果需要先观察；本项未执行，请根据真实回执重新决定。');
++						currentContext.messages.push(result); newMessages.push(result); toolResults.push(result);
++						recordSkippedTool(telemetry, { toolCallId: toolCall.id, toolName: toolCall.name, status: 'skipped' });
++					}
++					hasMoreToolCalls = !tfOutcome.unknown && !signal?.aborted;
++				} else if (softNonCompliant && softRequiredTool !== undefined) {
+ 					SpeculativeOperationCoordinator.discardForMessage(message, "soft tool requirement deferred execution");
+ 					if (softRequirementState.escalations >= MAX_SOFT_TOOL_ESCALATIONS) {
+ 						throw new Error(
+@@ -1824,6 +1846,10 @@ async function runLoopBody(
+ 					hasMoreToolCalls = true;
+ 				}
+ 
++				const tfObservation = appendThinkFlowObservation();
++				if (tfObservation) additionalMessages.push(tfObservation);
++				if (tfOutcome?.unknown) hasMoreToolCalls = false;
++				else if (tfOutcome?.feedback && !signal?.aborted) hasMoreToolCalls = true;
+ 				await emitTurnEnd(stream, currentContext, message, toolResults, config, signal, {
+ 					additionalMessages,
+ 					willContinue: hasMoreToolCalls && !isDeadlineExceeded(config.deadline),
+@@ -2068,6 +2094,34 @@ async function prepareProviderCall(
+  * Stream an assistant response from the LLM.
+  * This is where AgentMessage[] gets transformed to Message[] for the LLM.
+  */
++async function executeThinkFlowCommand(
++	command: ThinkFlowCommand, context: AgentContext, config: AgentLoopConfig, signal: AbortSignal | undefined,
++	stream: EventStream<AgentEvent, AgentMessage[]>, telemetry: AgentTelemetry | undefined, invokeAgentSpan: Span | undefined,
++	template: AssistantMessage,
++): Promise<ThinkFlowReceipt> {
++	const host = config.thinkflow!;
++	const args = command.tool === 'read' ? { ...command.args, path: `${command.args.path}:raw` } : command.args;
++	const tools = context.tools?.map(tool => tool.name !== command.tool ? tool : new Proxy(tool, {
++		get(target, property) {
++			if (property !== 'execute') return Reflect.get(target, property, target);
++			return async (...parameters: Parameters<typeof tool.execute>) => {
++				const executionArgs = { ...parameters[1] } as Record<string, unknown>;
++				await host.prepare(command, executionArgs);
++				parameters[1] = executionArgs;
++				return await target.execute(...parameters);
++			};
++		},
++	}));
++	const assistant: AssistantMessage = { ...template, content: [{ type: 'toolCall', id: `thinkflow/${command.id}`, name: command.tool, arguments: args }], stopReason: 'toolUse' };
++	// 共用原生准入和执行；仅工具生命周期对外发布，不伪造 provider 原生调用历史。
++	const dispatchStream = { push(event: AgentEvent) { if (!['message_start', 'message_end', 'tool_execution_start', 'tool_execution_end'].includes(event.type)) stream.push(event); } } as unknown as EventStream<AgentEvent, AgentMessage[]>;
++	const result = await executeToolCalls({ ...context, tools }, assistant, signal, dispatchStream, { ...config, speculativeToolExecution: undefined, hasSteeringMessages: undefined, hasQueuedAsides: undefined, hasIrcInterrupts: undefined, hasBackgroundCompletions: undefined }, telemetry, invokeAgentSpan, []);
++	const message = result.toolResults[0];
++	const toolResult: AgentToolResult<unknown> = message ? { content: message.content, details: message.details, isError: message.isError } : { content: [{ type: 'text', text: '工具未返回执行结果。' }], details: {}, isError: true };
++	if (result.additionalContext) toolResult.content.push({ type: 'text', text: result.additionalContext });
++	return await host.complete(command, toolResult, !!signal?.aborted);
++}
++
+ async function streamAssistantResponse(
+ 	context: AgentContext,
+ 	config: AgentLoopConfig,
+@@ -2109,9 +2163,11 @@ async function streamAssistantResponse(
+ 	// `requestSignal`), so it cancels the request without tripping the loop's
+ 	// external-abort handling (`abortRacePromise` / `requestSignal.aborted`).
+ 	const promptToolAbortController = ownedDialect ? new AbortController() : undefined;
++	const thinkflowAbortController = config.thinkflow ? new AbortController() : undefined;
+ 	const providerAbortSignals: AbortSignal[] = [];
+ 	if (requestSignal) providerAbortSignals.push(requestSignal);
+ 	if (promptToolAbortController) providerAbortSignals.push(promptToolAbortController.signal);
++	if (thinkflowAbortController) providerAbortSignals.push(thinkflowAbortController.signal);
+ 	const finalRequestSignal =
+ 		providerAbortSignals.length === 0
+ 			? undefined
+@@ -2227,7 +2283,8 @@ async function streamAssistantResponse(
+ 	try {
+ 		return await runInActiveSpan(chatSpan, async () => {
+ 			onProviderStart?.();
+-			let response = await streamFunction(model, llmContext, {
++			const outgoingContext = config.thinkflow ? { ...llmContext, systemPrompt: [...(llmContext.systemPrompt ?? []), THINKFLOW_PROMPT] } : llmContext;
++			let response = await streamFunction(model, outgoingContext, {
+ 				...config,
+ 				apiKey,
+ 				metadata: resolvedMetadata,
+@@ -2258,6 +2315,24 @@ async function streamAssistantResponse(
+ 			}
+ 
+ 			let partialMessage: AssistantMessage | null = null;
++			const tf = config.thinkflow ? new ThinkFlowQueue(config.thinkflow,
++				command => executeThinkFlowCommand(command, context, config, requestSignal, stream, telemetry, invokeAgentSpan, partialMessage!),
++				receipt => {
++					const toolCallId = `thinkflow/${receipt.id}`;
++					const result = { content: receipt.result?.content ?? [{ type: 'text' as const, text: receipt.error ?? receipt.status }], details: { ...(receipt.result?.details && typeof receipt.result.details === 'object' ? receipt.result.details : {}), thinkflow: receipt } };
++					if (receipt.status === 'queued') stream.push({ type: 'tool_execution_start', toolCallId, toolName: receipt.tool, args: receipt.args });
++					if (receipt.status === 'queued' || receipt.status === 'running') stream.push({ type: 'tool_execution_update', toolCallId, toolName: receipt.tool, args: receipt.args, partialResult: result });
++					else stream.push({ type: 'tool_execution_end', toolCallId, toolName: receipt.tool, result, isError: receipt.status !== 'success' });
++				}, requestSignal) : undefined;
++			const tfScanner = tf ? new ThinkFlowScanner(() => partialMessage?.timestamp ?? Date.now()) : undefined;
++			const tfText = new Map<number, string>();
++			const tfFeedback = tf?.feedbackReady.promise.then(() => { thinkflowAbortController?.abort('thinkflow-feedback'); return THINKFLOW_FEEDBACK; });
++			const finishThinkFlow = async (message: AssistantMessage) => {
++				if (!tf) return;
++				if (!requestSignal?.aborted) { try { tfScanner!.finish(); } catch (error) { tf.protocolError(error); } }
++				await tf.finish();
++				thinkflowOutcomes.set(message, { host: config.thinkflow!, receipts: tf.receipts, feedback: tf.feedback, unknown: tf.unknown, blocksNative: tf.blocksNative });
++			};
+ 			let addedPartial = false;
+ 			// Previous `message_update` snapshot for the incremental rebuild below;
+ 			// null until the turn's `start` event seeds it.
+@@ -2279,7 +2354,7 @@ async function streamAssistantResponse(
+ 				argStreams.clear();
+ 			};
+ 			const speculationConfig =
+-				config.speculativeToolExecution?.enabled === true ? config.speculativeToolExecution : undefined;
++				!config.thinkflow && config.speculativeToolExecution?.enabled === true ? config.speculativeToolExecution : undefined;
+ 			const speculationCoordinator = speculationConfig
+ 				? new SpeculativeOperationCoordinator(speculationConfig, {
+ 						context,
+@@ -2311,6 +2386,7 @@ async function streamAssistantResponse(
+ 					stream,
+ 					requestSignal,
+ 				);
++				await finishThinkFlow(aborted);
+ 				await finishChat(aborted);
+ 				return aborted;
+ 			};
+@@ -2334,12 +2410,13 @@ async function streamAssistantResponse(
+ 			try {
+ 				while (true) {
+ 					let next: IteratorResult<AssistantMessageEvent>;
+-					if (abortRacePromise) {
+-						const result = await Promise.race([responseIterator.next(), abortRacePromise]);
++					if (abortRacePromise || tfFeedback) {
++						const result = await Promise.race([responseIterator.next(), ...(abortRacePromise ? [abortRacePromise] : []), ...(tfFeedback ? [tfFeedback] : [])]);
+ 						if (result === ABORTED) {
+ 							return await finishAbortedStream();
+ 						}
+-						next = result;
++						if (result === THINKFLOW_FEEDBACK) next = { done: false, value: { type: 'error', reason: 'aborted', error: await response.result() } };
++						else next = result as IteratorResult<AssistantMessageEvent>;
+ 					} else {
+ 						next = await responseIterator.next();
+ 					}
+@@ -2372,6 +2449,10 @@ async function streamAssistantResponse(
+ 							}
+ 						}
+ 						finalMessage = snapshotAssistantMessage(finalMessage);
++						if (thinkflowAbortController?.signal.aborted && !requestSignal?.aborted && (finalMessage.stopReason === 'aborted' || finalMessage.stopReason === 'error')) {
++							finalMessage = { ...finalMessage, stopReason: 'stop', errorMessage: undefined, stopDetails: { type: 'thinkflow_feedback', category: finalMessage.stopReason, explanation: 'ThinkFlow 本地结果反馈边界仅终止了本次供应商流，任务继续。' } };
++						}
++						await finishThinkFlow(finalMessage);
+ 						// Unhealed DSML markup must not reach history, including reasoning
+ 						// and turns with a valid structured call. Only a failed text-only
+ 						// call needs the recovery nudge.
+@@ -2393,7 +2474,7 @@ async function streamAssistantResponse(
+ 						// actually dispatch. The same gate keeps host-deferred speculation from
+ 						// being released for truncated, expired, or soft-tool-rejected turns.
+ 						const finalToolCallsCanDispatch =
+-							!requestSignal?.aborted &&
++							!tf?.blocksNative && !requestSignal?.aborted &&
+ 							(canDispatchFinalToolCalls?.(finalMessage) ??
+ 								(finalMessage.stopReason !== "error" &&
+ 									finalMessage.stopReason !== "aborted" &&
+@@ -2441,8 +2522,19 @@ async function streamAssistantResponse(
+ 					if (requestSignal?.aborted) {
+ 						return await finishAbortedStream();
+ 					}
++					if (tfScanner && (event.type === 'text_delta' || event.type === 'text_end')) {
++						let parseError: unknown;
++						try {
++							const previous = tfText.get(event.contentIndex) ?? '';
++							const delta = event.type === 'text_delta' ? event.delta : event.content.startsWith(previous) ? event.content.slice(previous.length) : '';
++							tfText.set(event.contentIndex, previous + delta);
++							tfScanner.push(event.contentIndex, delta);
++						} catch (error) { parseError = error; }
++						for (const command of tfScanner.take()) await tf!.add(command);
++						if (parseError) tf!.protocolError(parseError);
++					}
+ 
+-					if (event.type === "toolcall_start") {
++					if (event.type === "toolcall_start" && !config.thinkflow) {
+ 						const block = event.partial.content[event.contentIndex];
+ 						if (block?.type === "toolCall") {
+ 							const tool = resolveToolForCall(context.tools, block, config.resolveFallbackTool);
+@@ -2668,8 +2760,9 @@ async function streamAssistantResponse(
+ 					await config.transformAssistantMessage(trailing, requestSignal);
+ 				}
+ 				trailing = snapshotAssistantMessage(trailing);
++				await finishThinkFlow(trailing);
+ 				const finalToolCallsCanDispatch =
+-					!requestSignal?.aborted &&
++					!tf?.blocksNative && !requestSignal?.aborted &&
+ 					(canDispatchFinalToolCalls?.(trailing) ??
+ 						(trailing.stopReason !== "error" &&
+ 							trailing.stopReason !== "aborted" &&
+diff --git a/packages/agent/src/agent.ts b/packages/agent/src/agent.ts
+--- a/packages/agent/src/agent.ts
++++ b/packages/agent/src/agent.ts
+@@ -263,6 +263,7 @@ export interface AgentOptions {
+ 	transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => Record<string, unknown>;
+ 	/** Host authorization and telemetry for opt-in speculative tool execution. */
+ 	speculativeToolExecution?: SpeculativeToolExecutionConfig;
++	thinkflow?: () => AgentLoopConfig['thinkflow'];
+ 
+ 	/**
+ 	 * Resolve a tool call whose name matched no advertised tool. Lets hosts
+@@ -494,6 +495,7 @@ export class Agent {
+ 	#preferWebsockets?: boolean;
+ 	#transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => Record<string, unknown>;
+ 	#speculativeToolExecution?: SpeculativeToolExecutionConfig;
++	#thinkflow?: () => AgentLoopConfig['thinkflow'];
+ 	#resolveFallbackTool?: (name: string, advertised: readonly AgentTool<any>[]) => AgentTool<any> | undefined;
+ 	#suggestFallbackToolNames?: () => Iterable<string>;
+ 	#intentTracing: boolean;
+@@ -610,6 +612,7 @@ export class Agent {
+ 		this.#preferWebsockets = opts.preferWebsockets;
+ 		this.#transformToolCallArguments = opts.transformToolCallArguments;
+ 		this.#speculativeToolExecution = opts.speculativeToolExecution;
++		this.#thinkflow = opts.thinkflow;
+ 		this.#resolveFallbackTool = opts.resolveFallbackTool;
+ 		this.#suggestFallbackToolNames = opts.suggestFallbackToolNames;
+ 		this.#intentTracing = opts.intentTracing === true;
+@@ -2083,6 +2086,7 @@ export class Agent {
+ 			getCwd: this.#cwdResolver,
+ 			transformToolCallArguments: this.#transformToolCallArguments,
+ 			speculativeToolExecution: this.#speculativeToolExecution,
++			thinkflow: this.#thinkflow?.(),
+ 			resolveFallbackTool: this.#resolveFallbackTool,
+ 			suggestFallbackToolNames: this.#suggestFallbackToolNames,
+ 			intentTracing: this.#intentTracing,
+diff --git a/packages/agent/src/types.ts b/packages/agent/src/types.ts
+--- a/packages/agent/src/types.ts
++++ b/packages/agent/src/types.ts
+@@ -26,6 +26,7 @@ import type { AppendOnlyContextManager } from "./append-only-context";
+ import type { AgentRunCoverage, AgentRunSummary } from "./run-collector";
+ import type { SentToolDefinitions } from "./sent-tool-definitions";
+ import type { AgentTelemetryConfig } from "./telemetry";
++import type { ThinkFlowHost } from './thinkflow';
+ 
+ /** Stream function - can return sync or Promise for async config lookup */
+ export type StreamFn = (
+@@ -190,6 +191,8 @@ export interface SteeringQueueState {
+  */
+ export interface AgentLoopConfig extends SimpleStreamOptions {
+ 	model: Model;
++	/** 当前运行快照；关闭时不构造解析器或执行队列。 */
++	thinkflow?: ThinkFlowHost;
+ 
+ 	/** Reports whether this loop has reached a safe process-pause boundary. */
+ 	onPauseChange?: (paused: boolean) => void;
+diff --git a/packages/agent/src/index.ts b/packages/agent/src/index.ts
+--- a/packages/agent/src/index.ts
++++ b/packages/agent/src/index.ts
+@@ -32,3 +32,4 @@ export * from "./tokenizer";
+ export * from "./tool-arguments";
+ // Types
+ export * from "./types";
++export * from './thinkflow';
+diff --git a/packages/agent/src/thinkflow.ts b/packages/agent/src/thinkflow.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/agent/src/thinkflow.ts
+@@ -0,0 +1,297 @@
++import type { AgentMessage, AgentToolResult } from "./types";
++
++export type ThinkFlowStatus = "queued" | "running" | "success" | "error" | "skipped" | "cancelled" | "unknown";
++export interface ThinkFlowSource {
++	contentIndex: number;
++	start: number;
++	end: number;
++	text: string;
++	assistantTimestamp: number;
++}
++export interface ThinkFlowCommand {
++	id: string;
++	tool: "write" | "read" | "bash";
++	args: Record<string, unknown>;
++	needResult: boolean;
++	source: ThinkFlowSource;
++}
++export interface ThinkFlowReceipt {
++	schemaVersion: 1;
++	id: string;
++	tool: string;
++	args: Record<string, unknown>;
++	fingerprint: string;
++	flow: "delayed" | "feedback";
++	status: ThinkFlowStatus;
++	startedAt: number;
++	completedAt?: number;
++	source?: ThinkFlowSource;
++	result?: AgentToolResult<unknown>;
++	error?: string;
++	fileVersion?: { path: string; before: string | null; after?: string | null };
++}
++export interface ThinkFlowHost {
++	lookup(command: ThinkFlowCommand): Promise<ThinkFlowReceipt | undefined>;
++	prepare(command: ThinkFlowCommand, args: Record<string, unknown>): Promise<void>;
++	complete(
++		command: ThinkFlowCommand,
++		result: AgentToolResult<unknown>,
++		aborted: boolean,
++		status?: ThinkFlowStatus,
++	): Promise<ThinkFlowReceipt>;
++	observation(receipts: ThinkFlowReceipt[]): AgentMessage;
++}
++export const THINKFLOW_PROMPT = `ThinkFlow is enabled for this run. Emit executable commands only as standalone top-level text, outside Markdown code fences. Keep native tools for edit, task, wait, eval, ask, todo, MCP and other operations.
++<tf-write id="unique-id" path="local-file">complete file content</tf-write>
++<tf-read id="unique-id" path="local-file" />
++<tf-bash id="unique-id">complete shell command</tf-bash>
++Commands execute once, in order, as soon as each complete tag arrives. Use a stable id for the same command; never reuse an id with changed arguments. Existing files require a successful full tf-read baseline before tf-write. A changed file must be read again before deciding a new write. Virtual URI writes use native tools.
++Successful tf-write receipts do not force another model request. tf-read and tf-bash results return after the current response. Add need_result="true" to any command when later work needs its result immediately: execution finishes, then the provider stream stops and a new request receives the observation. Do not generate dependent edits before seeing read/bash results. Native tools wait for preceding ThinkFlow commands. A stopped or failed command never rolls back earlier successes. Escape a literal closing tag in a write/bash body as &lt;/tf-write> or &lt;/tf-bash>. Do not manufacture result tags or claim business completion merely from execution success.`;
++
++const MAX_COMMAND = 2 * 1024 * 1024;
++const decodeAttribute = (value: string) =>
++	value.replace(
++		/&(quot|apos|amp|lt|gt);/g,
++		(_, name: string) => ({ quot: '"', apos: "'", amp: "&", lt: "<", gt: ">" })[name]!,
++	);
++
++/** 只扫描本次正文的完整顶层命令，围栏示例及未闭合尾部不产生副作用。 */
++export class ThinkFlowScanner {
++	private readonly blocks = new Map<number, { text: string; cursor: number; fence?: string }>();
++	private readonly accepted: ThinkFlowCommand[] = [];
++	constructor(private readonly timestamp: () => number) {}
++	push(index: number, delta: string): ThinkFlowCommand[] {
++		const state = this.blocks.get(index) ?? { text: "", cursor: 0 };
++		this.blocks.set(index, state);
++		state.text += delta;
++		const commands: ThinkFlowCommand[] = [];
++		while (state.cursor < state.text.length) {
++			const start = state.cursor;
++			const lineStart = state.text.lastIndexOf("\n", start - 1) + 1;
++			const topLevel = /^\s*$/.test(state.text.slice(lineStart, start));
++			if (topLevel && (state.text[start] === "`" || state.text[start] === "~")) {
++				const end = state.text.indexOf("\n", start);
++				if (end < 0) break;
++				const fence = /^(`{3,}|~{3,})/.exec(state.text.slice(start, end))?.[1];
++				if (fence) {
++					if (!state.fence) state.fence = fence;
++					else if (
++						state.fence[0] === fence[0] &&
++						fence.length >= state.fence.length &&
++						!state.text.slice(start + fence.length, end).trim()
++					)
++						delete state.fence;
++				}
++				state.cursor = end + 1;
++				continue;
++			}
++			if (state.fence || !topLevel || state.text[start] !== "<") {
++				state.cursor++;
++				continue;
++			}
++			const remainder = state.text.slice(start);
++			if ("<tf-".startsWith(remainder)) break;
++			if (!remainder.startsWith("<tf-")) {
++				state.cursor++;
++				continue;
++			}
++			let end = start + 4,
++				quote = "";
++			for (; end < state.text.length; end++) {
++				const char = state.text[end];
++				if (quote) {
++					if (char === quote) quote = "";
++				} else if (char === '"' || char === "'") quote = char;
++				else if (char === ">") break;
++			}
++			if (end === state.text.length) {
++				if (end - start > MAX_COMMAND) throw Error("ThinkFlow 命令开标签过长。");
++				break;
++			}
++			const opening = state.text.slice(start, end + 1);
++			const match = /^<tf-(write|read|bash)\b([\s\S]*?)(\/?)>$/.exec(opening);
++			if (!match) throw Error("ThinkFlow 仅支持完整的 tf-write、tf-read 和 tf-bash 标签。");
++			const tool = match[1] as ThinkFlowCommand["tool"];
++			const attributes: Record<string, string> = {};
++			let rest = match[2].trim();
++			while (rest) {
++				const attribute = /^([a-z_]+)\s*=\s*(?:"([^"]*)"|'([^']*)')\s*/.exec(rest);
++				if (!attribute || attributes[attribute[1]] !== undefined) throw Error("ThinkFlow 属性必须唯一并使用引号。");
++				attributes[attribute[1]] = decodeAttribute(attribute[2] ?? attribute[3]);
++				rest = rest.slice(attribute[0].length);
++			}
++			if (!/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$/.test(attributes.id ?? ""))
++				throw Error("ThinkFlow 命令需要稳定、非空的 id（最长 128 字符）。");
++			if (Object.keys(attributes).some(name => !["id", "path", "need_result"].includes(name)))
++				throw Error("ThinkFlow 命令包含不支持的属性。");
++			if (attributes.need_result !== undefined && !["true", "false"].includes(attributes.need_result))
++				throw Error("need_result 必须为 true 或 false。");
++			if (tool !== "bash" && !attributes.path) throw Error("ThinkFlow 文件命令需要 path。");
++			let body = "",
++				finish = end + 1;
++			if (!match[3]) {
++				const closing = `</tf-${tool}>`,
++					close = state.text.indexOf(closing, finish);
++				if (close < 0) {
++					if (state.text.length - start > MAX_COMMAND) throw Error("ThinkFlow 命令超过 2 MiB。");
++					break;
++				}
++				body = state.text.slice(finish, close).replaceAll(`&lt;/tf-${tool}>`, closing);
++				finish = close + closing.length;
++			} else if (tool !== "read") throw Error("tf-write 和 tf-bash 必须有完整结束标签。");
++			if (finish - start > MAX_COMMAND) throw Error("ThinkFlow 命令超过 2 MiB。");
++			const command: ThinkFlowCommand = {
++				id: attributes.id,
++				tool,
++				args:
++					tool === "write"
++						? { path: attributes.path, content: body }
++						: tool === "read"
++							? { path: attributes.path }
++							: { command: body },
++				needResult: attributes.need_result === "true",
++				source: {
++					contentIndex: index,
++					start,
++					end: finish,
++					text: state.text.slice(start, finish),
++					assistantTimestamp: this.timestamp(),
++				},
++			};
++			commands.push(command);
++			this.accepted.push(command);
++			state.cursor = finish;
++		}
++		return commands;
++	}
++	take() {
++		return this.accepted.splice(0);
++	}
++	finish() {
++		for (const state of this.blocks.values())
++			if (!state.fence && state.text.slice(state.cursor).startsWith("<tf-"))
++				throw Error("ThinkFlow 命令未闭合，未执行残缺尾部；请重新给出完整命令。");
++	}
++}
++
++/** 请求内 FIFO；只反馈新信息，副作用失败后不继续依赖链。 */
++export class ThinkFlowQueue {
++	readonly receipts: ThinkFlowReceipt[] = [];
++	readonly feedbackReady = Promise.withResolvers<void>();
++	private tail: Promise<void> = Promise.resolve();
++	private closed = false;
++	private effectFailed = false;
++	private readFailed = false;
++	private count = 0;
++	private bytes = 0;
++	private persistenceFailed = false;
++	feedback = false;
++	unknown = false;
++	get blocksNative() {
++		return this.closed || this.effectFailed || this.readFailed;
++	}
++	constructor(
++		readonly host: ThinkFlowHost,
++		private readonly execute: (command: ThinkFlowCommand) => Promise<ThinkFlowReceipt>,
++		private readonly emit: (receipt: ThinkFlowReceipt) => void,
++		private readonly signal?: AbortSignal,
++	) {}
++	async add(command: ThinkFlowCommand) {
++		if (++this.count > 128) throw Error("单次 ThinkFlow 响应最多接受 128 条命令。");
++		const size = command.source.text.length;
++		if (this.bytes + size > 4 * 1024 * 1024) await this.tail;
++		this.bytes += size;
++		const queued: ThinkFlowReceipt = {
++			schemaVersion: 1,
++			id: command.id,
++			tool: command.tool,
++			args: command.args,
++			fingerprint: "",
++			flow: command.tool === "write" && !command.needResult ? "delayed" : "feedback",
++			status: "queued",
++			startedAt: Date.now(),
++			source: command.source,
++		};
++		this.emit(queued);
++		const skip = this.closed;
++		if (command.needResult) this.closed = true;
++		this.tail = this.tail
++			.then(async () => {
++				let receipt: ThinkFlowReceipt;
++				try {
++					if (this.persistenceFailed) {
++						receipt = {
++							...queued,
++							status: "skipped",
++							completedAt: Date.now(),
++							error: "前序回执无法持久化，本项未执行。",
++						};
++					} else if (
++						skip ||
++						this.effectFailed ||
++						(this.readFailed && command.tool !== "read") ||
++						this.signal?.aborted
++					) {
++						receipt = await this.host.complete(
++							command,
++							{
++								content: [{ type: "text", text: "前序反馈、失败或取消阻止了本项执行。" }],
++								isError: true,
++								details: {},
++							},
++							!!this.signal?.aborted,
++							this.signal?.aborted ? "cancelled" : "skipped",
++						);
++					} else {
++						this.emit({ ...queued, status: "running" });
++						receipt = (await this.host.lookup(command)) ?? (await this.execute(command));
++					}
++				} catch (error) {
++					this.persistenceFailed = true;
++					this.closed = true;
++					receipt = {
++						...queued,
++						status: "unknown",
++						flow: "feedback",
++						completedAt: Date.now(),
++						error: `执行或回执未能确定结算：${String(error instanceof Error ? error.message : error)}。保留原意图，先核对实际效果。`,
++					};
++				}
++				this.receipts.push(receipt);
++				this.emit(receipt);
++				if (receipt.status === "unknown") this.unknown = true;
++				if (receipt.status !== "success") {
++					if (command.tool === "read" && receipt.status === "error") this.readFailed = true;
++					else this.effectFailed = true;
++				}
++				if (receipt.flow === "feedback" || receipt.status !== "success") this.feedback = true;
++				if (command.needResult || (receipt.status !== "success" && command.tool !== "read"))
++					this.feedbackReady.resolve();
++			})
++			.finally(() => {
++				this.bytes -= size;
++			});
++	}
++	async finish() {
++		await this.tail;
++	}
++	protocolError(error: unknown) {
++		this.closed = true;
++		this.feedback = true;
++		const receipt: ThinkFlowReceipt = {
++			schemaVersion: 1,
++			id: `protocol-${Date.now()}`,
++			tool: "protocol",
++			args: {},
++			fingerprint: "",
++			flow: "feedback",
++			status: "error",
++			startedAt: Date.now(),
++			completedAt: Date.now(),
++			error: String(error instanceof Error ? error.message : error),
++		};
++		this.receipts.push(receipt);
++		this.emit(receipt);
++		this.feedbackReady.resolve();
++	}
++}
+diff --git a/packages/coding-agent/src/sdk.ts b/packages/coding-agent/src/sdk.ts
+--- a/packages/coding-agent/src/sdk.ts
++++ b/packages/coding-agent/src/sdk.ts
+@@ -446,8 +446,10 @@ import {
+ } from "./mcp/settings";
+ import { cfgPlanEnabled } from "./plan-mode/settings";
+ import { cfgSecretsEnabled } from "./secrets/settings";
++import { ThinkFlowJournal } from './session/thinkflow';
+ import {
+ 	cfgSnapcompactShape,
++	cfgThinkFlowEnabled,
+ 	cfgSnapcompactSystemPrompt,
+ 	cfgSnapcompactToolResults,
+ 	cfgTokenOptimizationProgrammatic,
+@@ -2253,6 +2255,12 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+ 	// evidence that the old process can no longer finish that turn. Preserve the
+ 	// partial transcript and append one terminal aborted assistant record before
+ 	// rebuilding runtime context. The helper is idempotent once that record exists.
++	const thinkflowJournal = new ThinkFlowJournal(sessionManager);
++	const recoveredThinkFlow = await thinkflowJournal.restore();
++	if (recoveredThinkFlow.length) {
++		sessionManager.appendMessage(thinkflowJournal.observation(recoveredThinkFlow) as import('./session/messages').CustomMessage);
++		await sessionManager.flush();
++	}
+ 	let existingBranch = logger.time("getSessionBranch", () => sessionManager.getBranch());
+ 	const interruptedTurnAbort = createInterruptedTurnAbortMessage(existingBranch);
+ 	if (interruptedTurnAbort) {
+@@ -5089,6 +5097,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+ 			dialectResolver: dialectModel => resolveDialect(cfgToolsFormat.get(settings), dialectModel),
+ 			abortOnFabricatedToolResult: cfgToolsAbortOnFabricatedResult.get(settings),
+ 			speculativeToolExecution,
++			thinkflow: () => cfgThinkFlowEnabled.get(settings) && !isSubagentSession ? thinkflowJournal : undefined,
+ 			getToolChoice: () => session?.nextToolChoiceDirective(),
+ 			onToolChoiceUnavailable: () => session?.toolChoiceQueue.reject("unavailable"),
+ 			telemetry: options.telemetry,
+diff --git a/packages/coding-agent/src/session/context-settings.ts b/packages/coding-agent/src/session/context-settings.ts
+--- a/packages/coding-agent/src/session/context-settings.ts
++++ b/packages/coding-agent/src/session/context-settings.ts
+@@ -9,6 +9,11 @@ import { SHAPE_VARIANT_NAMES } from "@oh-my-pi/snapcompact";
+ const EMPTY_STRING_ARRAY: string[] = [];
+ const EMPTY_MODEL_COMPACTION_THRESHOLDS: Record<string, AgentCompactionThresholdOverride> = {};
+ 
++export const cfgThinkFlowEnabled = register({
++	id: 'thinkflow.enabled', type: 'boolean', default: false,
++	ui: { tab: 'context', group: 'ThinkFlow', label: '续想流式执行（实验）', description: '完整正文命令在流中按序执行，仅在需要信息或失败时反馈；下一次运行生效。' },
++});
++
+ export const cfgTokenOptimizationSkillCacheReuse = register({
+ 	id: "tokenOptimization.skillCacheReuse",
+ 	type: "boolean",
+diff --git a/packages/coding-agent/src/session/thinkflow.ts b/packages/coding-agent/src/session/thinkflow.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/coding-agent/src/session/thinkflow.ts
+@@ -0,0 +1,240 @@
++import fs from "node:fs/promises";
++import path from "node:path";
++import { createHash, randomUUID } from "node:crypto";
++import type {
++	AgentMessage,
++	AgentToolResult,
++	ThinkFlowCommand,
++	ThinkFlowHost,
++	ThinkFlowReceipt,
++	ThinkFlowStatus,
++} from "@oh-my-pi/pi-agent-core";
++import type { SessionManager } from "./session-manager";
++import { resolveToCwd } from "../tools/path-utils";
++import { unwrapHashlineHeaderPath } from "../tools/hashline-header-path";
++
++const digest = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
++const canonical = (value: unknown): string =>
++	value !== null && typeof value === "object"
++		? Array.isArray(value)
++			? `[${value.map(canonical).join(",")}]`
++			: `{${Object.keys(value)
++					.sort()
++					.map(key => `${JSON.stringify(key)}:${canonical(Reflect.get(value, key))}`)
++					.join(",")}}`
++		: JSON.stringify(value);
++const fingerprint = (command: ThinkFlowCommand) =>
++	digest(canonical({ tool: command.tool, args: command.args, needResult: command.needResult }));
++const resultText = (result: AgentToolResult<unknown>) =>
++	result.content
++		.filter(block => block.type === "text")
++		.map(block => block.text)
++		.join("\n");
++const failed = (result: AgentToolResult<unknown>) =>
++	result.isError === true ||
++	(result.details !== null && typeof result.details === "object" && Reflect.get(result.details, "isError") === true);
++
++/** 会话 JSONL 是唯一权威；悬空意图恢复为 unknown，不重新执行未知副作用。 */
++export class ThinkFlowJournal implements ThinkFlowHost {
++	private sessionId = "";
++	private readonly records = new Map<string, ThinkFlowReceipt>();
++	private readonly baselines = new Map<string, string>();
++	private readonly pending = new Map<string, ThinkFlowReceipt>();
++	constructor(private readonly manager: SessionManager) {}
++	private async save(type: "intent" | "receipt", receipt: ThinkFlowReceipt) {
++		await this.manager.ensureOnDisk();
++		this.manager.appendCustomEntry(`thinkflow.${type}`, receipt);
++		await this.manager.flush();
++		this.records.set(receipt.id, receipt);
++	}
++	async restore(): Promise<ThinkFlowReceipt[]> {
++		const id = this.manager.getSessionId();
++		if (id === this.sessionId) return [];
++		this.sessionId = id;
++		this.records.clear();
++		this.baselines.clear();
++		this.pending.clear();
++		const displayed = new Set<string>();
++		for (const entry of this.manager.getEntries()) {
++			if (entry.type === "custom" && ["thinkflow.intent", "thinkflow.receipt"].includes(entry.customType)) {
++				const receipt = entry.data as ThinkFlowReceipt;
++				if (
++					!receipt ||
++					receipt.schemaVersion !== 1 ||
++					typeof receipt.id !== "string" ||
++					typeof receipt.fingerprint !== "string"
++				)
++					throw Error("ThinkFlow 会话记录格式无法读取，请保留会话后核对。");
++				this.records.set(receipt.id, receipt);
++			} else if (
++				entry.type === "message" &&
++				entry.message.role === "custom" &&
++				entry.message.customType === "thinkflow-observation"
++			) {
++				const details = entry.message.details as { thinkflow?: { receipts?: ThinkFlowReceipt[] } } | undefined;
++				for (const receipt of details?.thinkflow?.receipts ?? []) displayed.add(`${receipt.id}:${receipt.status}`);
++			}
++		}
++		const recovered: ThinkFlowReceipt[] = [];
++		for (const record of this.records.values()) {
++			let receipt = record;
++			if (record.status === "running") {
++				receipt = {
++					...record,
++					status: "unknown",
++					completedAt: Date.now(),
++					error: "上次执行中断且没有持久完成回执；先核对实际文件或进程效果，不自动重放此 id。",
++				};
++				await this.save("receipt", receipt);
++			}
++			if (!displayed.has(`${receipt.id}:${receipt.status}`)) recovered.push(receipt);
++		}
++		return recovered;
++	}
++	private base(command: ThinkFlowCommand): ThinkFlowReceipt {
++		return {
++			schemaVersion: 1,
++			id: command.id,
++			tool: command.tool,
++			args: command.args,
++			fingerprint: fingerprint(command),
++			flow: command.tool === "write" && !command.needResult ? "delayed" : "feedback",
++			status: "running",
++			startedAt: Date.now(),
++			source: command.source,
++		};
++	}
++	async lookup(command: ThinkFlowCommand) {
++		await this.restore();
++		const previous = this.records.get(command.id);
++		if (!previous) return;
++		if (previous.fingerprint !== fingerprint(command))
++			return {
++				...this.base(command),
++				id: `protocol-${randomUUID()}`,
++				tool: "protocol",
++				args: { commandId: command.id },
++				source: undefined,
++				status: "error" as const,
++				flow: "feedback" as const,
++				completedAt: Date.now(),
++				error: `命令 ${command.id} 已被不同参数使用，未执行；原执行回执保持不变，请核对后为新动作使用新 id。`,
++			};
++		if (previous.status === "running")
++			return {
++				...previous,
++				status: "unknown" as const,
++				flow: "feedback" as const,
++				error: "命令已开始但没有确定回执；先核对实际效果，不自动重放。",
++			};
++		return previous;
++	}
++	private localFile(input: unknown): string {
++		if (typeof input !== "string" || !input.trim()) throw Error("ThinkFlow 文件路径不能为空。");
++		if (
++			/^[a-z][a-z0-9+.-]*:\/\//i.test(input) ||
++			input.includes("!/") ||
++			input.includes("::") ||
++			/:/.test(input.replace(/^[a-z]:[\\/]/i, ""))
++		)
++			throw Error("ThinkFlow 文件命令只接受普通本地文件；虚拟 URI、档案成员及选择器请使用原生工具。");
++		return resolveToCwd(unwrapHashlineHeaderPath(input), this.manager.getCwd());
++	}
++	private async version(file: string) {
++		try {
++			const stat = await fs.lstat(file);
++			if (!stat.isFile() || stat.isSymbolicLink()) throw Error("ThinkFlow 写入只接受普通文件。");
++			return digest(await fs.readFile(file));
++		} catch (error) {
++			if ((error as NodeJS.ErrnoException).code === "ENOENT") {
++				for (let parent = path.dirname(file); ; parent = path.dirname(parent)) {
++					const ancestor = await fs.stat(parent).catch(parentError => {
++						if ((parentError as NodeJS.ErrnoException).code === "ENOENT") return undefined;
++						throw parentError;
++					});
++					if (ancestor) {
++						if (!ancestor.isDirectory()) throw Error("ThinkFlow 不将档案成员或数据库选择器当作普通文件写入。");
++						break;
++					}
++					if (path.dirname(parent) === parent) break;
++				}
++				return null;
++			}
++			throw error;
++		}
++	}
++	async prepare(command: ThinkFlowCommand, args: Record<string, unknown>) {
++		const record = { ...this.base(command), args };
++		if (command.tool === "write") {
++			const file = this.localFile(args.path),
++				before = await this.version(file);
++			if (before !== null && this.baselines.get(file) !== before)
++				throw Error(
++					"文件缺少有效完整读取基线或已发生改动；先 tf-read 当前文件，再决定新的写入，不直接重放旧覆盖。",
++				);
++			record.fileVersion = { path: file, before };
++			args.path = file;
++		} else if (command.tool === "read") args.path = `${this.localFile(String(args.path).replace(/:raw$/, ""))}:raw`;
++		await this.save("intent", record);
++		this.pending.set(command.id, record);
++	}
++	async complete(
++		command: ThinkFlowCommand,
++		result: AgentToolResult<unknown>,
++		aborted: boolean,
++		status?: ThinkFlowStatus,
++	) {
++		const intent = this.pending.get(command.id),
++			hasError = failed(result);
++		const receipt: ThinkFlowReceipt = {
++			...(intent ?? this.base(command)),
++			result,
++			status: status ?? (hasError ? (aborted ? "cancelled" : "error") : "success"),
++			completedAt: Date.now(),
++			...(hasError ? { error: resultText(result) } : {}),
++		};
++		if (receipt.status === "success" && command.tool === "read") {
++			try {
++				const file = this.localFile(String(receipt.args.path).replace(/:raw$/, "")),
++					bytes = await fs.readFile(file),
++					content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
++				if (bytes.length <= 2 * 1024 * 1024 && !content.includes("\0") && resultText(result).includes(content)) {
++					const version = digest(bytes);
++					this.baselines.set(file, version);
++					receipt.fileVersion = { path: file, before: version, after: version };
++				}
++			} catch {
++				/* 原生读取结果仍有效；无法核实完整内容时不授予写入基线。 */
++			}
++		}
++		if (receipt.status === "success" && command.tool === "write" && receipt.fileVersion) {
++			const after = await this.version(receipt.fileVersion.path);
++			receipt.fileVersion.after = after;
++			if (after !== null) this.baselines.set(receipt.fileVersion.path, after);
++		}
++		await this.save("receipt", receipt);
++		this.pending.delete(command.id);
++		return receipt;
++	}
++	observation(receipts: ThinkFlowReceipt[]): AgentMessage {
++		const observations = receipts.map(receipt => ({
++			id: receipt.id,
++			tool: receipt.tool,
++			status: receipt.status,
++			...(receipt.fileVersion
++				? { path: receipt.fileVersion.path, version: receipt.fileVersion.after ?? receipt.fileVersion.before }
++				: {}),
++			...(receipt.error ? { error: receipt.error } : {}),
++			...(receipt.flow === "feedback" && receipt.result ? { result: receipt.result.content } : {}),
++		}));
++		return {
++			role: "custom",
++			customType: "thinkflow-observation",
++			content: `ThinkFlow 执行回执：\n${JSON.stringify(observations)}\n成功只表示工具执行完成。依赖新信息再继续；unknown 须核对实际效果后再决定新动作。`,
++			display: true,
++			details: { thinkflow: { schemaVersion: 1, receipts } },
++			attribution: "agent",
++			timestamp: Date.now(),
++		};
++	}
++}
+diff --git a/packages/coding-agent/src/session/agent-session.ts b/packages/coding-agent/src/session/agent-session.ts
+--- a/packages/coding-agent/src/session/agent-session.ts
++++ b/packages/coding-agent/src/session/agent-session.ts
+@@ -4484,6 +4484,10 @@ export class AgentSession implements SettingsScope, AgentViewSession {
+ 			return;
+ 		}
+ 		if (message.role === "hookMessage" || message.role === "custom") {
++			if (message.customType === 'thinkflow-observation') {
++				this.sessionManager.appendMessage(message);
++				return;
++			}
+ 			// One-run instructions must not return from persisted history: prewalk
+ 			// nudges are consumed once, and Vibe context is rebuilt only while active.
+ 			if (!isPrewalkPlanNudge(message) && message.customType !== VIBE_MODE_CONTEXT_MESSAGE_TYPE) {
