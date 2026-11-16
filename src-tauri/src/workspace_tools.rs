@@ -486,6 +486,19 @@ pub fn execute(cwd: &Path, request: &Value) -> Result<Value> {
             Ok(Value::Null)
         }
         "file.get" => file_value(&file_path(cwd, text(request, "path")?)?),
+        "file.preview" => {
+            let supplied = Path::new(text(request, "path")?);
+            if !supplied.is_absolute() {
+                return Err("预览文件需要完整路径。".into());
+            }
+            let path = supplied.canonicalize().map_err(|error| error.to_string())?;
+            if !path.is_file() {
+                return Err("请选择要预览的文件。".into());
+            }
+            let mut value = file_value(&path)?;
+            value["readOnly"] = json!(true);
+            Ok(value)
+        }
         "file.save" => save_file(cwd, request),
         "git.status" => git_status(cwd),
         "git.diff" => {
@@ -568,6 +581,11 @@ mod tests {
         assert!(execute(&cwd, &json!({"type":"file.save","path":"中文.txt","content":"旧内容","baseRevision":before["revision"]})).is_err());
         assert_eq!(fs::read(&path).unwrap(), changed);
         assert!(execute(&cwd, &json!({"type":"file.get","path":"../escape.txt"})).is_err());
+        let preview = execute(&cwd, &json!({"type":"file.preview","path":path})).unwrap();
+        assert_eq!(preview["readOnly"], true);
+        assert_eq!(preview["content"], "第一行\r\n修改\r\n");
+        assert!(execute(&cwd, &json!({"type":"file.preview","path":"中文.txt"})).is_err());
+        assert!(execute(&cwd, &json!({"type":"file.save","path":path,"content":"越界修改","baseRevision":preview["revision"]})).is_err());
         fs::remove_dir_all(cwd).unwrap();
     }
 

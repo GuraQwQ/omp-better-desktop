@@ -1119,256 +1119,6 @@ new file mode 100644
 +			throw new Error(`未知配置资源：${request.resource}`);
 +	}
 +}
-diff --git a/packages/coding-agent/test/desktop-management.test.ts b/packages/coding-agent/test/desktop-management.test.ts
-new file mode 100644
---- /dev/null
-+++ b/packages/coding-agent/test/desktop-management.test.ts
-@@ -0,0 +1,245 @@
-+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-+import * as fs from "node:fs/promises";
-+import * as os from "node:os";
-+import * as path from "node:path";
-+import type { Model } from "@oh-my-pi/pi-ai";
-+import { __resetDirsFromEnvForTests, getMCPConfigPath, getPluginsLockfile, getSSHConfigPath } from "@oh-my-pi/pi-utils";
-+import { initializeWithSettings, reset as resetCapabilities } from "../src/capability";
-+import "../src/discovery";
-+import "../src/config/all-settings";
-+import { cfgModelRoleStorage } from "../src/config/model-settings";
-+import { Settings } from "../src/config/settings";
-+import { resolveOrDefaultProjectRegistryPath } from "../src/discovery/helpers";
-+import { writePluginRuntimeConfig } from "../src/extensibility/plugins/runtime-config";
-+import { cfgDisabledExtensions } from "../src/extensibility/settings";
-+import { addMCPServer, readMCPConfigFile } from "../src/mcp/config-writer";
-+import { desktopManage } from "../src/modes/rpc/desktop-management";
-+import type { AgentSession } from "../src/session/agent-session";
-+import { readSSHConfigFile, writeSSHConfigFile } from "../src/ssh/config-writer";
-+
-+const original = {
-+	OMP_USER_ROOT: process.env.OMP_USER_ROOT,
-+	OMP_PROFILE: process.env.OMP_PROFILE,
-+	PI_CODING_AGENT_DIR: process.env.PI_CODING_AGENT_DIR,
-+};
-+let root: string;
-+let cwd: string;
-+let session: AgentSession;
-+let releaseSettings: () => void;
-+const model = {
-+	id: "fixture-model",
-+	provider: "fixture",
-+	name: "测试模型",
-+	kind: "chat",
-+	reasoning: false,
-+} as unknown as Model;
-+
-+beforeEach(async () => {
-+	root = await fs.mkdtemp(path.join(os.tmpdir(), "omp-desktop-management-"));
-+	cwd = path.join(root, "workspace");
-+	await fs.mkdir(cwd);
-+	process.env.OMP_USER_ROOT = path.join(root, "user");
-+	delete process.env.OMP_PROFILE;
-+	delete process.env.PI_CODING_AGENT_DIR;
-+	__resetDirsFromEnvForTests();
-+	resetCapabilities();
-+	session = {
-+		settings: Settings.isolated(),
-+		sessionManager: { getCwd: () => cwd },
-+		modelRegistry: { getAvailable: () => [model], authStorage: {} },
-+		effectiveExtensionRoots: { explicit: [], configured: [], configuredLevel: "user", mode: "merge" },
-+		refreshSkills: async () => {},
-+		refreshSkillsAndCommands: async () => {},
-+	} as unknown as AgentSession;
-+	releaseSettings = initializeWithSettings(session.settings);
-+});
-+
-+afterEach(async () => {
-+	releaseSettings?.();
-+	for (const [key, value] of Object.entries(original)) {
-+		if (value === undefined) delete process.env[key];
-+		else process.env[key] = value;
-+	}
-+	__resetDirsFromEnvForTests();
-+	resetCapabilities();
-+	if (root) {
-+		const resolved = await fs.realpath(root);
-+		if (
-+			path.dirname(resolved) !== (await fs.realpath(os.tmpdir())) ||
-+			!path.basename(resolved).startsWith("omp-desktop-management-")
-+		)
-+			throw new Error("测试清理路径不匹配");
-+		await fs.rm(resolved, { recursive: true, force: true });
-+	}
-+});
-+
-+describe("桌面运行时管理", () => {
-+	it("本地插件安装可重复执行，并保留已选功能及停用状态", async () => {
-+		const directory = path.join(cwd, "local-plugin");
-+		await Bun.write(
-+			path.join(directory, "package.json"),
-+			JSON.stringify({
-+				name: "desktop-local-fixture",
-+				version: "1.0.0",
-+				omp: {
-+					features: { optional: { default: true } },
-+				},
-+			}),
-+		);
-+		const install = { resource: "plugins", action: "install", args: { source: directory, scope: "user" } };
-+		await desktopManage(session, install);
-+		await desktopManage(session, {
-+			resource: "plugins",
-+			action: "features",
-+			args: { id: "desktop-local-fixture", features: [] },
-+		});
-+		await desktopManage(session, { resource: "plugins", action: "disable", args: { id: "desktop-local-fixture" } });
-+		await desktopManage(session, install);
-+		const detail = (await desktopManage(session, {
-+			resource: "plugins",
-+			action: "detail",
-+			args: { id: "desktop-local-fixture" },
-+		})) as { item: { enabledFeatures: string[] } };
-+		expect(detail.item.enabledFeatures).toEqual([]);
-+		const runtime = await Bun.file(getPluginsLockfile()).json();
-+		expect(runtime.plugins["desktop-local-fixture"].enabled).toBe(false);
-+	});
-+
-+	it("MCP 旧禁用项只显示实际生效来源，启用时清除旧禁用并保留同名低优先级来源", async () => {
-+		const name = "desktop-precedence-fixture";
-+		const userPath = getMCPConfigPath("user", cwd);
-+		const projectPath = getMCPConfigPath("project", cwd);
-+		await addMCPServer(userPath, name, { type: "stdio", command: "user-fixture" });
-+		await addMCPServer(projectPath, name, { type: "stdio", command: "project-fixture" });
-+		cfgDisabledExtensions.set(session.settings, [`mcp:${name}`]);
-+		const before = (await desktopManage(session, { resource: "mcp", action: "list" })) as {
-+			items: Array<{ id: string; source: string; enabled: boolean }>;
-+		};
-+		const matches = before.items.filter(item => item.id === name);
-+		expect(matches).toHaveLength(1);
-+		expect(matches[0].source).toBe(projectPath);
-+		expect(matches[0].enabled).toBe(false);
-+		await desktopManage(session, { resource: "mcp", action: "enable", args: { id: name, scope: "project" } });
-+		expect(cfgDisabledExtensions.get(session.settings)).not.toContain(`mcp:${name}`);
-+		await desktopManage(session, { resource: "mcp", action: "disable", args: { id: name, scope: "project" } });
-+		expect((await readMCPConfigFile(projectPath)).mcpServers?.[name].enabled).toBe(false);
-+		expect((await readMCPConfigFile(userPath)).mcpServers?.[name]).toMatchObject({ command: "user-fixture" });
-+		await desktopManage(session, { resource: "mcp", action: "remove", args: { id: name, scope: "project" } });
-+		expect((await readMCPConfigFile(projectPath)).mcpServers?.[name]).toBeUndefined();
-+		expect((await readMCPConfigFile(userPath)).mcpServers?.[name]).toMatchObject({ command: "user-fixture" });
-+	});
-+
-+	it("角色编辑遵守项目存储，清除后恢复全局值", async () => {
-+		session.settings.setModelRole("smol", "global/model");
-+		cfgModelRoleStorage.set(session.settings, "project");
-+		await desktopManage(session, {
-+			resource: "models",
-+			action: "set",
-+			args: { role: "smol", modelId: "fixture/fixture-model" },
-+		});
-+		expect(session.settings.getGlobalModelRole("smol")).toBe("global/model");
-+		expect(session.settings.getProjectModelRole("smol")).toBe("fixture/fixture-model");
-+		await expect(
-+			desktopManage(session, {
-+				resource: "models",
-+				action: "set",
-+				args: { role: "smol", modelId: "missing/model" },
-+			}),
-+		).rejects.toThrow();
-+		expect(session.settings.getProjectModelRole("smol")).toBe("fixture/fixture-model");
-+		await desktopManage(session, { resource: "models", action: "set", args: { role: "smol", modelId: null } });
-+		expect(session.settings.getModelRole("smol")).toBe("global/model");
-+	});
-+
-+	it("SSH 跨作用域迁移可从新条目已写入的中间状态重试，保留其它主机", async () => {
-+		const userFile = getSSHConfigPath("user", cwd);
-+		const projectFile = getSSHConfigPath("project", cwd);
-+		const host = { host: "example.invalid", port: 22 };
-+		await writeSSHConfigFile(userFile, { hosts: { original: host, sibling: { host: "sibling.invalid" } } });
-+		await writeSSHConfigFile(projectFile, { hosts: { renamed: host } });
-+		const request = {
-+			resource: "ssh",
-+			action: "update",
-+			args: { name: "renamed", scope: "project", previousName: "original", previousScope: "user", host },
-+		};
-+		await desktopManage(session, request);
-+		await desktopManage(session, request);
-+		expect((await readSSHConfigFile(userFile)).hosts).toEqual({ sibling: { host: "sibling.invalid" } });
-+		expect((await readSSHConfigFile(projectFile)).hosts).toEqual({ renamed: host });
-+		await expect(
-+			desktopManage(session, {
-+				...request,
-+				action: "create",
-+				args: { name: "renamed", scope: "project", host: { host: "other.invalid" } },
-+			}),
-+		).rejects.toThrow();
-+		expect((await readSSHConfigFile(projectFile)).hosts?.renamed).toEqual(host);
-+	});
-+
-+	it("项目插件字段、功能和重置仅修改项目存储，凭据不回读", async () => {
-+		const registryFile = await resolveOrDefaultProjectRegistryPath(cwd);
-+		if (!registryFile) throw new Error("缺少测试项目注册表");
-+		const runtimeFile = path.join(path.dirname(registryFile), "omp-plugins.lock.json");
-+		const pluginPath = path.join(root, "plugin");
-+		await Bun.write(
-+			path.join(pluginPath, "package.json"),
-+			JSON.stringify({
-+				name: "fixture-plugin",
-+				version: "1.0.0",
-+				omp: {
-+					features: { optional: { default: true } },
-+					settings: { limit: { type: "number", min: 1, max: 9 }, token: { type: "string", secret: true } },
-+				},
-+			}),
-+		);
-+		await Bun.write(
-+			registryFile,
-+			JSON.stringify({
-+				version: 2,
-+				plugins: {
-+					"fixture@local": [{ scope: "project", installPath: pluginPath, version: "1.0.0", enabled: true }],
-+				},
-+			}),
-+		);
-+		await writePluginRuntimeConfig(getPluginsLockfile(), {
-+			plugins: {},
-+			settings: { "fixture-plugin": { limit: 3 } },
-+		});
-+		await writePluginRuntimeConfig(runtimeFile, {
-+			plugins: { "fixture-plugin": { version: "1.0.0", enabled: true, enabledFeatures: null } },
-+			settings: { "fixture-plugin": { token: "fixture-secret" } },
-+		});
-+		const args = { id: "fixture@local", scope: "project" };
-+		await desktopManage(session, {
-+			resource: "plugins",
-+			action: "setting",
-+			args: { ...args, key: "limit", value: 7 },
-+		});
-+		await expect(
-+			desktopManage(session, { resource: "plugins", action: "setting", args: { ...args, key: "limit", value: 99 } }),
-+		).rejects.toThrow();
-+		await desktopManage(session, { resource: "plugins", action: "features", args: { ...args, features: [] } });
-+		const detail = (await desktopManage(session, { resource: "plugins", action: "detail", args })) as {
-+			item: { settings: Record<string, unknown>; configured: Record<string, boolean>; enabledFeatures: string[] };
-+		};
-+		expect(detail.item.settings).toEqual({ limit: 7 });
-+		expect(detail.item.configured.token).toBe(true);
-+		expect(detail.item.enabledFeatures).toEqual([]);
-+		await desktopManage(session, { resource: "plugins", action: "reset", args: { ...args, key: "limit" } });
-+		expect((await Bun.file(runtimeFile).json()).settings["fixture-plugin"]).toEqual({ token: "fixture-secret" });
-+		expect((await Bun.file(getPluginsLockfile()).json()).settings["fixture-plugin"]).toEqual({ limit: 3 });
-+	});
-+
-+	it("MCP 测试完成真实本地 stdio 握手且不保存服务", async () => {
-+		const before = await desktopManage(session, { resource: "mcp", action: "list" });
-+		const fixture =
-+			'let rest=""; for await (const bytes of Bun.stdin.stream()) { rest += new TextDecoder().decode(bytes); let at; while ((at=rest.indexOf("\\n"))>=0) { const line=rest.slice(0,at); rest=rest.slice(at+1); if(!line) continue; const request=JSON.parse(line); if(request.id!==undefined) { const result=request.method==="initialize" ? {protocolVersion:"2025-11-25",capabilities:{tools:{}},serverInfo:{name:"fixture",version:"1"}} : {tools:[]}; process.stdout.write(JSON.stringify({jsonrpc:"2.0",id:request.id,result})+"\\n"); } } }';
-+		const result = (await desktopManage(session, {
-+			resource: "mcp",
-+			action: "test",
-+			args: { config: { type: "stdio", command: process.execPath, args: ["-e", fixture] } },
-+		})) as { ok: boolean };
-+		expect(result.ok).toBe(true);
-+		expect(await desktopManage(session, { resource: "mcp", action: "list" })).toEqual(before);
-+	}, 20_000);
-+});
 diff --git a/packages/coding-agent/src/config/model-registry.ts b/packages/coding-agent/src/config/model-registry.ts
 --- a/packages/coding-agent/src/config/model-registry.ts
 +++ b/packages/coding-agent/src/config/model-registry.ts
@@ -1505,3 +1255,170 @@ diff --git a/packages/coding-agent/src/modes/rpc/rpc-mode.ts b/packages/coding-a
  				const models = session.getAvailableModels();
  				return success(id, "get_available_models", { models });
  			}
+
+diff --git a/packages/coding-agent/src/cli/models-cli.ts b/packages/coding-agent/src/cli/models-cli.ts
+--- a/packages/coding-agent/src/cli/models-cli.ts
++++ b/packages/coding-agent/src/cli/models-cli.ts
+@@ -36,6 +36,7 @@ export interface ModelsCommandArgs {
+ 	pattern?: string;
+ 	flags: {
+ 		json?: boolean;
++		offline?: boolean;
+ 		/** Catalog kind to list; defaults to chat models. */
+ 		kind?: ModelKind | "all";
+ 		/** CLI `-e <path>` extension paths to load before listing (issue #905). */
+@@ -312,6 +313,7 @@ export interface RunModelsListingOptions {
+ 	disabledExtensionIds?: string[];
+ 	/** When true, exclude ambient factories and resolve only `additionalExtensionPaths`. */
+ 	disableExtensionDiscovery?: boolean;
++	offline?: boolean;
+ }
+ 
+ export async function runModelsListing(options: RunModelsListingOptions): Promise<void> {
+@@ -326,6 +328,7 @@ export async function runModelsListing(options: RunModelsListingOptions): Promis
+ 		settingsExtensions = [],
+ 		disabledExtensionIds = [],
+ 		disableExtensionDiscovery = false,
++		offline = false,
+ 	} = options;
+ 
+ 	const eventBus = new EventBus();
+@@ -364,7 +367,7 @@ export async function runModelsListing(options: RunModelsListingOptions): Promis
+ 		}
+ 		extensionsResult.runtime.pendingProviderRegistrations = [];
+ 		// Discover runtime (extension) provider catalogs now that they are registered.
+-		await modelRegistry.refreshRuntimeProviders(action === "refresh" ? "online" : "online-if-uncached");
++		await modelRegistry.refreshRuntimeProviders(offline ? "offline" : action === "refresh" ? "online" : "online-if-uncached");
+ 
+ 		for (const warning of modelRegistry.drainConfigWarnings()) {
+ 			process.stderr.write(`${chalk.yellow(`Warning: ${warning}`)}\n`);
+@@ -402,13 +405,13 @@ export async function runModelsCommand(command: ModelsCommandArgs): Promise<void
+ 	const settings = await Settings.init({ cwd, configFiles: command.flags.config });
+ 	const authStorage = await discoverAuthStorage(undefined, { settings });
+ 	try {
+-		const modelRegistry = new ModelRegistry(authStorage);
++		const modelRegistry = new ModelRegistry(authStorage, undefined, { settings });
+ 
+ 		if (action === "refresh" && !json && process.stderr.isTTY) {
+ 			process.stderr.write("Refreshing models from all providers…\n");
+ 		}
+ 		await modelRegistry.refresh(
+-			action === "refresh" ? "online" : "online-if-uncached",
++			command.flags.offline ? "offline" : action === "refresh" ? "online" : "online-if-uncached",
+ 			action === "refresh" ? { refreshCommandCredentials: true } : undefined,
+ 		);
+ 
+@@ -424,6 +427,7 @@ export async function runModelsCommand(command: ModelsCommandArgs): Promise<void
+ 			settingsExtensions: cfgExtensions.get(settings),
+ 			disabledExtensionIds: cfgDisabledExtensions.get(settings),
+ 			disableExtensionDiscovery: Boolean(command.flags.noExtensions),
++			offline: command.flags.offline,
+ 		});
+ 	} finally {
+ 		authStorage.close();
+diff --git a/packages/coding-agent/src/commands/models.ts b/packages/coding-agent/src/commands/models.ts
+--- a/packages/coding-agent/src/commands/models.ts
++++ b/packages/coding-agent/src/commands/models.ts
+@@ -25,6 +25,7 @@ export default class Models extends Command {
+ 
+ 	static flags = {
+ 		json: Flags.boolean({ description: "Output JSON" }),
++		offline: Flags.boolean({ description: "Read configured and cached models without network discovery" }),
+ 		kind: Flags.string({
+ 			description: "Catalog kind to list",
+ 			options: MODEL_KIND_OPTIONS,
+@@ -62,6 +63,7 @@ export default class Models extends Command {
+ 			pattern,
+ 			flags: {
+ 				json: flags.json,
++				offline: flags.offline,
+ 				kind,
+ 				extensions: flags.extension,
+ 				noExtensions: flags["no-extensions"],
+diff --git a/packages/coding-agent/src/modes/rpc/rpc-mode.ts b/packages/coding-agent/src/modes/rpc/rpc-mode.ts
+--- a/packages/coding-agent/src/modes/rpc/rpc-mode.ts
++++ b/packages/coding-agent/src/modes/rpc/rpc-mode.ts
+@@ -975,16 +975,14 @@ type RpcModelLookupSession = Pick<AgentSession, "getAvailableModels" | "modelReg
+ 
+ /**
+  * The available model with exactly this provider and id. Models missing from
+- * the current catalog wait for in-flight background discovery first: on cold
+- * start, discovery-backed providers (proxy / ollama / etc.) populate seconds
+- * after session ready. Catalog hits skip the wait, so the RPC queue is not
+- * stalled behind unrelated discovery.
++ * the current catalog refresh only their own provider. Catalog hits return
++ * immediately; unrelated providers cannot hold the RPC queue.
+  */
+ async function findRpcModel(session: RpcModelLookupSession, provider: string, modelId: string) {
+ 	const find = () => session.getAvailableModels().find(m => m.provider === provider && m.id === modelId);
+ 	const model = find();
+ 	if (model) return model;
+-	await session.modelRegistry.awaitBackgroundRefresh();
++	await session.modelRegistry.refreshDiscoverableProviders([provider]);
+ 	return find();
+ }
+ 
+diff --git a/packages/coding-agent/src/session/agent-session.ts b/packages/coding-agent/src/session/agent-session.ts
+--- a/packages/coding-agent/src/session/agent-session.ts
++++ b/packages/coding-agent/src/session/agent-session.ts
+@@ -12634,9 +12634,11 @@ export class AgentSession implements SettingsScope, AgentViewSession {
+ 	async refreshModelCatalog(force = false): Promise<{ pending: boolean; error?: string }> {
+ 		let changed: boolean;
+ 		if (force) {
+-			await this.#modelRegistry.awaitBackgroundRefresh();
+ 			await this.#modelRegistry.reapplyModelPolicies();
+ 			changed = true;
++		} else if (this.#modelRegistry.isBackgroundRefreshPending()) {
++			// 先返回可用快照；目录网络请求不阻塞配置页与模型切换。
++			return { pending: true };
+ 		} else {
+ 			changed = await this.#modelRegistry.refreshIfStale();
+ 		}
+diff --git a/packages/coding-agent/src/config/settings.ts b/packages/coding-agent/src/config/settings.ts
+--- a/packages/coding-agent/src/config/settings.ts
++++ b/packages/coding-agent/src/config/settings.ts
+@@ -1576,7 +1576,7 @@ export class Settings {
+ 			await this.#chainSave();
+ 		}
+ 		if (this.#modifiedProjectModelRoles.size > 0) {
+-			await this.#saveProjectNow();
++			await this.#chainProjectSave();
+ 		}
+ 	}
+ 
+@@ -4267,20 +4267,24 @@ export class Settings {
+ 		clearTimeout(this.#projectSaveTimer);
+ 		this.#projectSaveTimer = setTimeout(() => {
+ 			this.#projectSaveTimer = undefined;
+-			const savePromise = this.#saveProjectNow();
+-			this.#projectSavePromise = savePromise;
+-			savePromise
+-				.catch(err => {
+-					logger.warn("Settings: background project save failed", { error: String(err) });
+-				})
+-				.finally(() => {
+-					if (this.#projectSavePromise === savePromise) {
+-						this.#projectSavePromise = undefined;
+-					}
+-				});
++			this.#chainProjectSave().catch(err => {
++				logger.warn("Settings: background project save failed", { error: String(err) });
++			});
+ 		}, 100);
+ 	}
+ 
++	#chainProjectSave(): Promise<void> {
++		// 手动 flush 与后台写入共用任务，避免重载越过已取走待写标记的保存。
++		const previousSave = this.#projectSavePromise;
++		const savePromise = previousSave ? previousSave.then(() => this.#saveProjectNow()) : this.#saveProjectNow();
++		this.#projectSavePromise = savePromise;
++		const settle = () => {
++			if (this.#projectSavePromise === savePromise) this.#projectSavePromise = undefined;
++		};
++		savePromise.then(settle, settle);
++		return savePromise;
++	}
++
+ 	async #saveProjectNow(): Promise<void> {
+ 		if (this.#savesCancelled || !this.#persist || this.#modifiedProjectModelRoles.size === 0) return;
+ 

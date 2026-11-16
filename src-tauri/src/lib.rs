@@ -306,7 +306,11 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
         | "attachment.clipboard"
         | "attachment.discard"
         | "attachment.btw" => attachments::execute(root, &request),
-        "models.list" => model_catalog::list(root, Path::new(text(&request, "cwd")?)),
+        "models.list" => model_catalog::list(
+            root,
+            Path::new(text(&request, "cwd")?),
+            request["refresh"].as_bool().unwrap_or(false),
+        ),
         "session.list" => session_library::list(root, request["cwd"].as_str(), false),
         "session.search" | "session.locate" | "session.after" | "session.archive"
         | "session.pin" | "session.reorder" | "session.archives" | "usage.summary" => {
@@ -322,6 +326,7 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
         "workspace.search"
         | "workspace.search.cancel"
         | "file.get"
+        | "file.preview"
         | "file.save"
         | "git.status"
         | "git.diff"

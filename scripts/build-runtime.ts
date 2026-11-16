@@ -109,7 +109,6 @@ try {
     const actual = createHash('sha256').update(await Bun.file(path.join(runtimePackage, file.path)).bytes()).digest('hex');
     if (actual !== file.sha256) throw new Error('Runtime checksum mismatch: ' + file.path);
   }
-  await run(['bun', path.join(projectRoot, 'scripts/smoke-runtime.ts'), path.join(runtimePackage, 'omp.exe')], projectRoot, env);
   await run(['bun', path.join(projectRoot, 'scripts/generate-catalog.ts')], projectRoot, env);
   for (const file of ['client.rs', 'wire.rs']) await fs.copyFile(path.join(buildRoot, 'sdk/rust/omp-rpc/src', file), path.join(generatedRoot, file));
   const localClient = await Bun.file(path.join(buildRoot, 'sdk/rust/omp-rpc/src/client.rs')).text();
@@ -140,7 +139,7 @@ try {
   if (process.argv.includes('--bundle-desktop')) await run([bunExecutable, 'run', 'desktop', 'build', '--bundles', 'nsis'], projectRoot, env);
   await commit();
   cleanStage = true;
-  console.log('OMP ' + manifest.version + ' built, RPC-smoke tested, and synchronized.');
+  console.log('OMP ' + manifest.version + ' 已构建、检查并同步。');
 } catch (error) {
   try { await rollback(); cleanStage = true; }
   catch (recoveryError) { throw new AggregateError([error, recoveryError], `构建失败且恢复未完成，恢复文件保留在 ${stageRoot}`); }

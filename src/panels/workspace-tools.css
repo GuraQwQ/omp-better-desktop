@@ -1,4 +1,4 @@
-.workspace-tools { min-width: 0; display: flex; flex-direction: column; gap: 12px; height: 100%; font-size: 12px; }
+.workspace-tools { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 12px; height: 100%; font-size: 12px; }
 .workspace-tool-tabs { display: flex; gap: 2px; overflow-x: auto; flex-shrink: 0; border-bottom: 1px solid var(--line-soft); padding-bottom: 8px; }
 .workspace-tool-tabs .quiet-button { gap: 5px; padding: 7px; }
 .workspace-tool-path { display: block; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -35,7 +35,7 @@
 .workspace-tool-confirm { padding: 10px; background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: var(--radius-control); margin: 10px 0; }
 .workspace-tool-confirm p { margin: 0 0 8px; overflow-wrap: anywhere; }
 .workspace-tool-confirm button { white-space: normal; }
-.workspace-editor { display: flex; flex-direction: column; min-height: 360px; height: 100%; }
+.workspace-editor { display: flex; flex-direction: column; min-height: 0; height: 100%; gap: 8px; }
 .workspace-editor-files { overflow: auto; max-height: 230px; padding-bottom: 8px; }
 .workspace-editor-files > button { display: flex; align-items: center; gap: 7px; padding: 6px; width: 100%; text-align: left; }
 .workspace-editor-files > button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -46,7 +46,15 @@
 .workspace-document-tabs small { color: var(--muted); font-size: 10px; }
 .workspace-editor-toolbar { display: flex; align-items: center; gap: 3px; margin-bottom: 8px; }
 .workspace-editor-toolbar code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
-.workspace-editor-text { flex: 1; width: 100%; min-height: 260px; resize: vertical; tab-size: 2; font: 12px/20px var(--font-code); padding: 10px; background: var(--code-surface); border: 1px solid var(--line); border-radius: var(--radius-control); }
-.workspace-terminals { display: flex; flex-direction: column; min-height: 360px; }
-.workspace-shell { min-height: 300px; flex: 1; overflow: hidden; background: var(--surface); }
+.workspace-editor-toolbar { min-height: 32px; padding: 0 2px; flex-shrink: 0; }
+.workspace-read-only { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.workspace-editor-status { display: flex; justify-content: space-between; gap: 10px; flex-shrink: 0; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.workspace-editor-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; color: var(--muted); text-align: center; }
+.workspace-editor-empty p { max-width: 30ch; line-height: 1.7; }
+.workspace-terminals { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.workspace-terminals .workspace-tool-form { padding: 4px 0 10px; border-bottom: 1px solid var(--line-soft); }
+.workspace-terminals .workspace-document-tabs { margin: 0; padding: 4px; background: var(--sidebar); border: 1px solid var(--line); border-bottom: 0; border-radius: var(--radius-control) var(--radius-control) 0 0; }
+.workspace-terminals .workspace-document-tabs > div { background: transparent; }
+.workspace-terminals .workspace-document-tabs > div.active { background: var(--surface-raised); color: var(--text); }
+.workspace-shell { min-height: 180px; flex: 1; overflow: hidden; padding: 12px 8px 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 0 0 var(--radius-control) var(--radius-control); }
 .workspace-shell .xterm { height: 100%; }

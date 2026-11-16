@@ -5,7 +5,7 @@ diff --git a/packages/coding-agent/src/capability/index.ts b/packages/coding-age
  	let providers = disabled
  		? (capability.providers as Provider<T>[]).filter(p => !disabled.has(p.id))
  		: (capability.providers as Provider<T>[]);
-+	// 桌面会话只从原生目录和用户明确导入的链接加载技能与 MCP。
++	// 桌面会话只从原生目录和用户明确导入的副本加载技能与 MCP。
 +	if (process.env.OMP_DESKTOP_MANAGED_RESOURCES === "1" && (capability.id === "skills" || capability.id === "mcps")) {
 +		providers = providers.filter(
 +			provider => provider.id === "native" || provider.id === "omp-managed" || provider.id === "desktop-imports",
@@ -40,7 +40,7 @@ diff --git a/packages/coding-agent/src/extensibility/skills.ts b/packages/coding
 diff --git a/packages/coding-agent/src/modes/rpc/desktop-management.ts b/packages/coding-agent/src/modes/rpc/desktop-management.ts
 --- a/packages/coding-agent/src/modes/rpc/desktop-management.ts
 +++ b/packages/coding-agent/src/modes/rpc/desktop-management.ts
-@@ -34,6 +34,12 @@
+@@ -34,6 +34,13 @@
  import { getKnownRoleIds, getRoleInfo, roleCandidatePool } from "../../config/model-roles";
  import { lookup } from "../../config/registry";
  import { clearPluginRootsAndCaches, resolveOrDefaultProjectRegistryPath } from "../../discovery/helpers";
@@ -49,11 +49,21 @@ diff --git a/packages/coding-agent/src/modes/rpc/desktop-management.ts b/package
 +	desktopImportOrigins,
 +	manageDesktopImports,
 +	type DesktopImportOrigin,
++	type DesktopImportItem,
 +} from "../../discovery/desktop-imports";
  import { PluginManager, validateSetting } from "../../extensibility/plugins/manager";
  import { parseGitUrl } from "../../extensibility/plugins/git-url";
  import {
-@@ -265,7 +271,7 @@
+@@ -49,7 +56,7 @@
+ import { cfgDisabledExtensions, cfgSkills } from "../../extensibility/settings";
+ import { loadSkillPromptBody, loadSkills, type Skill } from "../../extensibility/skills";
+ import { validateServerConfig } from "../../mcp/config";
+-import { addMCPServer, readMCPConfigFile, removeMCPServer, setMcpServerEnabled } from "../../mcp/config-writer";
++import { addMCPServer, readMCPConfigFile, removeMCPServer, setMcpServerEnabled, setServerDisabled } from "../../mcp/config-writer";
+ import type { MCPManager } from "../../mcp/manager";
+ import {
+ 	findMcpServerForAuth,
+@@ -269,7 +276,7 @@
  		return undefined;
  	};
  	if (action === "list") {
@@ -62,7 +72,7 @@ diff --git a/packages/coding-agent/src/modes/rpc/desktop-management.ts b/package
  			loadCapability<MCPServer>(mcpCapability.id, {
  				cwd,
  				includeDisabled: true,
-@@ -273,6 +279,7 @@
+@@ -277,6 +284,7 @@
  				extensionRoots: session.effectiveExtensionRoots,
  			}),
  			readMCPConfigFile(userPath),
@@ -70,7 +80,7 @@ diff --git a/packages/coding-agent/src/modes/rpc/desktop-management.ts b/package
  		]);
  		const disabled = new Set(user.disabledServers ?? []);
  		const forced = new Set(user.enabledServers ?? []);
-@@ -291,6 +298,9 @@
+@@ -295,6 +303,9 @@
  				status: manager?.getConnectionStatus(item.name) ?? "disconnected",
  				toolCount: manager?.getConnection(item.name)?.tools?.length ?? 0,
  				projectConfigEnabled: cfgMcpEnableProjectConfig.get(session.settings),
@@ -80,19 +90,19 @@ diff --git a/packages/coding-agent/src/modes/rpc/desktop-management.ts b/package
  			})),
  			warnings: loaded.warnings,
  		};
-@@ -313,6 +323,11 @@
+@@ -317,6 +328,11 @@
  			extensionRoots: session.effectiveExtensionRoots,
  		})
  	).items.find(item => item.name === name);
 +	const importedId =
 +		selected?._source.provider === "desktop-imports" ? desktopImportId(selected._source.path) : undefined;
 +	if (importedId && ["enable", "disable", "remove"].includes(action)) {
-+		return manageImports(session, action, { id: importedId });
++		return manageImports(session, action, { id: importedId }, options);
 +	}
  	const sourcePath = selected ? writableSource(selected) : undefined;
  	let found: FoundMcpServer | null = await findMcpServerForAuth(name, cwd, manager, {
  		enableProjectConfig: cfgMcpEnableProjectConfig.get(session.settings),
-@@ -413,7 +428,7 @@
+@@ -417,7 +433,7 @@
  	).skills;
  }
  
@@ -101,7 +111,7 @@ diff --git a/packages/coding-agent/src/modes/rpc/desktop-management.ts b/package
  	return {
  		id: skill.name,
  		name: skill.name,
-@@ -423,11 +438,15 @@
+@@ -427,11 +443,15 @@
  		provider: skill._source?.provider,
  		managed: skill._source?.provider === MANAGED_SKILLS_PROVIDER_ID,
  		enabled: !cfgDisabledExtensions.get(session.settings).includes(`skill:${skill.name}`),
@@ -118,7 +128,7 @@ diff --git a/packages/coding-agent/src/modes/rpc/desktop-management.ts b/package
  	if (action === "create" || action === "update" || action === "delete") {
  		const name = action === "delete" ? text(args, "id") : text(args, "name");
  		if (
-@@ -455,7 +474,11 @@
+@@ -459,7 +479,11 @@
  	const id = text(args, "id");
  	const skill = (await allSkills(session)).find(item => item.name === id);
  	if (!skill) throw new Error("找不到技能");
@@ -131,38 +141,43 @@ diff --git a/packages/coding-agent/src/modes/rpc/desktop-management.ts b/package
  	if (action === "enable" || action === "disable") {
  		const key = `skill:${id}`;
  		const disabled = new Set(cfgDisabledExtensions.get(session.settings));
-@@ -912,6 +935,25 @@
+@@ -916,6 +940,30 @@
  	throw new Error(`未知资源操作：${action}`);
  }
  
-+async function manageImports(session: AgentSession, action: string, args: Record<string, unknown>): Promise<object> {
++async function manageImports(session: AgentSession, action: string, args: Record<string, unknown>, options: DesktopManageOptions = {}): Promise<object> {
++	const before = action === "remove" ? await manageDesktopImports(session, "list") : undefined;
 +	const result = await manageDesktopImports(session, action, args);
-+	if (action === "enable") {
-+		const before = await manageDesktopImports(session, "list");
-+		const item = before.items.find(item => isRecord(item) && item.id === args.id);
-+		if (isRecord(item) && (item.kind === "skill" || item.kind === "mcp") && typeof item.name === "string") {
-+			const key = `${item.kind}:${item.name}`;
-+			const disabled = cfgDisabledExtensions.get(session.settings);
-+			if (disabled.includes(key))
-+				await setSetting(
-+					session,
-+					"disabledExtensions",
-+					disabled.filter(id => id !== key),
-+				);
-+		}
++	if (["sources", "discover", "list"].includes(action)) return result;
++	const changed = (action === "remove" ? before?.items : result.items)?.filter((item): item is DesktopImportItem =>
++		"kind" in item && (action === "install" ? Array.isArray(args.items) && args.items.some(selected => isRecord(selected) && selected.id === item.id) : item.id === args.id),
++	) ?? [];
++	const enabled = changed.filter(item => item.enabled === true && action !== "remove");
++	const keys = enabled.map(item => `${item.kind}:${item.name}`);
++	const disabled = cfgDisabledExtensions.get(session.settings);
++	if (keys.some(key => disabled.includes(key))) await setSetting(session, "disabledExtensions", disabled.filter(id => !keys.includes(id)));
++	const userPath = getMCPConfigPath("user", session.sessionManager.getCwd());
++	const denied = (await readMCPConfigFile(userPath)).disabledServers ?? [];
++	for (const item of enabled) if (item.kind === "mcp" && denied.includes(item.name)) await setServerDisabled(userPath, item.name, false);
++	resetCapabilities();
++	if (changed.some(item => item.kind === "skill")) await session.refreshSkillsAndCommands();
++	const mcps = changed.filter(item => item.kind === "mcp");
++	if (["disable", "remove"].includes(action)) {
++		for (const item of mcps) if (isRecord(item)) await options.mcpManager?.disconnectServer(String(item.name));
++		if (options.mcpManager && mcps.length) await session.refreshMCPTools(options.mcpManager.getTools());
 +	}
-+	return result;
++	return { ...result, restartRequired: mcps.length > 0 && !["disable", "remove"].includes(action) };
 +}
 +
  /** 桌面配置只调用原生配置管理器，不进入模型对话。 */
  export async function desktopManage(
  	session: AgentSession,
-@@ -922,6 +964,8 @@
+@@ -926,6 +974,8 @@
  	if (!isRecord(args)) throw new Error("args 必须为对象");
  	options.signal?.throwIfAborted();
  	switch (request.resource) {
 +		case "imports":
-+			return manageImports(session, request.action, args);
++			return manageImports(session, request.action, args, options);
  		case "models":
  			return manageModels(session, request.action, args);
  		case "mcp":
@@ -170,7 +185,7 @@ diff --git a/packages/coding-agent/src/discovery/desktop-imports.ts b/packages/c
 new file mode 100644
 --- /dev/null
 +++ b/packages/coding-agent/src/discovery/desktop-imports.ts
-@@ -0,0 +1,504 @@
+@@ -0,0 +1,603 @@
 +import * as fs from "node:fs/promises";
 +import * as os from "node:os";
 +import * as path from "node:path";
@@ -182,7 +197,7 @@ new file mode 100644
 +import { skillCapability, type Skill } from "../capability/skill";
 +import type { LoadResult, SourceMeta } from "../capability/types";
 +import { writeFileAtomically } from "../utils/atomic-file";
-+import { discoverMcpSource, loadMcpSource, type McpImportAdapter } from "./desktop-import-mcp";
++import { discoverMcpSource, snapshotMcpSource, type McpImportAdapter } from "./desktop-import-mcp";
 +
 +type Adapter = "skill" | McpImportAdapter;
 +export interface DesktopImportItem {
@@ -195,7 +210,12 @@ new file mode 100644
 +	adapter?: Adapter;
 +	key?: string;
 +	enabled?: boolean;
-+	linkedPath?: string;
++	managedPath?: string;
++	revision?: string;
++	context?: string;
++	executionDirectory?: string;
++	migrationPending?: boolean;
++	problem?: string;
 +	warning?: string;
 +}
 +interface Source {
@@ -204,7 +224,7 @@ new file mode 100644
 +	paths: string[];
 +}
 +interface Manifest {
-+	version: 1;
++	version: 1 | 2;
 +	items: DesktopImportItem[];
 +}
 +type SessionContext = { sessionManager: { getCwd(): string } };
@@ -214,8 +234,10 @@ new file mode 100644
 +const normalized = (value: string) =>
 +	process.platform === "win32" ? path.resolve(value).toLowerCase() : path.resolve(value);
 +const manifestPath = () => path.join(getBaseConfigRoot(), "desktop-imports.json");
-+const linksRoot = () => path.join(getBaseConfigRoot(), "desktop-imports");
-+const linkPath = (id: string) => path.join(linksRoot(), id);
++const importsRoot = () => path.join(getBaseConfigRoot(), "imports");
++const itemRoot = (id: string) => path.join(importsRoot(), id);
++const legacyPath = (id: string) => path.join(getBaseConfigRoot(), "desktop-imports", id);
++const snapshotPath = (entry: DesktopImportItem) => path.join(itemRoot(entry.id), entry.revision!);
 +
 +function sources(cwd: string): Source[] {
 +	const home = os.homedir();
@@ -232,7 +254,7 @@ new file mode 100644
 +		{
 +			id: "agents",
 +			name: "Agent Skills",
-+			paths: [...new Set(["C:/.agent", ...roots([".agent", ".agents"])])],
++			paths: roots([".agent", ".agents"]),
 +		},
 +		{
 +			id: "gemini",
@@ -274,9 +296,9 @@ new file mode 100644
 +}
 +
 +export function desktopImportId(sourcePath: string): string | undefined {
-+	const relative = path.relative(linksRoot(), path.resolve(sourcePath));
++	const relative = path.relative(importsRoot(), path.resolve(sourcePath));
 +	const parts = relative.split(path.sep);
-+	return parts.length === 2 && /^[a-f0-9]{32}$/.test(parts[0]) && parts[1] !== ".." ? parts[0] : undefined;
++	return parts.length >= 3 && /^[a-f0-9]{32}$/.test(parts[0]) && /^[a-f0-9]{64}$/.test(parts[1]) ? parts[0] : undefined;
 +}
 +
 +async function readManifest(): Promise<Manifest> {
@@ -284,7 +306,7 @@ new file mode 100644
 +	try {
 +		content = await fs.readFile(manifestPath(), "utf8");
 +	} catch (error) {
-+		if (missing(error)) return { version: 1, items: [] };
++		if (missing(error)) return { version: 2, items: [] };
 +		throw error;
 +	}
 +	let parsed: unknown;
@@ -293,7 +315,7 @@ new file mode 100644
 +	} catch {
 +		throw Error("导入记录格式无效，请保留原文件后修复 desktop-imports.json。");
 +	}
-+	if (!record(parsed) || parsed.version !== 1 || !Array.isArray(parsed.items)) throw Error("导入记录格式无效。");
++	if (!record(parsed) || ![1, 2].includes(parsed.version) || !Array.isArray(parsed.items)) throw Error("导入记录格式无效。");
 +	for (const item of parsed.items) {
 +		if (
 +			!record(item) ||
@@ -301,10 +323,12 @@ new file mode 100644
 +			!["skill", "mcp"].includes(item.kind) ||
 +			typeof item.path !== "string" ||
 +			!path.isAbsolute(item.path) ||
-+			identity(item.path, item.kind, item.key ?? "") !== item.id
++			(parsed.version === 1 && identity(item.path, item.kind, item.key ?? "") !== item.id) ||
++			(item.revision !== undefined && (typeof item.revision !== "string" || !/^[a-f0-9]{64}$/.test(item.revision)))
 +		)
 +			throw Error("导入记录包含无效的资源引用。");
 +	}
++	for (const item of parsed.items) { delete item.linkedPath; delete item.managedPath; }
 +	return parsed as unknown as Manifest;
 +}
 +
@@ -315,7 +339,7 @@ new file mode 100644
 +
 +export async function desktopImportOrigins(): Promise<ReadonlyMap<string, DesktopImportOrigin>> {
 +	return new Map(
-+		(await readManifest()).items.map(entry => [entry.id, { importSource: entry.source, importPath: entry.path }]),
++		(await migratedManifest()).items.map(entry => [entry.id, { importSource: entry.source, importPath: entry.path }]),
 +	);
 +}
 +
@@ -493,57 +517,144 @@ new file mode 100644
 +	};
 +}
 +
-+async function ensureLink(entry: DesktopImportItem): Promise<void> {
-+	const destination = linkPath(entry.id);
-+	const target = path.dirname(entry.path);
-+	await fs.mkdir(linksRoot(), { recursive: true });
-+	let stat;
++async function removeLegacyLink(entry: DesktopImportItem): Promise<void> {
 +	try {
-+		stat = await fs.lstat(destination);
-+	} catch (error) {
-+		if (!missing(error)) throw error;
-+	}
-+	if (stat) {
-+		if (!stat.isSymbolicLink()) throw Error("链接位置已被普通文件或目录占用，请保留该内容后重试。");
-+		const existing = path.resolve(path.dirname(destination), await fs.readlink(destination));
-+		if (normalized(existing) !== normalized(target)) throw Error("链接位置已指向其它目录，请先移除此导入记录。");
-+		await fs.stat(target);
-+		return;
-+	}
-+	await fs.stat(target);
-+	try {
-+		await fs.symlink(target, destination, process.platform === "win32" ? "junction" : "dir");
-+	} catch (error) {
-+		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-+		await ensureLink(entry);
-+	}
-+}
-+
-+async function unlink(entry: DesktopImportItem): Promise<void> {
-+	try {
-+		const stat = await fs.lstat(linkPath(entry.id));
-+		if (!stat.isSymbolicLink()) throw Error("受管链接已被普通文件或目录替代，已保留该内容。");
-+		await fs.unlink(linkPath(entry.id));
++		const previous = legacyPath(entry.id);
++		if (!(await fs.lstat(previous)).isSymbolicLink()) return;
++		const target = path.resolve(path.dirname(previous), await fs.readlink(previous));
++		if (normalized(target) === normalized(path.dirname(entry.path))) await fs.unlink(previous);
 +	} catch (error) {
 +		if (!missing(error)) throw error;
 +	}
 +}
 +
-+async function listed(): Promise<DesktopImportItem[]> {
-+	const entries = (await readManifest()).items;
-+	return Promise.all(
-+		entries.map(async entry => {
-+			let warning: string | undefined;
-+			try {
-+				const stat = await fs.lstat(linkPath(entry.id));
-+				if (!stat.isSymbolicLink()) warning = "链接位置被其它内容占用。";
-+				else await fs.stat(linkPath(entry.id));
-+			} catch (error) {
-+				warning = missing(error) ? "原目录或链接已不存在，可重新链接或移除此记录。" : "链接无法访问。";
++async function treeDigest(directory: string): Promise<string> {
++	const digest = createHash("sha256");
++	const visit = async (location: string, relative: string, parents: Set<string>) => {
++		const real = await fs.realpath(location);
++		const stat = await fs.stat(real);
++		if (stat.isDirectory()) {
++			if (parents.has(normalized(real))) throw Error("技能目录含有循环链接，请修复来源后重试。");
++			digest.update(`d\0${relative}\0`);
++			const next = new Set([...parents, normalized(real)]);
++			for (const name of (await fs.readdir(real)).sort()) await visit(path.join(real, name), `${relative}/${name}`, next);
++		} else if (stat.isFile()) {
++			digest.update(`f\0${relative}\0`).update(createHash("sha256").update(await fs.readFile(real)).digest());
++		} else throw Error("技能目录含有无法复制的特殊文件。");
++	};
++	await visit(directory, "", new Set());
++	return digest.digest("hex");
++}
++
++function sourceContext(entry: DesktopImportItem, cwd: string): string {
++	if (entry.key?.startsWith("[")) {
++		try {
++			const keys: unknown = JSON.parse(entry.key);
++			if (Array.isArray(keys) && keys[0] === "projects" && typeof keys[1] === "string" && path.isAbsolute(keys[1])) return keys[1];
++		} catch {}
++	}
++	const relative = path.relative(cwd, entry.path);
++	if (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative)) return cwd;
++	let directory = path.dirname(entry.path);
++	for (let parent = directory; path.dirname(parent) !== parent; parent = path.dirname(parent)) {
++		if ([".agent", ".agents", ".gemini", ".claude", ".codex", ".trae", ".zcode", ".cc-switch"].includes(path.basename(parent))) {
++			directory = path.dirname(parent);
++			return normalized(directory) === normalized(os.homedir()) ? cwd : directory;
++		}
++	}
++	return directory;
++}
++
++async function storeSnapshot(entry: DesktopImportItem, cwd: string): Promise<DesktopImportItem> {
++	const directory = itemRoot(entry.id);
++	await fs.mkdir(directory, { recursive: true });
++	if ((await fs.lstat(directory)).isSymbolicLink()) throw Error("受管副本目录被链接替代，请保留其内容后重试。");
++		for (const name of await fs.readdir(directory)) if (/^\.pending-[a-f0-9-]+$/.test(name)) await fs.rm(path.join(directory, name), { recursive: true, force: true });
++		const temporary = path.join(directory, `.pending-${crypto.randomUUID()}`);
++		await fs.mkdir(temporary);
++		try {
++			const context = entry.context ?? sourceContext(entry, cwd);
++			let revision: string;
++			let executionDirectory: string | undefined;
++			if (entry.kind === "skill") {
++				const sourceDirectory = path.dirname(entry.path);
++				const before = await treeDigest(sourceDirectory);
++				await fs.cp(sourceDirectory, temporary, { recursive: true, dereference: true });
++				revision = await treeDigest(temporary);
++				if (before !== revision || before !== await treeDigest(sourceDirectory)) throw Error("来源在复制期间发生变化，请重试导入。");
++			} else {
++				const config = await snapshotMcpSource(entry, entry.path, context);
++				executionDirectory = config.command ? config.cwd : undefined;
++				await writeFileAtomically(path.join(temporary, "mcp.json"), `${JSON.stringify(config, null, 2)}\n`);
++				revision = await treeDigest(temporary);
 +			}
-+			return { ...entry, linkedPath: linkPath(entry.id), ...(warning ? { warning } : {}) };
-+		}),
-+	);
++			const destination = path.join(directory, revision);
++			try { await fs.rename(temporary, destination); }
++			catch (error) {
++				if (!["EEXIST", "ENOTEMPTY", "EPERM"].includes((error as NodeJS.ErrnoException).code ?? "") || await treeDigest(destination) !== revision) throw error;
++			}
++			return { ...entry, context, executionDirectory, revision, migrationPending: undefined, problem: undefined, warning: undefined };
++		} finally { await fs.rm(temporary, { recursive: true, force: true }); }
++}
++
++async function installEntry(entry: DesktopImportItem, cwd: string, preserveState = false): Promise<void> {
++	await fs.mkdir(importsRoot(), { recursive: true });
++	// 单项锁覆盖复制与提交，清单锁只保护一次文件写入。
++	await withFileLock(path.join(importsRoot(), `${entry.id}.install`), async () => {
++		const copied = await storeSnapshot(entry, cwd);
++		await saveEntry(copied, preserveState);
++		const current = (await readManifest()).items.find(item => item.id === entry.id);
++		for (const name of await fs.readdir(itemRoot(entry.id))) if (/^[a-f0-9]{64}$/.test(name) && name !== current?.revision) await fs.rm(path.join(itemRoot(entry.id), name), { recursive: true, force: true });
++	});
++}
++
++async function saveEntry(entry: DesktopImportItem, requireExisting = false): Promise<void> {
++	await withFileLock(manifestPath(), async () => {
++		const manifest = await readManifest();
++		manifest.version = 2;
++		const index = manifest.items.findIndex(item => item.id === entry.id);
++		if (index < 0) {
++			if (requireExisting) return;
++			manifest.items.push(entry);
++		} else {
++			if (requireExisting && manifest.items[index].revision && !entry.revision) return;
++			manifest.items[index] = { ...entry, enabled: requireExisting ? manifest.items[index].enabled : entry.enabled };
++		}
++		if (entry.enabled) for (const item of manifest.items) if (item.id !== entry.id && item.kind === entry.kind && item.name === entry.name) item.enabled = false;
++		await publish(manifest);
++	});
++}
++
++async function migratedManifest(cwd = process.cwd()): Promise<Manifest> {
++	let manifest = await readManifest();
++	if (manifest.version === 1) {
++		await withFileLock(manifestPath(), async () => {
++			const current = await readManifest();
++			if (current.version === 1) await publish({ version: 2, items: current.items.map(entry => ({ ...entry, migrationPending: true })) });
++		});
++		manifest = await readManifest();
++	}
++	for (const entry of manifest.items) {
++		if (entry.migrationPending) {
++			try {
++				await installEntry(entry, cwd, true);
++			} catch (error) {
++				await saveEntry({ ...entry, migrationPending: false, problem: missing(error) ? "原来源已不存在，请重新选择该技能目录或 MCP 配置文件恢复副本。" : "旧资源未能复制，请检查来源后重试迁移，或重新选择来源。" }, true);
++			}
++		}
++	}
++	manifest = await readManifest();
++	for (const entry of manifest.items) if (entry.revision) await removeLegacyLink(entry).catch(() => {});
++	return manifest;
++}
++
++async function listed(cwd?: string): Promise<DesktopImportItem[]> {
++	return Promise.all((await migratedManifest(cwd)).items.map(async entry => {
++		if (!entry.revision) return { ...entry, problem: entry.problem ?? "副本尚未完成，请重新选择来源恢复。" };
++		const managedPath = source(entry).path;
++		try { await fs.access(managedPath); return { ...entry, managedPath }; }
++		catch { return { ...entry, managedPath, problem: "受管副本已不存在，请从来源重新复制，或重新选择来源。" }; }
++	}));
 +}
 +
 +export async function manageDesktopImports(
@@ -551,72 +662,72 @@ new file mode 100644
 +	action: string,
 +	args: Record<string, unknown> = {},
 +): Promise<{ items: DesktopImportItem[] | Source[]; message?: string; restartRequired?: boolean }> {
-+	if (action === "sources") return { items: sources(session.sessionManager.getCwd()) };
-+	if (action === "discover") return discover(session.sessionManager.getCwd(), args);
-+	if (action === "list") return { items: await listed() };
-+	if (!["link", "enable", "disable", "remove"].includes(action)) throw Error("未知的导入操作。");
++	const cwd = session.sessionManager.getCwd();
++	if (action === "sources") return { items: sources(cwd) };
++	if (action === "discover") {
++		const found = await discover(cwd, args);
++		const imported = await listed(cwd);
++		return { ...found, items: found.items.map(entry => ({ ...entry, managedPath: imported.find(saved => saved.kind === entry.kind && saved.path === entry.path && saved.key === entry.key)?.managedPath })) };
++	}
++	if (action === "list") return { items: await listed(cwd) };
++	if (!["install", "update", "repair", "enable", "disable", "remove"].includes(action)) throw Error("未知的导入操作。");
 +	await fs.mkdir(getBaseConfigRoot(), { recursive: true });
-+	const requests: DesktopImportItem[] = [];
-+	if (action === "link") {
-+		if (!Array.isArray(args.items)) throw Error("请选择要链接的资源。");
++	const manifest = await migratedManifest(cwd);
++	if (action === "install") {
++		if (!Array.isArray(args.items)) throw Error("请选择要导入的资源。");
 +		for (const candidate of args.items) {
-+			if (
-+				!record(candidate) ||
-+				!["skill", "mcp"].includes(candidate.kind) ||
-+				typeof candidate.path !== "string" ||
-+				!path.isAbsolute(candidate.path)
-+			)
-+				throw Error("导入引用无效。");
-+			const found =
-+				candidate.kind === "skill"
-+					? [await skillItem(candidate.path, String(candidate.source ?? "manual"))]
-+					: await mcpItems(candidate.path, String(candidate.source ?? "manual"));
++			if (!record(candidate) || !["skill", "mcp"].includes(candidate.kind) || typeof candidate.path !== "string" || !path.isAbsolute(candidate.path)) throw Error("导入来源无效。");
++			const found = candidate.kind === "skill" ? [await skillItem(candidate.path, String(candidate.source ?? "manual"))] : await mcpItems(candidate.path, String(candidate.source ?? "manual"));
 +			const entry = found.find(entry => entry.id === candidate.id);
-+			if (!entry) throw Error("此资源已变更，请重新发现后再链接。");
-+			requests.push(entry);
++			if (!entry) throw Error("此资源已变更，请重新发现后导入。");
++			if (entry.warning) throw Error(entry.warning);
++			const existing = manifest.items.find(saved => saved.id === entry.id);
++			await installEntry({ ...entry, enabled: existing?.enabled ?? true }, cwd);
 +		}
-+	} else if (typeof args.id !== "string") throw Error("请选择导入记录。");
-+	await withFileLock(manifestPath(), async () => {
-+		const manifest = await readManifest();
-+		if (action === "link")
-+			for (const request of requests) {
-+				await ensureLink(request);
-+				const index = manifest.items.findIndex(entry => entry.id === request.id);
-+				const enabled = !request.warning && index >= 0 && manifest.items[index].enabled === true;
-+				if (index >= 0) manifest.items[index] = { ...request, enabled };
-+				else manifest.items.push({ ...request, enabled: false });
-+				await publish(manifest);
-+			}
-+		else {
-+			const entry = manifest.items.find(entry => entry.id === args.id);
-+			if (!entry) {
-+				if (action === "remove") return;
-+				throw Error("此导入记录已不存在。");
-+			}
-+			if (action === "remove") {
-+				entry.enabled = false;
-+				await publish(manifest);
-+				await unlink(entry);
-+				manifest.items = manifest.items.filter(item => item.id !== entry.id);
++	} else {
++		if (typeof args.id !== "string" || !/^[a-f0-9]{32}$/.test(args.id)) throw Error("请选择导入记录。");
++		const entry = manifest.items.find(item => item.id === args.id);
++		if (action === "remove") {
++			await fs.mkdir(importsRoot(), { recursive: true });
++			await withFileLock(path.join(importsRoot(), `${args.id}.install`), async () => {
++				await withFileLock(manifestPath(), async () => {
++					const current = await readManifest();
++					current.items = current.items.filter(item => item.id !== args.id);
++					await publish(current);
++				});
++				await fs.rm(itemRoot(args.id as string), { recursive: true, force: true });
++				if (entry) await removeLegacyLink(entry);
++			});
++		} else {
++			if (!entry) throw Error("此导入记录已不存在。");
++			if (action === "update" || action === "repair") {
++				const file = typeof args.path === "string" && args.path ? args.path : entry.path;
++				const selected = entry.kind === "skill" ? [await skillItem(path.basename(file) === "SKILL.md" ? file : path.join(file, "SKILL.md"), entry.source)] : await mcpItems(file, entry.source);
++				const replacement = selected.find(item => item.key === entry.key && item.name === entry.name) ?? selected.find(item => item.name === entry.name);
++				if (!replacement) throw Error("所选来源中没有找到同名资源，请重新选择。");
++				if (replacement.warning) throw Error(replacement.warning);
++				await installEntry({ ...replacement, id: entry.id, enabled: entry.enabled, context: action === "repair" ? undefined : entry.context }, cwd, true);
++				await removeLegacyLink(entry);
 +			} else {
-+				if (action === "enable" && entry.warning) throw Error(entry.warning);
-+				entry.enabled = action === "enable";
++				if (action === "enable" && (!entry.revision || entry.problem)) throw Error(entry.problem ?? "请先恢复资源副本。");
++				await withFileLock(manifestPath(), async () => {
++					const current = await readManifest();
++					const selected = current.items.find(item => item.id === entry.id);
++					if (!selected) throw Error("此导入记录已不存在。");
++					selected.enabled = action === "enable";
++					await publish(current);
++				});
 +			}
-+			await publish(manifest);
 +		}
-+	});
-+	return {
-+		items: await listed(),
-+		message: action === "link" ? "已链接，可逐项启用。" : "已保存。",
-+		restartRequired: true,
-+	};
++	}
++	return { items: await listed(cwd), message: action === "install" ? "已复制并启用，连接会话后即可使用。" : "已保存。", restartRequired: true };
 +}
 +
 +function source(entry: DesktopImportItem): SourceMeta {
 +	return {
 +		provider: "desktop-imports",
 +		providerName: "手动导入",
-+		path: path.join(linkPath(entry.id), path.basename(entry.path)),
++		path: path.join(snapshotPath(entry), entry.kind === "skill" ? "SKILL.md" : "mcp.json"),
 +		level: "user",
 +	};
 +}
@@ -624,14 +735,15 @@ new file mode 100644
 +export async function loadDesktopImportSkills(): Promise<LoadResult<Skill>> {
 +	const items: Skill[] = [];
 +	const warnings: string[] = [];
-+	for (const entry of (await readManifest()).items.filter(entry => entry.enabled && entry.kind === "skill")) {
++	for (const entry of (await migratedManifest()).items.filter(entry => entry.enabled && entry.kind === "skill")) {
 +		try {
++			if (!entry.revision) throw Error(entry.problem ?? "副本尚未完成");
 +			const skillPath = source(entry).path;
 +			const { frontmatter, body } = parseFrontmatter(await fs.readFile(skillPath, "utf8"), {
 +				source: skillPath,
 +				level: "off",
 +			});
-+			if (frontmatter.enabled === false) continue;
++			frontmatter.enabled = true;
 +			items.push({
 +				name: entry.name,
 +				path: skillPath,
@@ -650,10 +762,12 @@ new file mode 100644
 +export async function loadDesktopImportMcps(cwd: string): Promise<LoadResult<MCPServer>> {
 +	const items: MCPServer[] = [];
 +	const warnings: string[] = [];
-+	for (const entry of (await readManifest()).items.filter(entry => entry.enabled && entry.kind === "mcp")) {
++	for (const entry of (await migratedManifest(cwd)).items.filter(entry => entry.enabled && entry.kind === "mcp")) {
 +		try {
++			if (!entry.revision) throw Error(entry.problem ?? "副本尚未完成");
 +			const meta = source(entry);
-+			items.push({ ...(await loadMcpSource(entry, meta.path, cwd)), _source: meta });
++			const config: Omit<MCPServer, "_source"> = JSON.parse(await fs.readFile(meta.path, "utf8"));
++			items.push({ ...config, enabled: true, _source: meta });
 +		} catch (error) {
 +			warnings.push(`无法读取已导入 MCP：${entry.name}：${error instanceof Error ? error.message : String(error)}`);
 +		}
@@ -664,22 +778,22 @@ new file mode 100644
 +registerProvider(skillCapability.id, {
 +	id: "desktop-imports",
 +	displayName: "手动导入",
-+	description: "仅加载已链接并启用的技能",
-+	priority: 90,
++	description: "仅加载已导入并启用的技能",
++	priority: 110,
 +	load: loadDesktopImportSkills,
 +});
 +registerProvider(mcpCapability.id, {
 +	id: "desktop-imports",
 +	displayName: "手动导入",
-+	description: "仅加载已链接并启用的 MCP 服务",
-+	priority: 90,
++	description: "仅加载已导入并启用的 MCP 服务",
++	priority: 110,
 +	load: ctx => loadDesktopImportMcps(ctx.cwd),
 +});
 diff --git a/packages/coding-agent/src/discovery/desktop-import-mcp.ts b/packages/coding-agent/src/discovery/desktop-import-mcp.ts
 new file mode 100644
 --- /dev/null
 +++ b/packages/coding-agent/src/discovery/desktop-import-mcp.ts
-@@ -0,0 +1,242 @@
+@@ -0,0 +1,246 @@
 +import * as fs from "node:fs/promises";
 +import * as path from "node:path";
 +import { Database } from "bun:sqlite";
@@ -720,12 +834,7 @@ new file mode 100644
 +}
 +
 +function sourceWarning(config: Record<string, any>): string | undefined {
-+	return (
-+		unsupported(config) ??
-+		(config.enabled === false || config.disabled === true
-+			? "原应用已停用此服务，请先在原应用启用，再重新发现并链接。"
-+			: undefined)
-+	);
++	return unsupported(config);
 +}
 +
 +async function document(file: string): Promise<Record<string, any>> {
@@ -764,8 +873,8 @@ new file mode 100644
 +			try {
 +				config = JSON.parse(row.server_config);
 +				warning = record(config) ? sourceWarning(config) : "服务配置不是对象。";
-+			} catch (error) {
-+				warning = `服务配置格式无效：${error instanceof Error ? error.message : String(error)}`;
++			} catch {
++				warning = "服务配置格式无效，请检查来源配置。";
 +			}
 +			return {
 +				name: row.name,
@@ -825,15 +934,24 @@ new file mode 100644
 +	return (await sourceRows(file, source)).map(({ config: _config, ...item }) => item);
 +}
 +
-+export async function loadMcpSource(
++export async function snapshotMcpSource(
 +	entry: McpSourceReference,
 +	file: string,
 +	cwd: string,
 +): Promise<Omit<MCPServer, "_source">> {
 +	const row = (await sourceRows(file, entry.source, entry.key)).find(row => row.key === entry.key);
 +	if (!row) throw Error("原配置中已找不到此 MCP 服务。");
-+	if (!row.config) throw Error(row.warning ?? "服务配置不是对象。");
-+	return convertMcp(entry.name, row.adapter, row.config, cwd);
++	if (!row.config) throw Error("服务配置格式无效，请检查来源后重试。");
++	const converted = convertMcp(entry.name, row.adapter, row.config, cwd);
++	const directory = converted.cwd ?? cwd;
++	const resolveFile = (value: string) => value.startsWith("./") || value.startsWith("../") || value.startsWith(".\\") || value.startsWith("..\\") ? path.resolve(directory, value) : value;
++	return {
++		...converted,
++		enabled: true,
++		cwd: directory,
++		command: converted.command ? resolveFile(converted.command) : undefined,
++		args: converted.args?.map(resolveFile),
++	};
 +}
 +
 +function strings(value: unknown): Record<string, string> | undefined {
@@ -922,455 +1040,3 @@ new file mode 100644
 +			: undefined,
 +	};
 +}
-diff --git a/packages/coding-agent/test/desktop-imports.test.ts b/packages/coding-agent/test/desktop-imports.test.ts
-new file mode 100644
---- /dev/null
-+++ b/packages/coding-agent/test/desktop-imports.test.ts
-@@ -0,0 +1,190 @@
-+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-+import * as fs from "node:fs/promises";
-+import * as path from "node:path";
-+import { Database } from "bun:sqlite";
-+import {
-+	desktopImportId,
-+	loadDesktopImportMcps,
-+	loadDesktopImportSkills,
-+	manageDesktopImports,
-+	type DesktopImportItem,
-+} from "../src/discovery/desktop-imports";
-+
-+const root = path.resolve(import.meta.dir, "../../../..", ".cache", `desktop-imports-test-${crypto.randomUUID()}`);
-+const previous = process.env.OMP_USER_ROOT;
-+const fixture = path.join(root, "sources");
-+const session = { sessionManager: { getCwd: () => fixture } };
-+const manage = (action: string, args: Record<string, unknown> = {}) => manageDesktopImports(session, action, args);
-+const filename = path.join(fixture, ".claude", "mcp.json");
-+const skillfile = path.join(fixture, ".agents", "skills", "fixture", "SKILL.md");
-+let candidates: DesktopImportItem[];
-+
-+beforeAll(async () => {
-+	process.env.OMP_USER_ROOT = path.join(root, "managed");
-+	await fs.mkdir(path.dirname(filename), { recursive: true });
-+	await fs.mkdir(path.dirname(skillfile), { recursive: true });
-+	await fs.writeFile(
-+		filename,
-+		JSON.stringify({
-+			mcpServers: {
-+				fixture: {
-+					type: "stdio",
-+					command: "must-never-run",
-+					args: ["fixture"],
-+					env: { PRIVATE_FIXTURE: "must-not-leak" },
-+				},
-+			},
-+		}),
-+	);
-+	await fs.writeFile(skillfile, "---\nname: fixture\ndescription: 测试技能\n---\n仅本地夹具。\n");
-+});
-+
-+afterAll(async () => {
-+	if (previous === undefined) delete process.env.OMP_USER_ROOT;
-+	else process.env.OMP_USER_ROOT = previous;
-+	for (const item of candidates ?? []) {
-+		try {
-+			await fs.unlink(path.join(root, "managed", "desktop-imports", item.id));
-+		} catch {}
-+	}
-+	if (!path.basename(root).startsWith("desktop-imports-test-")) throw Error("测试清理路径无效");
-+	await fs.rm(root, { recursive: true, force: true });
-+});
-+
-+describe("桌面手动导入", () => {
-+	it("只显式发现，默认链接不加载，并始终读取原目录", async () => {
-+		const before = await fs.readFile(filename, "utf8");
-+		const sourceList = await manage("sources");
-+		expect(sourceList.items.map(item => item.id)).toEqual([
-+			"agents",
-+			"gemini",
-+			"claude",
-+			"codex",
-+			"trae",
-+			"zcode",
-+			"ccswitch",
-+		]);
-+		expect(await fs.stat(path.join(root, "managed")).catch(() => null)).toBeNull();
-+		expect((await manage("list")).items).toEqual([]);
-+		candidates = (await manage("discover", { sources: [], paths: [fixture] })).items as DesktopImportItem[];
-+		expect(candidates.filter(item => item.kind === "skill")).toHaveLength(1);
-+		expect(candidates.filter(item => item.kind === "mcp")).toHaveLength(1);
-+		expect(JSON.stringify(candidates)).not.toContain("must-not-leak");
-+		for (const candidate of candidates) {
-+			await manage("link", { items: [candidate] });
-+			await manage("link", { items: [candidate] });
-+		}
-+		const linked = (await manage("list")).items as DesktopImportItem[];
-+		expect(linked).toHaveLength(2);
-+		expect(linked.every(item => item.enabled === false)).toBe(true);
-+		expect((await loadDesktopImportSkills()).items).toEqual([]);
-+		expect((await loadDesktopImportMcps(fixture)).items).toEqual([]);
-+		for (const entry of linked) {
-+			expect((await fs.lstat(entry.linkedPath!)).isSymbolicLink()).toBe(true);
-+			expect(await fs.realpath(entry.linkedPath!)).toBe(await fs.realpath(path.dirname(entry.path)));
-+			expect(desktopImportId(path.join(entry.linkedPath!, path.basename(entry.path)))).toBe(entry.id);
-+		}
-+		expect(desktopImportId(path.join(root, "outside", "file.json"))).toBeUndefined();
-+		expect(await fs.readFile(filename, "utf8")).toBe(before);
-+		expect(await fs.readFile(path.join(root, "managed", "desktop-imports.json"), "utf8")).not.toContain(
-+			"must-not-leak",
-+		);
-+		for (const candidate of candidates) await manage("enable", { id: candidate.id });
-+		expect((await loadDesktopImportSkills()).items[0].content).toContain("仅本地夹具");
-+		expect((await loadDesktopImportMcps(fixture)).items[0].env?.PRIVATE_FIXTURE).toBe("must-not-leak");
-+		await fs.writeFile(skillfile, "---\nname: fixture\ndescription: 测试技能\n---\n更新来自原目录。\n");
-+		expect((await loadDesktopImportSkills()).items[0].content).toContain("更新来自原目录");
-+		for (const candidate of candidates) await manage("disable", { id: candidate.id });
-+		expect((await loadDesktopImportSkills()).items).toEqual([]);
-+		expect((await loadDesktopImportMcps(fixture)).items).toEqual([]);
-+		for (const candidate of candidates) {
-+			await manage("remove", { id: candidate.id });
-+			await manage("remove", { id: candidate.id });
-+		}
-+		expect((await manage("list")).items).toEqual([]);
-+		expect(await fs.readFile(filename, "utf8")).toBe(before);
-+		expect(await fs.readFile(skillfile, "utf8")).toContain("更新来自原目录");
-+	});
-+
-+	it("TOML、Gemini、ZCode和CC Switch只在内存转换", async () => {
-+		const directory = path.join(fixture, "adapters");
-+		await fs.mkdir(directory, { recursive: true });
-+		await fs.writeFile(
-+			path.join(directory, "config.toml"),
-+			'[mcp_servers.codex]\nurl="https://example.invalid/mcp"\nhttp_headers={X-Test="private-header"}\nstartup_timeout_sec=2\n',
-+		);
-+		await fs.writeFile(
-+			path.join(directory, "settings.json"),
-+			JSON.stringify({
-+				mcpServers: { gemini: { httpUrl: "https://example.invalid/mcp", oauth: { scopes: ["read", "write"] } } },
-+			}),
-+		);
-+		await fs.writeFile(
-+			path.join(directory, "zcode.json"),
-+			JSON.stringify({
-+				mcp: {
-+					servers: {
-+						zcode: { type: "http", url: "https://example.invalid/mcp", timeoutMs: 3000 },
-+						unsupported: { type: "http", url: "https://example.invalid", oauth: { type: "client_credentials" } },
-+					},
-+				},
-+			}),
-+		);
-+		const dbfile = path.join(directory, "cc-switch.db");
-+		const database = new Database(dbfile);
-+		database.exec("CREATE TABLE mcp_servers(id TEXT PRIMARY KEY, name TEXT, server_config TEXT, description TEXT)");
-+		database.query("INSERT INTO mcp_servers VALUES(?,?,?,?)").run(
-+			"db-fixture",
-+			"database",
-+			JSON.stringify({
-+				type: "streamable-http",
-+				url: "https://example.invalid/mcp",
-+				headers: { Authorization: "private-db" },
-+			}),
-+			"数据库夹具",
-+		);
-+		database.close();
-+		const rows = (await manage("discover", { sources: [], paths: [directory] })).items as DesktopImportItem[];
-+		expect(rows).toHaveLength(5);
-+		expect(JSON.stringify(rows)).not.toContain("private-");
-+		for (const row of rows) {
-+			await manage("link", { items: [row] });
-+			if (row.warning) await expect(manage("enable", { id: row.id })).rejects.toThrow();
-+			else await manage("enable", { id: row.id });
-+		}
-+		const loaded = (await loadDesktopImportMcps(fixture)).items;
-+		expect(loaded.find(item => item.name === "codex")?.timeout).toBe(2000);
-+		expect(loaded.find(item => item.name === "gemini")?.transport).toBe("http");
-+		expect(loaded.find(item => item.name === "gemini")?.oauth?.scope).toBe("read write");
-+		expect(loaded.find(item => item.name === "zcode")?.timeout).toBe(3000);
-+		expect(loaded.find(item => item.name === "database")?.transport).toBe("http");
-+		for (const row of rows) await manage("remove", { id: row.id });
-+	});
-+
-+	it("原配置已停用时明确提示，停用列表不解析原始正文", async () => {
-+		const directory = path.join(fixture, "disabled");
-+		await fs.mkdir(path.join(directory, ".gemini", "antigravity"), { recursive: true });
-+		const file = path.join(directory, ".gemini", "antigravity", "mcp_config.json");
-+		await fs.writeFile(
-+			file,
-+			JSON.stringify({ mcpServers: { stopped: { command: "must-never-run", disabled: true } } }),
-+		);
-+		const found = (await manage("discover", { sources: [], paths: [directory] })).items as DesktopImportItem[];
-+		expect(found).toHaveLength(1);
-+		expect(found[0].warning).toContain("已停用");
-+		await manage("link", { items: found });
-+		await expect(manage("enable", { id: found[0].id })).rejects.toThrow("已停用");
-+		await fs.writeFile(
-+			file,
-+			JSON.stringify({ mcpServers: { stopped: { command: "must-never-run", disabled: false } } }),
-+		);
-+		const fixed = (await manage("discover", { sources: [], paths: [directory] })).items as DesktopImportItem[];
-+		await manage("link", { items: fixed });
-+		expect(((await manage("list")).items[0] as DesktopImportItem).warning).toBeUndefined();
-+		await fs.writeFile(file, "invalid JSON must not be parsed by list");
-+		expect(((await manage("list")).items[0] as DesktopImportItem).enabled).toBe(false);
-+		expect((await loadDesktopImportMcps(fixture)).items).toEqual([]);
-+		await manage("remove", { id: found[0].id });
-+		expect(await fs.readFile(file, "utf8")).toBe("invalid JSON must not be parsed by list");
-+	});
-+});
-diff --git a/packages/coding-agent/test/desktop-managed-gate.test.ts b/packages/coding-agent/test/desktop-managed-gate.test.ts
-new file mode 100644
---- /dev/null
-+++ b/packages/coding-agent/test/desktop-managed-gate.test.ts
-@@ -0,0 +1,252 @@
-+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-+import * as fs from "node:fs/promises";
-+import * as os from "node:os";
-+import * as path from "node:path";
-+import { __resetDirsFromEnvForTests, getAgentDir } from "@oh-my-pi/pi-utils";
-+import { initializeWithSettings, loadCapability, reset as resetCapabilities } from "../src/capability";
-+import { mcpCapability, type MCPServer } from "../src/capability/mcp";
-+import { skillCapability, type Skill } from "../src/capability/skill";
-+import "../src/discovery";
-+import "../src/config/all-settings";
-+import { Settings } from "../src/config/settings";
-+import { loadSkills } from "../src/extensibility/skills";
-+import { desktopManage } from "../src/modes/rpc/desktop-management";
-+import type { AgentSession } from "../src/session/agent-session";
-+import type { DesktopImportItem } from "../src/discovery/desktop-imports";
-+
-+const original = {
-+	OMP_USER_ROOT: process.env.OMP_USER_ROOT,
-+	OMP_PROFILE: process.env.OMP_PROFILE,
-+	PI_PROFILE: process.env.PI_PROFILE,
-+	PI_CODING_AGENT_DIR: process.env.PI_CODING_AGENT_DIR,
-+	OMP_DESKTOP_MANAGED_RESOURCES: process.env.OMP_DESKTOP_MANAGED_RESOURCES,
-+};
-+let root: string;
-+let cwd: string;
-+let homedir: { mockRestore(): void };
-+let releaseSettings: () => void;
-+
-+async function writeSkill(directory: string, name: string): Promise<void> {
-+	await Bun.write(
-+		path.join(directory, name, "SKILL.md"),
-+		`---\nname: ${name}\ndescription: 测试技能\n---\n测试正文。\n`,
-+	);
-+}
-+
-+beforeEach(async () => {
-+	root = await fs.mkdtemp(path.join(os.tmpdir(), "omp-desktop-gate-"));
-+	cwd = path.join(root, "workspace");
-+	const home = path.join(root, "home");
-+	await fs.mkdir(cwd);
-+	await fs.mkdir(home);
-+	homedir = spyOn(os, "homedir").mockReturnValue(home);
-+	process.env.OMP_USER_ROOT = path.join(root, "desktop-data");
-+	process.env.OMP_DESKTOP_MANAGED_RESOURCES = "1";
-+	delete process.env.OMP_PROFILE;
-+	delete process.env.PI_PROFILE;
-+	delete process.env.PI_CODING_AGENT_DIR;
-+	__resetDirsFromEnvForTests();
-+	resetCapabilities();
-+	releaseSettings = initializeWithSettings(Settings.isolated());
-+});
-+
-+afterEach(async () => {
-+	releaseSettings?.();
-+	homedir.mockRestore();
-+	for (const [key, value] of Object.entries(original)) {
-+		if (value === undefined) delete process.env[key];
-+		else process.env[key] = value;
-+	}
-+	__resetDirsFromEnvForTests();
-+	resetCapabilities();
-+	const target = await fs.realpath(root);
-+	if (
-+		path.dirname(target) !== (await fs.realpath(os.tmpdir())) ||
-+		!path.basename(target).startsWith("omp-desktop-gate-")
-+	)
-+		throw new Error("测试清理路径不匹配");
-+	await fs.rm(target, { recursive: true, force: true });
-+});
-+
-+describe("桌面技能与 MCP 发现边界", () => {
-+	it("Antigravity 官方配置以 HTTP 导入，管理列表保留品牌来源，Gemini SSE 语义不变", async () => {
-+		const globalFile = path.join(os.homedir(), ".gemini", "config", "mcp_config.json");
-+		const workspaceFile = path.join(cwd, ".agents", "mcp_config.json");
-+		const geminiFile = path.join(os.homedir(), ".gemini", "settings.json");
-+		const skillDirectory = path.join(os.homedir(), ".gemini", "antigravity", "skills");
-+		const original = JSON.stringify({
-+			mcpServers: {
-+				agy_server: { serverUrl: "https://example.invalid/global", headers: { Authorization: "private-agy" } },
-+				agy_url: { url: "https://example.invalid/alias" },
-+				agy_stdio: { command: "must-never-execute" },
-+			},
-+		});
-+		await Bun.write(globalFile, original);
-+		await Bun.write(
-+			workspaceFile,
-+			JSON.stringify({ mcpServers: { agy_workspace: { serverUrl: "https://example.invalid/workspace" } } }),
-+		);
-+		await Bun.write(
-+			geminiFile,
-+			JSON.stringify({
-+				mcpServers: {
-+					gemini_sse: { url: "https://example.invalid/sse" },
-+					gemini_http: { httpUrl: "https://example.invalid/http" },
-+				},
-+			}),
-+		);
-+		await writeSkill(skillDirectory, "agy-skill");
-+		const session = {
-+			settings: Settings.isolated(),
-+			sessionManager: { getCwd: () => cwd },
-+		} as unknown as AgentSession;
-+		const found = (await desktopManage(session, {
-+			resource: "imports",
-+			action: "discover",
-+			args: { sources: ["gemini"], paths: [] },
-+		})) as { items: DesktopImportItem[] };
-+		expect(found.items).toHaveLength(7);
-+		expect(found.items.every(item => item.source === "gemini" && !item.warning)).toBe(true);
-+		expect(
-+			found.items.filter(item => item.name.startsWith("agy_")).every(item => item.adapter === "antigravity"),
-+		).toBe(true);
-+		expect(JSON.stringify(found)).not.toContain("private-agy");
-+		await desktopManage(session, { resource: "imports", action: "link", args: { items: found.items } });
-+		for (const item of found.items)
-+			await desktopManage(session, { resource: "imports", action: "enable", args: { id: item.id } });
-+		const loaded = (await loadCapability<MCPServer>(mcpCapability.id, { cwd })).items;
-+		expect(loaded.find(item => item.name === "agy_server")?.url).toBe("https://example.invalid/global");
-+		expect(loaded.find(item => item.name === "agy_server")?.headers?.Authorization).toBe("private-agy");
-+		for (const name of ["agy_server", "agy_url", "agy_workspace", "gemini_http"])
-+			expect(loaded.find(item => item.name === name)?.transport).toBe("http");
-+		expect(loaded.find(item => item.name === "agy_stdio")?.transport).toBe("stdio");
-+		expect(loaded.find(item => item.name === "gemini_sse")?.transport).toBe("sse");
-+		const mcps = (await desktopManage(session, { resource: "mcp", action: "list" })) as {
-+			items: { id: string; importSource?: string; importPath?: string }[];
-+		};
-+		expect(mcps.items.find(item => item.id === "agy_server")).toMatchObject({
-+			importSource: "gemini",
-+			importPath: await fs.realpath(globalFile),
-+		});
-+		expect(JSON.stringify(mcps)).not.toContain("private-agy");
-+		const skills = (await desktopManage(session, { resource: "skills", action: "list" })) as {
-+			items: { id: string; importSource?: string; importPath?: string }[];
-+		};
-+		expect(skills.items[0]).toMatchObject({
-+			id: "agy-skill",
-+			importSource: "gemini",
-+			importPath: await fs.realpath(path.join(skillDirectory, "agy-skill", "SKILL.md")),
-+		});
-+		expect(await fs.readFile(globalFile, "utf8")).toBe(original);
-+		for (const item of found.items)
-+			await desktopManage(session, { resource: "imports", action: "remove", args: { id: item.id } });
-+	});
-+
-+	it("手动链接默认停用，启用和旧列表停用共用导入记录，不执行刷新或连接", async () => {
-+		const directory = path.join(root, "selected-source");
-+		await writeSkill(directory, "linked-fixture");
-+		const settings = Settings.isolated();
-+		const session = {
-+			settings,
-+			sessionManager: { getCwd: () => cwd },
-+			refreshSkills: () => {
-+				throw new Error("不得自动刷新技能");
-+			},
-+			refreshSkillsAndCommands: () => {
-+				throw new Error("不得自动刷新技能");
-+			},
-+		} as unknown as AgentSession;
-+		const found = (await desktopManage(session, {
-+			resource: "imports",
-+			action: "discover",
-+			args: { sources: [], paths: [directory] },
-+		})) as { items: DesktopImportItem[] };
-+		expect(found.items).toHaveLength(1);
-+		await desktopManage(session, { resource: "imports", action: "link", args: { items: found.items } });
-+		expect((await loadSkills({ cwd })).skills).toEqual([]);
-+		await desktopManage(session, { resource: "imports", action: "enable", args: { id: found.items[0].id } });
-+		expect((await loadSkills({ cwd })).skills.map(item => item.name)).toEqual(["linked-fixture"]);
-+		await desktopManage(session, { resource: "skills", action: "disable", args: { id: "linked-fixture" } });
-+		const listed = (await desktopManage(session, { resource: "imports", action: "list" })) as {
-+			items: DesktopImportItem[];
-+		};
-+		expect(listed.items[0].enabled).toBe(false);
-+		expect((await loadSkills({ cwd })).skills).toEqual([]);
-+		await desktopManage(session, { resource: "imports", action: "remove", args: { id: found.items[0].id } });
-+	});
-+
-+	it("空环境起步，外部 home/cwd 资源仅显式导入后才参与发现，includeDisabled 不绕过边界", async () => {
-+		const options = { cwd, includeDisabled: true, disabledExtensions: [] };
-+		expect((await loadCapability<Skill>(skillCapability.id, options)).items).toEqual([]);
-+		expect((await loadCapability<MCPServer>(mcpCapability.id, options)).items).toEqual([]);
-+		for (const base of [os.homedir(), cwd]) {
-+			await writeSkill(path.join(base, ".agent", "skills"), "foreign-agent");
-+			await writeSkill(path.join(base, ".agents", "skills"), "foreign-agents");
-+			await writeSkill(path.join(base, ".claude", "skills"), "foreign-claude");
-+			await writeSkill(path.join(base, ".codex", "skills"), "foreign-codex");
-+			await writeSkill(path.join(base, ".gemini", "skills"), "foreign-gemini");
-+			await Bun.write(
-+				path.join(base, ".gemini", "settings.json"),
-+				JSON.stringify({ mcpServers: { foreign_gemini: { command: "must-not-execute" } } }),
-+			);
-+			await Bun.write(
-+				path.join(base, ".codex", "config.toml"),
-+				'[mcp_servers.foreign_codex]\ncommand="must-not-execute"\n',
-+			);
-+		}
-+		await Bun.write(
-+			path.join(os.homedir(), ".claude.json"),
-+			JSON.stringify({ mcpServers: { foreign_claude: { command: "must-not-execute" } } }),
-+		);
-+		await Bun.write(
-+			path.join(cwd, "mcp.json"),
-+			JSON.stringify({ mcpServers: { foreign_standalone: { command: "must-not-execute-standalone" } } }),
-+		);
-+		await writeSkill(path.join(root, "custom"), "foreign-custom");
-+		resetCapabilities();
-+		expect((await loadCapability<Skill>(skillCapability.id, options)).items).toEqual([]);
-+		expect((await loadCapability<MCPServer>(mcpCapability.id, options)).items).toEqual([]);
-+		expect((await loadSkills({ cwd, customDirectories: [path.join(root, "custom")] })).skills).toEqual([]);
-+		await writeSkill(path.join(getAgentDir(), "skills"), "native-user");
-+		await writeSkill(path.join(cwd, ".omp", "skills"), "native-project");
-+		await writeSkill(path.join(getAgentDir(), "managed-skills"), "native-managed");
-+		await Bun.write(
-+			path.join(getAgentDir(), "mcp.json"),
-+			JSON.stringify({ mcpServers: { native_user: { command: "must-not-execute-user" } } }),
-+		);
-+		await Bun.write(
-+			path.join(cwd, ".omp", "mcp.json"),
-+			JSON.stringify({ mcpServers: { native_project: { command: "must-not-execute-project" } } }),
-+		);
-+		resetCapabilities();
-+		expect((await loadCapability<Skill>(skillCapability.id, options)).items.map(item => item.name).sort()).toEqual([
-+			"native-managed",
-+			"native-project",
-+			"native-user",
-+		]);
-+		expect((await loadCapability<MCPServer>(mcpCapability.id, options)).items.map(item => item.name).sort()).toEqual([
-+			"native_project",
-+			"native_user",
-+		]);
-+		const external = await loadCapability<Skill>(skillCapability.id, {
-+			...options,
-+			providers: ["agents", "codex", "claude", "gemini"],
-+		});
-+		expect(external.items).toEqual([]);
-+		delete process.env.OMP_DESKTOP_MANAGED_RESOURCES;
-+		resetCapabilities();
-+		expect(
-+			(await loadCapability<Skill>(skillCapability.id, options)).items.some(item => item.name === "foreign-agent"),
-+		).toBe(true);
-+		expect(
-+			(await loadCapability<MCPServer>(mcpCapability.id, options)).items.some(
-+				item => item.name === "foreign_standalone",
-+			),
-+		).toBe(true);
-+		expect(
-+			(await loadSkills({ cwd, customDirectories: [path.join(root, "custom")] })).skills.some(
-+				item => item.name === "foreign-custom",
-+			),
-+		).toBe(true);
-+	});
-+});

@@ -13,6 +13,49 @@ export const settingsZh: Record<string, { label: string; description?: string; o
     "label": "执行与提示词整理",
     "description": "说明实际命令解释器、反馈解析后的读取路径，并统一工具、进度和验证规则。"
   },
+  'mnemopi.recallRelevance': { label: 'Mnemopi 召回相关性核验', description: '自动召回的记忆写入上下文前，由评判模型判断是否与当前任务相关。自动模式仅在有原生评判后端时核验。', options: { auto: '自动', on: '开启', off: '关闭' } },
+  'mnemopi.embeddingQueryPrefix': { label: 'Mnemopi 向量检索前缀', description: '为 Qwen3-Embedding、E5 等指令式向量模型，在召回查询前添加此文本。存储记忆的向量输入保持原样。' },
+  'mnemopi.embeddingInputType': { label: 'Mnemopi 向量输入类型', description: '向量 API 请求带上 input_type：召回查询使用 query，存储记忆使用 passage。NVIDIA NIM 非对称向量模型需要此字段。' },
+  'todo.midRunNudges': { label: '长回合待办更新提醒', description: '长回合持续修改文件或执行命令时，提醒代理更新待办列表的频率。', options: { off: '关闭', capped: '限制次数', backoff: '逐步延长间隔' } },
+  'commit.enabled': { label: '选择性提交', description: '启用 commit 执行环境和 /commit，仅提交当前代理及其子代理修改的行。' },
+  'bash.allowedEnvVars': { label: 'Bash 允许的环境变量', description: '匹配 bash.patterns 允许规则时，可放在命令前的环境变量名，必须精确填写。仅添加可信的构建和测试变量；PATH、LD_PRELOAD、BASH_ENV 等变量会改变命令执行方式。' },
+  'auth.unpausedProviders': { label: '重新启用的提供商', description: '恢复已暂停提供商的登录、令牌刷新与已保存凭据。各项说明包含暂停原因；此配置只能在全局层设置。' },
+  'find.verifyModel': { label: '检索片段核验模型', description: '优先用于核验检索片段的模型。留空使用评判模型；文件名与摘要排序仍使用评判模型。' },
+  'find.hitThreshold': { label: '检索命中阈值' },
+  'launch.persist': { label: '保存启动配置' },
+  'browser.webkit': { label: 'WebKit 浏览器引擎', description: '已安装时，优先使用 OMP 自带的无头 WebKit 引擎。显式指定的浏览器、CDP 连接及中继优先；引擎启动失败或需要可见窗口时回退 Chromium。PI_BROWSER_WEBKIT 可覆盖此项。' },
+  'browser.webkitPath': { label: 'WebKit 引擎路径', description: '指定 WebKit 的宿主程序或 ABKit 引擎目录。留空使用已安装的引擎；支持 ~，PI_BROWSER_WEBKIT_PATH 可覆盖此项。' },
+  'ovnfs.path': { label: 'ovnfs 程序路径', description: '指定 ovnfs 可执行文件；留空从 PATH 查找。可用时，独立检出与自动隔离子代理可使用其写入时复制工作目录。' },
+  'task.autoParallel': { label: '自动并行任务', description: '使用原生评判模型识别新提示中可并行的部分。需要可用的原生评判模型与 task 工具。', options: { off: '关闭', suggest: '仅建议', on: '开启' } },
+  'task.steps': { label: '按步骤委派任务', description: '子代理按顺序接收步骤，完成当前步骤后再接收下一步；最后一步的结果作为任务结果。' },
+  'task.perCallModel': { label: '按调用选择子代理模型', description: '允许调用方用精确的 provider/model-id[@upstream][:level] 选择已授权的模型。项目配置只能关闭此能力，不能新增模型授权。', options: { off: '关闭', eval: '仅执行环境', on: '开启' } },
+  'task.perCallModelAllow': { label: '按调用选模型的允许列表', description: '填写精确的 provider/model-id。聚合路由可包含 @upstream；留空允许现有配置已授权的模型。项目列表只能缩小此范围。' },
+  'task.workerThreads': { label: '子代理工作线程上限', description: '子代理的最大工作线程数。0 表示全部在主线程运行；并发达到 9 个后开始分配工作线程，闲置一分钟后回收。', options: { '0': '仅主线程', '1': '最多 1 个工作线程', '2': '最多 2 个工作线程', '4': '最多 4 个工作线程', '8': '最多 8 个工作线程' } },
+  'spotlight.experiment.enabled': { label: 'Spotlight 实验', description: '使用 Stencil Spotlight 整理工具输出、排序检索结果，并把整理结果记录到会话。' },
+  'spotlight.experiment.holdout': { label: 'Spotlight 留出比例' },
+  'spotlight.experiment.scoreFree': { label: 'Spotlight 免费评分' },
+  'spotlight.experiment.tools': { label: 'Spotlight 工具范围' },
+  'spotlight.url': { label: 'Spotlight 服务地址' },
+  'spotlight.model': { label: 'Spotlight 模型' },
+  'spotlight.thinking': { label: 'Spotlight 思考级别' },
+  'spotlight.timeoutMs': { label: 'Spotlight 超时（毫秒）' },
+  'systemPromptTemplates': { label: '系统提示词模板' },
+  'encourageEdits': { label: '优先使用编辑工具', description: '要求通过 edit 工具修改文件，而不是使用 sed、perl 或 Python 修改。' },
+  'providers.openaiResponsesWebsockets': { label: 'OpenAI Responses WebSocket 连接', description: '为模型目录声明支持的标准 Responses 模型启用 WebSocket。模型或请求显式关闭时不使用。' },
+  'tui.colorfulMarkdown': { label: '彩色 Markdown', description: '使用终端主题色区分标题层级、粗体、斜体、行内代码和表头。关闭后使用单一标题色及普通粗体、斜体。' },
+  'tui.spinnerInterval': { label: '旋转指示间隔（毫秒）', description: '所有旋转指示（含终端标题）的帧间隔。0 表示静止；未设置时跟随终端动效档位。', options: { '0': '静止', '80': '80 毫秒', '250': '250 毫秒', '1000': '1 秒' } },
+  'tui.maxFps': { label: '终端帧率上限', description: '限制终端界面及流式文本的重绘频率；键盘输入回显保留每秒 30 帧。', options: { '30': '每秒 30 帧', '15': '每秒 15 帧', '4': '每秒 4 帧', '1': '每秒 1 帧' } },
+  'tui.motion': { label: '终端动效', description: '统一控制旋转指示、微光与装饰性闪烁。流式文本帧率由单独设置控制；显式设置的旋转间隔优先。', options: { full: '完整', reduced: '减少', none: '关闭' } },
+  'display.shellVisualization': { label: '终端命令可视化', description: '将 Bash 命令显示为可交互的执行过程，而不是普通命令文本。' },
+  'btw.inject': { label: '旁问引导注入', description: '旁问生成的引导提示包含 <inject> 标记；在终端中可用 Alt+I 将其发到主会话。' },
+  'composer.predictionAlternatives': { label: '输入预测候选', description: '最多生成四个不同的后续输入预测，按可能性排序；插入后再次按 Tab 可切换候选。使用同一次请求，但会增加输出词元。' },
+  'update.auto': { label: 'OMP 自动更新', description: '启动时在后台安装 OMP 更新，下次启动使用新版本。' },
+  'hindsight.globalScope': { label: 'Hindsight 全局范围', description: '允许 retain 与 learn 使用 global 范围，使记忆不带项目标签并可供所有项目检索。需要全局或按项目标签的范围策略。' },
+  'skills.manualSkills': { label: '手动技能' },
+  'extensionRenderers.transcriptPresenters': { label: '扩展会话块显示', description: '允许扩展把工具调用等会话块显示为完整内容、紧凑行或隐藏；会话原文、导出与模型上下文保持原样。' },
+  'judgment.attemptTimeoutMs': { label: '单次评判超时（毫秒）' },
+  'gc.strip': { label: '会话文件精简' },
+  'gc.stripAfterDays': { label: '会话文件精简保留天数' },
   "compaction.summaryModel": { label: "摘要模型", description: "原生压缩不支持时使用的摘要模型。留空沿用原会话模型，也可选择已配置的其他模型。" },
   "auth.broker.url": {
     "label": "认证代理 URL"
@@ -103,7 +146,7 @@ export const settingsZh: Record<string, { label: string; description?: string; o
       "minimal": "极简",
       "compact": "紧凑",
       "full": "完整",
-      "nerd": "Nerd",
+      "nerd": "Nerd 图标",
       "ascii": "ASCII",
       "custom": "自定义"
     }
@@ -112,7 +155,7 @@ export const settingsZh: Record<string, { label: string; description?: string; o
     "label": "状态栏分隔符",
     "description": "各分段之间分隔符的样式",
     "options": {
-      "powerline": "Powerline",
+      "powerline": "Powerline 箭头",
       "powerline-thin": "细尖括号",
       "slash": "斜杠",
       "pipe": "竖线",
@@ -769,8 +812,8 @@ export const settingsZh: Record<string, { label: string; description?: string; o
       "none": "无",
       "auto": "自动",
       "default": "默认",
-      "flex": "Flex",
-      "scale": "Scale",
+      "flex": "弹性（Flex）",
+      "scale": "Scale 级别",
       "priority": "优先",
       "ultrafast": "超快"
     }
@@ -788,7 +831,7 @@ export const settingsZh: Record<string, { label: string; description?: string; o
     "description": "Gemini（Google AI Studio + Vertex）请求以及经 OpenRouter 路由的 Google 系模型的处理等级（none = 不发送）。以顶层 `serviceTier` 字段发送。",
     "options": {
       "none": "无",
-      "flex": "Flex",
+      "flex": "弹性（Flex）",
       "priority": "优先"
     }
   },
@@ -800,8 +843,8 @@ export const settingsZh: Record<string, { label: string; description?: string; o
       "none": "无",
       "auto": "自动",
       "default": "默认",
-      "flex": "Flex",
-      "scale": "Scale",
+      "flex": "弹性（Flex）",
+      "scale": "Scale 级别",
       "priority": "优先",
       "ultrafast": "超快"
     }
@@ -814,8 +857,8 @@ export const settingsZh: Record<string, { label: string; description?: string; o
       "none": "无",
       "auto": "自动",
       "default": "默认",
-      "flex": "Flex",
-      "scale": "Scale",
+      "flex": "弹性（Flex）",
+      "scale": "Scale 级别",
       "priority": "优先",
       "ultrafast": "超快"
     }
@@ -1067,10 +1110,10 @@ export const settingsZh: Record<string, { label: string; description?: string; o
     "description": "附加到 OpenRouter 模型 ID 的默认路由变体后缀（当选择器已指定变体时被覆盖）",
     "options": {
       "default": "默认",
-      "nitro": ":nitro",
-      "floor": ":floor",
-      "online": ":online",
-      "exacto": ":exacto"
+      "nitro": "高速（:nitro）",
+      "floor": "低价（:floor）",
+      "online": "联网（:online）",
+      "exacto": "精确（:exacto）"
     }
   },
   "live.voice": {
@@ -1387,13 +1430,13 @@ export const settingsZh: Record<string, { label: string; description?: string; o
     "label": "压缩 Token 上限",
     "description": "上下文维护的固定 token 上限；设置后覆盖百分比阈值",
     "options": {
-      "25000": "25K token",
-      "50000": "50K token",
-      "100000": "100K token",
-      "150000": "150K token",
-      "200000": "200K token",
-      "300000": "300K token",
-      "500000": "500K token",
+      "25000": "25K 词元",
+      "50000": "50K 词元",
+      "100000": "100K 词元",
+      "150000": "150K 词元",
+      "200000": "200K 词元",
+      "300000": "300K 词元",
+      "500000": "500K 词元",
       "default": "默认"
     }
   },
@@ -1438,15 +1481,15 @@ export const settingsZh: Record<string, { label: string; description?: string; o
     "label": "空闲压缩阈值",
     "description": "触发空闲压缩的 token 数",
     "options": {
-      "100000": "100K token",
-      "200000": "200K token",
-      "300000": "300K token",
-      "400000": "400K token",
-      "500000": "500K token",
-      "600000": "600K token",
-      "700000": "700K token",
-      "800000": "800K token",
-      "900000": "900K token"
+      "100000": "100K 词元",
+      "200000": "200K 词元",
+      "300000": "300K 词元",
+      "400000": "400K 词元",
+      "500000": "500K 词元",
+      "600000": "600K 词元",
+      "700000": "700K 词元",
+      "800000": "800K 词元",
+      "900000": "900K 词元"
     }
   },
   "compaction.idleTimeoutSeconds": {
@@ -1519,7 +1562,7 @@ export const settingsZh: Record<string, { label: string; description?: string; o
       "8on16-bw": "8x13，16px 间距，黑色",
       "8on22-bw": "8x13，22px 间距（行距），黑色",
       "11on16-bw": "8x13，11px 步进（字距），黑色",
-      "silver16-bw": "Silver 16，CJK",
+      "silver16-bw": "Silver 16，中日韩文字",
       "doc-8on16-bw": "Doc 8on16，黑色",
       "doc-8on16-sent": "Doc 8on16，句子色调",
       "doc-8on16-sent-dim": "Doc 8on16，句子色调 + 淡化停用词"

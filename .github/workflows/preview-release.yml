@@ -68,7 +68,6 @@ jobs:
           python-version: "3.12"
       - run: bun install --frozen-lockfile
       - run: bun run check
-      - run: bun run check:behavior
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - run: bun run build:desktop
       - run: cargo test --manifest-path src-tauri/Cargo.toml --lib

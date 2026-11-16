@@ -4,7 +4,7 @@ const runtimePaths = [
   ...modelCapabilitySources.map(name => `src-tauri/src/${name}`),
   'upstream.lock.json', 'package.json', 'bun.lock', 'scripts/build-inputs.ts',
   'scripts/build-runtime.ts', 'scripts/build-install.ts', 'scripts/prepare-upstream.ts',
-  'scripts/generate-catalog.ts', 'scripts/package-runtime.ts', 'scripts/smoke-runtime.ts',
+  'scripts/generate-catalog.ts', 'scripts/package-runtime.ts',
 ];
 
 export function buildScope(files: string[], workflowDispatch = false) {

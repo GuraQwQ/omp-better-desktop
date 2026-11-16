@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/can1357/oh-my-pi.git",
-  "revision": "c308970263ae13744ea15ab67302e3dac840e266",
-  "runtimeVersion": "18.20.0",
+  "revision": "90935366da0c368a437da4343ae748b03a2ffe97",
+  "runtimeVersion": "18.20.3",
   "protocolVersion": 2,
   "referenceGui": {
     "repository": "https://github.com/nornzach/oh-my-pi-gui.git",

@@ -1,13 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { ArrowUp, ArrowUpRight, Bell, ChevronDown, ChevronRight, CircleHelp, Command, FileDiff, FilePlus2, Folder, FolderOpen, FolderPlus, GitBranch, ImagePlus, Layers, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings2, Square, TerminalSquare, X } from 'lucide-react';
+import { ArrowUp, ArrowUpRight, Bell, ChevronDown, CircleHelp, Command, FileDiff, FilePlus2, Folder, FolderOpen, FolderPlus, ImagePlus, Layers, LoaderCircle, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings2, Square, TerminalSquare, X } from 'lucide-react';
 import { copy, localizeError } from './lib/i18n';
 import { native, onDesktopEvent, pickPath, request, rpc } from './lib/bridge';
 import { isSessionRunning, messageText, normalizeHistoryMessages, returnFromTerminal } from './lib/session-state';
 import { acknowledgeDraft, captureDraft, createDraft, updateDraft, type ComposerDraft } from './lib/composer-draft';
 import { SessionLifecycle } from './lib/session-lifecycle';
 import { editableEntry, messageImages, retryMessageIndex } from './lib/message-actions';
-import { searchSessions } from './lib/session-search';
+import ProjectSessions from './components/ProjectSessions';
 import './components/conversation-actions.css';
 import { mergeCommandEntries, resolveCommand } from './lib/command-routes';
 import { displayPath } from './lib/display-path';
@@ -30,17 +30,19 @@ import { sideQuestions } from './lib/side-question-session';
 import type { BtwHistoryRecord } from './generated/rpc-wire';
 import { taskCardSnapshot } from './lib/task-card';
 import { useTaskCardSync } from './lib/use-task-card-sync';
-import { modelCatalog } from './lib/model-catalog';
+import { useModelCatalog } from './lib/use-model-catalog';
 import AttachmentDropZone from './components/AttachmentDropZone';
 import { attachmentPayload, fileData, type ComposerAttachment } from './lib/attachments';
 import MotionPresence from './components/MotionPresence';
 import QueuedMessages from './components/QueuedMessages';
 import ComposerInput from './components/ComposerInput';
 import Select from './components/Select';
+import ModelPicker from './components/ModelPicker';
+import ThinkingControl from './components/ThinkingControl';
 import SessionUsage, { type UsageCache } from './components/SessionUsage';
 import WindowChrome, { WindowSlot } from './components/WindowChrome';
 import GenerationRate, { GenerationRateProvider, type RateCache } from './components/GenerationRate';
-import SavedSessions, { SessionRow, type SessionAction, type SessionListEntry } from './components/SavedSessions';
+import type { SessionAction, SessionListEntry } from './components/SavedSessions';
 import { notify, NOTIFY_AFTER_MS } from './lib/notify';
 import { getCurrentWindow, UserAttentionType } from '@tauri-apps/api/window';
 import { version } from '../package.json';
@@ -58,6 +60,7 @@ import { LinkTargets } from './components/LinkTargets';
 const Settings = lazy(() => import('./panels/Settings'));
 const Inspector = lazy(() => import('./panels/Inspector'));
 const DesktopTools = lazy(() => import('./panels/DesktopTools'));
+const LibraryPage = lazy(() => import('./panels/LibraryPage'));
 const TerminalPanel = lazy(() => import('./panels/Terminal'));
 const CommandPalette = lazy(() => import('./components/CommandPalette'));
 const ContextInspector = lazy(() => import('./components/ContextInspector'));
@@ -84,6 +87,7 @@ export default function App() {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [page, setPage] = useState<'library' | 'schedules' | null>(null);
   const [settingsTab, setSettingsTab] = useState('general');
   const [settingsQuery, setSettingsQuery] = useState('');
   const [commandsOpen, setCommandsOpen] = useState(false);
@@ -102,12 +106,7 @@ export default function App() {
   const [contextTarget, setContextTarget] = useState<string | null>(null);
   const [terminalId, setTerminalId] = useState('');
   const [terminalInput, setTerminalInput] = useState('');
-  const [models, setModels] = useState<Json[]>([]);
   const [modelPicker, setModelPicker] = useState(false);
-  const [modelsLoading, setModelsLoading] = useState(false);
-  const [modelsError, setModelsError] = useState('');
-  const modelsRevision = useRef(0);
-  const [modelQuery, setModelQuery] = useState('');
   const [attachmentMenu, setAttachmentMenu] = useState(false);
   const [sending, setSending] = useState(false);
   const [preparingAttachments, setPreparingAttachments] = useState(0);
@@ -142,16 +141,14 @@ export default function App() {
   alerts.current = { notify: bootstrap.preferences.notifyOnDone !== false, t };
   const ranAt = useRef(new Map<string, number>());
   const allSessions = uniqueSessions(Object.values(sessions));
-  const searchResults = searchSessions(bootstrap.projects, history, allSessions, sessionQuery);
   const selected = sessions[activeId];
   const session = selected ? allSessions.find(value => sessionKey(value) === sessionKey(selected)) : undefined;
   const contextKey = session ? sessionKey(session) : '';
   useEffect(() => { setContextTarget(target => target === contextKey ? target : null); }, [contextKey]);
   const cwd = session?.cwd ?? project?.path ?? '';
   const modelCatalogKey = JSON.stringify([bootstrap.dataRoot, bootstrap.runtime?.revision ?? bootstrap.runtime?.version, sessionPathKey(cwd)]);
-  const currentModelCatalogKey = useRef(modelCatalogKey); currentModelCatalogKey.current = modelCatalogKey;
-  useEffect(() => { modelsRevision.current++; setModels(modelCatalog.peek(modelCatalogKey)?.models ?? []); setModelsError(''); setModelsLoading(false); setModelPicker(false); }, [modelCatalogKey]);
-  useEffect(() => { if (settingsOpen) modelCatalog.invalidate(); }, [settingsOpen]);
+  const { models, loading: modelsLoading, error: modelsError, load: loadModels } = useModelCatalog(modelCatalogKey, cwd, native && !!cwd && !!bootstrap.runtime);
+  useEffect(() => { setModelPicker(false); }, [modelCatalogKey]);
   const sideQuestionsKey = `side-questions:${session?.path ?? session?.id ?? `scratch:${cwd}`}`;
   const sideQuestionThreads = useMemo(() => sideQuestionMetadata.key === sideQuestionsKey ? sideQuestionMetadata.threads : [], [sideQuestionMetadata, sideQuestionsKey]);
   useEffect(() => {
@@ -192,15 +189,17 @@ export default function App() {
   const slashCommands = mergeCommandEntries(commandCatalog, session?.state.availableCommands ?? []);
   const pending = Object.values(sessions).flatMap(s => s.pending.map(question => ({ sessionId: s.id, title: s.title, question })));
   const showError = useCallback((value: unknown) => { if (value instanceof DOMException && value.name === 'AbortError') return; setError(value instanceof Error ? value.message : String(value)); }, []);
-  const openDesktop = (tab: DesktopTab) => { setInspector(null); setDesktopTab(tab); setSettingsOpen(false); };
+  const openDesktop = (tab: DesktopTab) => { setPage(null); setInspector(null); setDesktopTab(tab); setSettingsOpen(false); };
+  const openPage = (value: 'library' | 'schedules') => { setSettingsOpen(false); setDesktopTab(null); setInspector(null); setPage(value); };
+  useEffect(() => { if (settingsOpen) setPage(null); }, [settingsOpen]);
   const closePreview = () => { setInspector(null); setDesktopTab(null); };
   useEffect(() => { if (inspector) setDesktopTab(null); }, [inspector]);
   useDesktopSchedules({ enabled: !!bootstrap.runtime, configuration: bootstrap.preferences.generativeUI, onSession: value => lifecycle.put(value), onError: showError });
-  useWorkspaceLayout(`workspace:${contextKey || sessionPathKey(cwd)}`, { sidebar, inspector, desktopTab }, value => { setSidebar(value.sidebar !== false); setInspector(['review', 'files', 'agents', 'tasks', 'tree'].includes(value.inspector) ? value.inspector : null); const allowed = ['search', 'git', 'worktrees', 'editor', 'terminals', 'library', 'artifacts', 'notes', 'side-questions', 'schedules', ...(bootstrap.preferences.features?.reviews ? ['structured-review'] : []), ...(bootstrap.preferences.features?.browser ? ['browser'] : [])]; setDesktopTab(allowed.includes(value.desktopTab) ? value.desktopTab : null); }, showError);
+  useWorkspaceLayout(`workspace:${contextKey || sessionPathKey(cwd)}`, { sidebar, inspector, desktopTab }, value => { setSidebar(value.sidebar !== false); setInspector(['review', 'files', 'agents', 'tasks', 'tree'].includes(value.inspector) ? value.inspector : null); const allowed = ['search', 'git', 'worktrees', 'editor', 'terminals', 'artifacts', 'notes', 'side-questions', ...(bootstrap.preferences.features?.reviews ? ['structured-review'] : []), ...(bootstrap.preferences.features?.browser ? ['browser'] : [])]; setDesktopTab(allowed.includes(value.desktopTab) ? value.desktopTab : null); }, showError);
   useTaskCardSync(sessions, bootstrap.preferences.features?.cards === true, bootstrap.preferences.language, showError);
-  useEffect(() => { if (!native) return; let stop: (() => void) | undefined; let disposed = false; void import('@tauri-apps/api/event').then(({ listen }) => listen<string>('desktop-card-focus', ({ payload }) => { if (lifecycle.current[payload]) { setActiveId(payload); setSettingsOpen(false); } })).then(value => { if (disposed) value(); else stop = value; }); return () => { disposed = true; stop?.(); }; }, []);
+  useEffect(() => { if (!native) return; let stop: (() => void) | undefined; let disposed = false; void import('@tauri-apps/api/event').then(({ listen }) => listen<string>('desktop-card-focus', ({ payload }) => { if (lifecycle.current[payload]) { setActiveId(payload); setSettingsOpen(false); setPage(null); } })).then(value => { if (disposed) value(); else stop = value; }); return () => { disposed = true; stop?.(); }; }, []);
   useEffect(() => { if (desktopTab === 'browser' && !bootstrap.preferences.features?.browser || desktopTab === 'structured-review' && !bootstrap.preferences.features?.reviews) setDesktopTab(null); }, [bootstrap.preferences.features, desktopTab]);
-  abortRef.current = busy && session && !settingsOpen && !commandsOpen ? () => { void rpc(session.id, 'abort').catch(showError); } : undefined;
+  abortRef.current = busy && session && !settingsOpen && !page && !commandsOpen ? () => { void rpc(session.id, 'abort').catch(showError); } : undefined;
   const replaceActiveId = (id: string) => { activeIdRef.current = id; commitActiveId(id); };
   const setActiveId = (id: string) => { selectionRevision.current++; setTargetMessageId(''); replaceActiveId(id); };
   const activateRuntime = () => {
@@ -213,6 +212,7 @@ export default function App() {
     }).catch(showError);
   };
   const newConversation = () => {
+    setPage(null);
     setModelPicker(false); setAttachmentMenu(false);
     if (!project) { changeDraft(composerDraft, '', []); setActiveId(''); setSettingsOpen(false); return; }
     const id = `draft:${crypto.randomUUID()}`;
@@ -287,7 +287,7 @@ export default function App() {
       if (terminalId || event.defaultPrevented) return;
       const match = (id: Parameters<typeof shortcutValue>[0]) => matchesShortcut(event, shortcutValue(id, bootstrap.preferences.shortcuts));
       if (match('search')) { event.preventDefault(); setSidebar(true); requestAnimationFrame(() => searchInput.current?.focus()); }
-      if (match('library')) { event.preventDefault(); openDesktop('library'); }
+      if (match('library')) { event.preventDefault(); openPage('library'); }
       if (match('workspace')) { event.preventDefault(); openDesktop('search'); }
       if (match('commands')) { event.preventDefault(); setCommandsOpen(value => !value); }
       if (match('new')) { event.preventDefault(); newConversation(); }
@@ -325,6 +325,7 @@ export default function App() {
     try { const values = await request('session.list', { cwd: path }); if (historyRequests.current[path] === revision) setHistory(previous => ({ ...previous, [path]: values })); } catch (error) { showError(error); }
   };
   const selectProject = (value: Project) => {
+    setPage(null);
     setModelPicker(false); setAttachmentMenu(false);
     setProject(value); setExpandedProjects(previous => ({ ...previous, [value.path]: previous[value.path] ?? true }));
     const control = allSessions.find(item => item.hidden && sessionPathKey(item.cwd) === sessionPathKey(value.path));
@@ -458,6 +459,7 @@ export default function App() {
     if (runtimeReleased && project) void refreshHistory(project.path);
   };
   const loadHistory = async (summary: SessionSummary, messageId?: string) => {
+    setPage(null);
     setModelPicker(false); setAttachmentMenu(false);
     const revision = ++selectionRevision.current;
     const existing = uniqueSessions(Object.values(lifecycle.current)).find(value => sessionKey(value) === sessionKey(summary));
@@ -504,22 +506,14 @@ export default function App() {
       });
     } catch (e) { if (preserveDraft) throw e; showError(e); } finally { actionPending.current = false; setSending(false); activateRuntime(); }
   };
-  const loadModels = async (refresh = false) => {
-    const revision = ++modelsRevision.current, key = modelCatalogKey, generation = modelCatalog.generation;
-    setModelsError(''); setModelsLoading(true);
-    try {
-      const result = await modelCatalog.load(key, cwd, refresh);
-      if (revision === modelsRevision.current && key === currentModelCatalogKey.current && generation === modelCatalog.generation) { setModels(result.models); setModelsError(result.warning ?? ''); }
-    } catch (error) { if (revision === modelsRevision.current && key === currentModelCatalogKey.current) setModelsError(error instanceof Error ? error.message : String(error)); }
-    finally { if (revision === modelsRevision.current) setModelsLoading(false); }
-  };
   const toggleModels = () => {
     if (modelPicker) { setModelPicker(false); return; }
-    setAttachmentMenu(false); setModels(modelCatalog.peek(modelCatalogKey)?.models ?? []); setModelPicker(true);
+    setAttachmentMenu(false); setModelPicker(true);
     void loadModels();
   };
   const chooseModel = async (model: Json) => {
-    try { const current = await openSession(); const result = await rpc(current.id, 'set_model', { provider: model.provider, modelId: model.id }); lifecycle.update(current.id, current => ({ ...current, state: { ...current.state, model: result.model ?? result ?? model } })); setModelPicker(false); modelButton.current?.focus(); } catch (e) { showError(e); }
+    const selection = selectionRevision.current;
+    try { const current = await openSession(); const result = await rpc(current.id, 'set_model', { provider: model.provider, modelId: model.id }); lifecycle.update(current.id, current => ({ ...current, state: { ...current.state, model: result.model ?? result ?? model } })); if (selection === selectionRevision.current) { setModelPicker(false); modelButton.current?.focus(); } } catch (e) { showError(e); }
   };
   const answer = async (id: string, response: Json) => {
     const owner = lifecycle.current[id];
@@ -534,7 +528,7 @@ export default function App() {
     }
   };
   const recallLast = () => { const list = session?.messages ?? []; for (let i = list.length - 1; i >= 0; i--) if (list[i].role === 'user') { const prompt = parseReferencedPrompt(displayUserPrompt(messageText(list[i]))); changeDraft(composerDraft, prompt.body, composerDraft.attachments, prompt.references); return; } };
-  const prepareCommand = (text: string) => { changeDraft(composerDraft, text); setSettingsOpen(false); textarea.current?.focus(); };
+  const prepareCommand = (text: string) => { changeDraft(composerDraft, text); setPage(null); setSettingsOpen(false); requestAnimationFrame(() => textarea.current?.focus()); };
   const reference = (value: string | ConversationReference[]) => { const additions = typeof value === 'string' ? [createMessageReference({ sessionId: session?.id, sessionPath: session?.path, sessionTitle: session?.title }, { id: `material:${crypto.randomUUID()}`, role: 'message', content: value })] : value; changeDraft(composerDraft, composerDraft.text, composerDraft.attachments, appendReferences(composerDraft.references, additions)); setSettingsOpen(false); requestAnimationFrame(() => textarea.current?.focus()); };
   const openSideQuestionThread = (id: string) => { setSelectedText(''); setSideQuestionSource(undefined); setSideQuestionThreadId(id); setSelectionNonce(value => value + 1); openDesktop('side-questions'); };
   const selectionAction = (text: string, action: 'quote' | 'note' | 'btw', context?: SelectionContext) => { if (action === 'quote') reference(context?.references ?? text); else { setSelectedText(text); setSideQuestionSource(context?.source); setSideQuestionThreadId(undefined); setSelectionNonce(value => value + 1); openDesktop(action === 'note' ? 'notes' : 'side-questions'); } };
@@ -598,6 +592,7 @@ export default function App() {
   const navigateCommand = (entry: CatalogEntry, args = ''): boolean => {
     const route = resolveCommand(entry, args);
     if (route.kind === 'prompt') return false;
+    setPage(null);
     const run = (action: (current: SessionView) => Promise<void>) => { void lifecycle.run(async () => action(await prepareSession())).catch(showError); };
     if (route.kind === 'session') {
       if (route.action === 'new') run(async current => { await rpc(current.id, 'new_session'); lifecycle.update(current.id, clearQuestions); await lifecycle.refresh(current.id, true, t.newTitle); });
@@ -624,7 +619,7 @@ export default function App() {
     }
     const panels: Record<string, InspectorTab> = { review: 'review', agents: 'agents', tasks: 'tasks', tree: 'tree' };
     if (surface && panels[surface]) { setSettingsOpen(false); setInspector(panels[surface]); return true; }
-    if (surface === 'sessions') { setSettingsOpen(false); setSidebar(true); return true; }
+    if (surface === 'sessions') { setSidebar(true); openPage('library'); return true; }
     return false;
   };
   const earlier = async () => {
@@ -660,33 +655,17 @@ export default function App() {
     {sidebar && <aside className="sidebar" inert={!!terminalId}><div className="brand-row"><div className="brand-mark">o<span>m</span>p</div><span>{t.desktop}</span><button className="icon-button" title={t.collapse} onClick={() => setSidebar(false)}><PanelLeftClose size={17} /></button></div>
       <button className="new-conversation" onClick={newConversation}><Plus size={17} /><span>{t.newSession}</span><kbd>{shortcutValue('new', bootstrap.preferences.shortcuts).replaceAll('+', ' ')}</kbd></button>
       <button className="nav-item" onClick={() => setCommandsOpen(true)}><Command size={16} /><span>{t.commands}</span><kbd>{shortcutValue('commands', bootstrap.preferences.shortcuts).replaceAll('+', ' ')}</kbd></button>
-      <button className="nav-item" onClick={() => openDesktop('library')}><Search size={16} /><span>{desktopLabel('library', bootstrap.preferences.language)}</span></button>
+      <button className="nav-item" aria-current={page === 'library' ? 'page' : undefined} onClick={() => openPage('library')}><Search size={16} /><span>{desktopLabel('library', bootstrap.preferences.language)}</span></button>
+      <button className="nav-item" aria-current={page === 'schedules' ? 'page' : undefined} onClick={() => openPage('schedules')}><Bell size={16} /><span>{desktopLabel('schedules', bootstrap.preferences.language)}</span></button>
       <button className="nav-item" disabled={!cwd} onClick={() => openDesktop('search')}><FolderOpen size={16} /><span>{desktopLabel('workspace', bootstrap.preferences.language)}</span></button>
-      {pending.length > 0 && <button className="nav-item pending-nav" onClick={() => { setActiveId(pending[0].sessionId); setSettingsOpen(false); }}><Bell size={16} /><span>{t.pending}</span><b>{pending.length}</b></button>}
+      {pending.length > 0 && <button className="nav-item pending-nav" onClick={() => { setActiveId(pending[0].sessionId); setSettingsOpen(false); setPage(null); }}><Bell size={16} /><span>{t.pending}</span><b>{pending.length}</b></button>}
       <div className="section-label"><span>{t.projects}</span><button className="icon-button" title={t.addProject} onClick={addProject}><Plus size={15} /></button></div>
-      <div className="session-search"><Search size={14} /><input ref={searchInput} type="search" aria-label={t.searchSessions} placeholder={t.searchSessions} value={sessionQuery} onChange={event => setSessionQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); setSessionQuery(''); } }} />{sessionQuery && <button className="icon-button" title={t.clearSearch} onClick={() => { setSessionQuery(''); searchInput.current?.focus(); }}><X size={13} /></button>}</div>
-      <div className="project-list">{sessionQuery.trim() ? <div className="session-search-results"><p className="search-status" role="status">{searchLoading ? t.loading : searchResults.length ? `${searchResults.length} ${t.session}` : t.noResults}</p>{searchResults.map(({ project: item, session: value }) => <SessionRow key={sessionKey(value)} value={{ ...value, path: value.path ?? '' }} active={!!session && sessionKey(session) === sessionKey(value)} title={`${value.title || t.newTitle} / ${displayPath(item.path)}`} language={bootstrap.preferences.language} onAction={sessionAction} open={() => { setProject(item); if ('messages' in value) { setActiveId(value.id); setSettingsOpen(false); } else void loadHistory(value); }} trailing={<small>{item.name}</small>} />)}</div> : bootstrap.projects.length ? bootstrap.projects.map(item => {
-        const expanded = !!expandedProjects[item.path];
-        const listId = `project-sessions-${encodeURIComponent(item.path)}`;
-        const opened = allSessions.filter(value => !value.hidden && sessionPathKey(value.cwd) === sessionPathKey(item.path));
-        const metadata = new Map((history[item.path] ?? []).map(value => [sessionKey(value), value]));
-        const openedByKey = new Map(opened.map(value => [sessionKey(value), value]));
-        const saved = [...new Map([...(history[item.path] ?? []).filter(value => !allSessions.some(open => open.hidden && sessionKey(open) === sessionKey(value))).map(value => [sessionKey(value), value] as const), ...opened.filter(value => value.path).map(value => { const cached = metadata.get(sessionKey(value)); return [sessionKey(value), { ...value, path: value.path!, updatedAt: cached?.updatedAt, pinned: cached?.pinned, pinOrder: cached?.pinOrder, archived: cached?.archived }] as const; })]).values()];
-        const openSaved = (value: SessionListEntry) => { setProject(item); const current = openedByKey.get(sessionKey(value)); if (current) { setActiveId(current.id); setSettingsOpen(false); } else void loadHistory(value); };
-        return <div key={item.path}>
-          <div className="project-row"><button className="icon-button project-toggle" aria-expanded={expanded} aria-controls={listId} title={`${expanded ? t.collapseProject : t.expandProject} ${item.name}`} onClick={() => toggleProject(item)}><ChevronRight size={13} className={expanded ? 'rotate' : ''} /></button><button className={`project-item ${project?.path === item.path ? 'selected' : ''}`} title={displayPath(item.path)} onClick={() => selectProject(item)}><Folder size={15} /><span>{item.name}</span></button></div>
-          {expanded && <div className="session-list" id={listId}>
-            {opened.filter(value => !value.path).map(value => <SessionRow key={sessionKey(value)} value={{ path: '', id: value.id, cwd: value.cwd, title: value.title }} active={session?.id === value.id} title={value.title} language={bootstrap.preferences.language} icon={<span className={`session-status ${value.status}`} />} trailing={value.pending.length > 0 ? <i /> : unread[value.id] && <i className="done" />} open={() => { setProject(item); setActiveId(value.id); setSettingsOpen(false); }} />)}
-            <SavedSessions sessions={saved} activeKey={session ? sessionKey(session) : ''} t={t} language={bootstrap.preferences.language} open={openSaved} onAction={sessionAction} onReorder={paths => reorderSessions(paths, item.path)} icon={value => { const current = openedByKey.get(sessionKey(value)); return current && !current.historyOnly ? <span className={`session-status ${current.status}`} /> : <MessageSquare size={12} />; }} trailing={value => { const current = openedByKey.get(sessionKey(value)); return current?.pending.length ? <i /> : current && unread[current.id] ? <i className="done" /> : null; }} />
-            {!opened.length && !saved.length && <p>{t.noSessions}</p>}
-          </div>}
-        </div>;
-      }) : <p className="sidebar-empty">{t.noProjects}</p>}</div>
+      <ProjectSessions bootstrap={bootstrap} project={project} session={session} sessions={allSessions} history={history} expandedProjects={expandedProjects} unread={unread} sessionQuery={sessionQuery} searchLoading={searchLoading} searchInput={searchInput} t={t} onQuery={setSessionQuery} onProject={selectProject} onToggle={toggleProject} onAction={sessionAction} onReorder={reorderSessions} onOpen={(item, value) => { setProject(item); setPage(null); setSettingsOpen(false); if ('messages' in value) setActiveId(value.id); else void loadHistory(value); }} />
       <div className="sidebar-bottom"><button className={`nav-item ${settingsOpen ? 'selected' : ''}`} onClick={() => settingsOpen ? setSettingsOpen(false) : openSettings('general')}><Settings2 size={16} /><span>{t.settings}</span></button><div className="runtime-pill"><span className={`status-dot ${bootstrap.runtime ? 'connected' : ''}`} /><span>{bootstrap.runtime ? `OMP ${bootstrap.runtime.version}` : t.notInstalled}</span><span className="version">v{version}</span></div></div>
     </aside>}
     <main className="main-area">
-      {settingsOpen ? <Suspense fallback={<PageSkeleton label={t.loading} />}><Settings key={`${settingsTab}:${settingsQuery}`} initialQuery={settingsQuery} initialTab={settingsTab} cwd={cwd} reconnectSession={cwd && bootstrap.runtime ? () => reconnectSettingsSession(true) : undefined} bootstrap={bootstrap} t={t} sessionId={configurationSession?.id} ensureSession={cwd && bootstrap.runtime ? () => openConfigurationSession().then(current => current.id) : undefined} update={setBootstrap} onError={showError} close={() => setSettingsOpen(false)} /></Suspense> : <>
-        <WindowSlot inert={!!terminalId}><div className="header-location">{!sidebar && <button className="icon-button" title={t.expand} onClick={() => setSidebar(true)}><PanelLeftOpen size={18} /></button>}<Folder size={15} /><button onClick={addProject}>{project?.name ?? t.openProject}</button>{session && <><span className="breadcrumb-divider">/</span><span className="header-title">{session.title}</span></>}</div><div className="workspace-actions"><button className={`quiet-button ${inspector === 'review' ? 'active' : ''}`} disabled={!cwd} onClick={() => setInspector(value => value === 'review' ? null : 'review')}><FileDiff size={15} /><span>{t.review}</span></button><button className="icon-button" title={t.context} aria-haspopup="dialog" disabled={!cwd} onClick={() => navigateCommand({ name: 'context', kind: 'slash' })}><Layers size={17} /></button><details ref={moreMenu} className="more-menu" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false; }} onClick={event => { if ((event.target as Element).closest("button")) { event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); } }}><summary className="icon-button" title={t.more}><ChevronDown size={16} /></summary><div className="ui-menu">{(['files', 'agents', 'tasks', 'tree'] as InspectorTab[]).map(tab => <button disabled={!cwd} key={tab} onClick={() => setInspector(tab)}>{t[tab]}</button>)}<div className="menu-separator" />{(['search', 'git', 'worktrees', 'editor', 'terminals', 'artifacts', 'notes', 'side-questions', 'schedules'] as DesktopTab[]).map(tab => <button key={tab} disabled={!cwd} onClick={() => openDesktop(tab)}>{desktopLabel(tab, bootstrap.preferences.language)}</button>)}{bootstrap.preferences.features?.reviews && <button disabled={!session} onClick={() => openDesktop('structured-review')}>{desktopLabel('structured-review', bootstrap.preferences.language)}</button>}{bootstrap.preferences.features?.browser && <button onClick={() => openDesktop('browser')}>{desktopLabel('browser', bootstrap.preferences.language)}</button>}{bootstrap.preferences.features?.cards && <button disabled={!session} onClick={() => session && request('card.open', { id: session.id, value: taskCardSnapshot(session, bootstrap.preferences.language) }).catch(showError)}>{desktopLabel('cards', bootstrap.preferences.language)}</button>}<button disabled={!session} onClick={() => void exportMarkdown('results')}>{desktopLabel('exportResults', bootstrap.preferences.language)}</button><button disabled={!session} onClick={() => void exportMarkdown('full')}>{desktopLabel('exportFull', bootstrap.preferences.language)}</button><button disabled={!session?.path || busy} onClick={() => session?.path && sessionAction({ ...session, path: session.path }, 'archive').catch(showError)}>{desktopLabel('archive', bootstrap.preferences.language)}</button><div className="menu-separator" /><button disabled={!session || session.historyOnly || !session.state.isSettled} onClick={() => { setTerminalInput(''); setTerminalId(session!.id); }}>{t.terminal}</button><button disabled={!session || session.historyOnly} onClick={() => { if (session) rpc(session.id, 'export_html').then(result => prepareCommand(String(result.path ?? result))).catch(showError); }}>{t.export}</button><button disabled={!session || busy} onClick={() => prepareCommand('/fork')}>{t.fork}</button><button disabled={!session || busy} onClick={closeSession}>{t.close} {t.session}</button></div></details></div></WindowSlot>
+      {settingsOpen ? <Suspense fallback={<PageSkeleton label={t.loading} />}><Settings key={`${settingsTab}:${settingsQuery}`} initialQuery={settingsQuery} initialTab={settingsTab} cwd={cwd} reconnectSession={cwd && bootstrap.runtime ? () => reconnectSettingsSession(true) : undefined} bootstrap={bootstrap} t={t} sessionId={configurationSession?.id} ensureSession={cwd && bootstrap.runtime ? () => openConfigurationSession().then(current => current.id) : undefined} update={setBootstrap} onError={showError} close={() => setSettingsOpen(false)} /></Suspense> : page ? <Suspense fallback={<PageSkeleton label={t.loading} />}><LibraryPage page={page} cwd={cwd} language={bootstrap.preferences.language} externalEnabled={bootstrap.preferences.features?.externalSessions === true} close={() => setPage(null)} onError={showError} onOpen={(summary, messageId) => { setPage(null); const project = bootstrap.projects.find(value => sessionPathKey(value.path) === sessionPathKey(summary.cwd)); if (project) setProject(project); void loadHistory(summary, messageId); }} onReference={value => { reference(value); setPage(null); }} onSessionAction={sessionAction} onArchiveChange={() => { for (const value of bootstrap.projects) void refreshHistory(value.path); }} /></Suspense> : <>
+        <WindowSlot inert={!!terminalId}><div className="header-location">{!sidebar && <button className="icon-button" title={t.expand} onClick={() => setSidebar(true)}><PanelLeftOpen size={18} /></button>}<Folder size={15} /><button onClick={addProject}>{project?.name ?? t.openProject}</button>{session && <><span className="breadcrumb-divider">/</span><span className="header-title">{session.title}</span></>}</div><div className="workspace-actions"><button className={`quiet-button ${inspector === 'review' ? 'active' : ''}`} disabled={!cwd} onClick={() => setInspector(value => value === 'review' ? null : 'review')}><FileDiff size={15} /><span>{t.review}</span></button><button className="icon-button" title={t.context} aria-haspopup="dialog" disabled={!cwd} onClick={() => navigateCommand({ name: 'context', kind: 'slash' })}><Layers size={17} /></button><details ref={moreMenu} className="more-menu" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false; }} onClick={event => { if ((event.target as Element).closest("button")) { event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); } }}><summary className="icon-button" title={t.more}><ChevronDown size={16} /></summary><div className="ui-menu">{(['files', 'agents', 'tasks', 'tree'] as InspectorTab[]).map(tab => <button disabled={!cwd} key={tab} onClick={() => setInspector(tab)}>{t[tab]}</button>)}<div className="menu-separator" />{(['search', 'git', 'worktrees', 'editor', 'terminals', 'artifacts', 'notes', 'side-questions'] as DesktopTab[]).map(tab => <button key={tab} disabled={!cwd} onClick={() => openDesktop(tab)}>{desktopLabel(tab, bootstrap.preferences.language)}</button>)}{bootstrap.preferences.features?.reviews && <button disabled={!session} onClick={() => openDesktop('structured-review')}>{desktopLabel('structured-review', bootstrap.preferences.language)}</button>}{bootstrap.preferences.features?.browser && <button onClick={() => openDesktop('browser')}>{desktopLabel('browser', bootstrap.preferences.language)}</button>}{bootstrap.preferences.features?.cards && <button disabled={!session} onClick={() => session && request('card.open', { id: session.id, value: taskCardSnapshot(session, bootstrap.preferences.language) }).catch(showError)}>{desktopLabel('cards', bootstrap.preferences.language)}</button>}<button disabled={!session} onClick={() => void exportMarkdown('results')}>{desktopLabel('exportResults', bootstrap.preferences.language)}</button><button disabled={!session} onClick={() => void exportMarkdown('full')}>{desktopLabel('exportFull', bootstrap.preferences.language)}</button><button disabled={!session?.path || busy} onClick={() => session?.path && sessionAction({ ...session, path: session.path }, 'archive').catch(showError)}>{desktopLabel('archive', bootstrap.preferences.language)}</button><div className="menu-separator" /><button disabled={!session || session.historyOnly || !session.state.isSettled} onClick={() => { setTerminalInput(''); setTerminalId(session!.id); }}>{t.terminal}</button><button disabled={!session || session.historyOnly} onClick={() => { if (session) rpc(session.id, 'export_html').then(result => prepareCommand(String(result.path ?? result))).catch(showError); }}>{t.export}</button><button disabled={!session || busy} onClick={() => prepareCommand('/fork')}>{t.fork}</button><button disabled={!session || busy} onClick={closeSession}>{t.close} {t.session}</button></div></details></div></WindowSlot>
         {error && <div className="error-banner" role="alert"><CircleHelp size={16} /><span>{localizeError(error, bootstrap.preferences.language)}</span><button className="icon-button" title={t.dismiss} onClick={() => setError('')}><X size={15} /></button></div>}
         {terminalId ? <Suspense fallback={<PageSkeleton label={t.loading} />}><TerminalPanel id={terminalId} initialCommand={terminalInput} t={t} onError={showError} close={closeTerminal} /></Suspense> : <ConversationLayout layoutKey={layoutKey} identity={session ? sessionKey(session) : draftKey}><GenerationRateProvider session={session} language={bootstrap.preferences.language} cache={rateCache.current}><SessionTodos session={session} language={bootstrap.preferences.language} /><SplitWorkspace key={contextKey || cwd} restoreKey={contextKey || cwd} language={bootstrap.preferences.language} closePreview={closePreview} preview={desktopTab ? <Suspense fallback={<PageSkeleton label={t.loading} />}><DesktopTools onSessionAction={sessionAction} tab={desktopTab} openFile={openFile} cwd={cwd} language={bootstrap.preferences.language} preferences={bootstrap.preferences} session={session} selection={selectedText} selectionNonce={selectionNonce} sideQuestionSource={sideQuestionSource} sideQuestionThreadId={sideQuestionThreadId} onSideQuestionThreadsChange={threads => setSideQuestionMetadata({ key: sideQuestionsKey, threads })} onExportSideQuestions={exportSideQuestions} onTab={setDesktopTab} onClose={closePreview} onPrompt={prepareCommand} onEnsureSession={openSession} onSideQuestion={askSideQuestion} onCancelSideQuestion={cancelSideQuestion} onReference={reference} onArchiveChange={() => { for (const value of bootstrap.projects) void refreshHistory(value.path); }} onOpen={(summary, messageId) => { const project = bootstrap.projects.find(value => sessionPathKey(value.path) === sessionPathKey(summary.cwd)); if (project) setProject(project); void loadHistory(summary, messageId); }} onProject={path => void request('project.add', { path }).then(projects => { setBootstrap(current => ({ ...current, projects })); const project = projects.find(value => sessionPathKey(value.path) === sessionPathKey(path)); if (project) selectProject(project); }).catch(showError)} /></Suspense> : inspector && <Suspense fallback={<aside className="inspector"><PageSkeleton label={t.loading} /></aside>}><Inspector language={bootstrap.preferences.language} onSessionChanged={() => session ? lifecycle.refresh(session.id, true, t.newTitle) : Promise.resolve()} tab={inspector} session={session} cwd={cwd} t={t} onError={showError} close={() => setInspector(null)} send={prepareCommand} /></Suspense>}><div className="conversation-column">
           {transcript ?? <div className="welcome"><div className="welcome-symbol"><span /><span /><span /></div><h1>{t.welcome}</h1><p>{t.welcomeText}</p>{!native && <p className="browser-note">{t.nativeOnly}</p>}<div className="starter-actions">{[[t.exploreAction, t.explorePrompt], [t.reviewAction, t.reviewPrompt], [t.buildAction, t.buildPrompt]].map(([label, prompt]) => <button key={label} onClick={() => { changeDraft(composerDraft, prompt); textarea.current?.focus(); }}>{label}<ArrowUpRight size={14} /></button>)}</div></div>}
@@ -710,8 +689,8 @@ export default function App() {
                     <button role="menuitem" disabled={!native} title={!native ? t.nativeOnly : undefined} onClick={() => void attachPath(true)}><FolderPlus size={16} />{t.attachFolder}</button>
                   </div></MotionPresence>
                 </div>
-                <div className="model-control" ref={modelControl}><button ref={modelButton} className="model-button" aria-haspopup="dialog" aria-expanded={modelPicker} disabled={!cwd || !bootstrap.runtime} onClick={toggleModels}>{session?.state.model?.name ?? session?.state.model?.id ?? t.chooseModel}<ChevronDown size={12} /></button><MotionPresence open={modelPicker}><div className="model-picker ui-menu" role="dialog" aria-label={t.chooseModel}>{modelsError && <p role="status">{localizeError(modelsError, bootstrap.preferences.language)}</p>}<button type="button" className="quiet-button" disabled={modelsLoading} onClick={() => void loadModels(true)}>{t.refresh}</button><input autoFocus aria-label={t.search} placeholder={t.search} value={modelQuery} onChange={e => setModelQuery(e.target.value)} /><div>{models.filter(model => `${model.name} ${model.id} ${model.provider}`.toLowerCase().includes(modelQuery.toLowerCase())).map(model => <button key={`${model.provider}:${model.id}`} aria-pressed={session?.state.model?.id === model.id && session?.state.model?.provider === model.provider} onClick={() => chooseModel(model)}><strong>{model.name ?? model.id}</strong><small>{model.provider}</small></button>)}{!models.length && <p role="status">{modelsLoading ? t.loading : t.noModels}</p>}{models.length > 0 && !models.some(model => `${model.name} ${model.id} ${model.provider}`.toLowerCase().includes(modelQuery.toLowerCase())) && <p>{t.noResults}</p>}</div></div></MotionPresence></div>
-                {session && !session.historyOnly && <Select label={t.effort} value={session.state.thinkingLevel ?? 'medium'} options={Object.entries(t.effortLevels).map(([value, label]) => ({ value, label }))} onChange={level => rpc(session.id, 'set_thinking_level', { level }).then(() => lifecycle.update(session.id, current => ({ ...current, state: { ...current.state, thinkingLevel: level } }))).catch(showError)} />}
+                <div className="model-control" ref={modelControl}><button ref={modelButton} className="model-button" aria-haspopup="dialog" aria-expanded={modelPicker} disabled={!cwd || !bootstrap.runtime} onClick={toggleModels}>{session?.state.model?.name ?? session?.state.model?.id ?? t.chooseModel}<ChevronDown size={12} /></button><MotionPresence open={modelPicker}><ModelPicker models={models} loading={modelsLoading} error={modelsError} current={session?.state.model} language={bootstrap.preferences.language} t={t} refresh={() => void loadModels(true)} choose={chooseModel} /></MotionPresence></div>
+                {session && !session.historyOnly && <ThinkingControl session={session} t={t} onChange={level => lifecycle.update(session.id, current => ({ ...current, state: { ...current.state, thinkingLevel: level } }))} onError={showError} />}
                 <GenerationRate /><span className="spacer" />{busy && <Select label={t.queued} value={delivery} onChange={setDelivery} options={[{ value: 'steer', label: t.steer }, { value: 'follow_up', label: t.followUp }]} />}{busy && session && !draft && !attachments.length && !references.length ? <button className="send-button stop-button" title={t.stop} onClick={() => rpc(session.id, 'abort').catch(showError)}><Square size={14} fill="currentColor" /></button> : <button className="send-button" title={t.send} disabled={sending || preparingAttachments > 0 || messageAction || (!draft.trim() && !attachments.length && !references.length) || !cwd || !bootstrap.runtime} onClick={() => send()}>{sending || messageAction ? <LoaderCircle size={16} className="spin" /> : <ArrowUp size={18} />}</button>}
               </div>
             </div></AttachmentDropZone><div className="composer-footnote"><span><span className={`status-dot ${busy ? 'working' : 'connected'}`} />{busy ? t.running : session?.pending.length ? t.waiting : t.ready}</span><span>{cwd ? <><FolderOpen size={12} />{displayPath(cwd)}</> : <button onClick={addProject}>{t.openProject}</button>}</span></div>

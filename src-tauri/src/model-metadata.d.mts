@@ -8,6 +8,6 @@ export interface ModelCapabilityFields {
 }
 export const capabilityFields: (keyof ModelCapabilityFields)[];
 export function normalizeModelId(id: string): string;
-export function lookupModelCapabilities(id: string): (ModelCapabilityFields & { id: string; source: string; modalities?: string[]; maxInputTokens?: number }) | undefined;
+export function lookupModelCapabilities(id: string): (ModelCapabilityFields & { id: string; source: string; modalities?: string[]; maxInputTokens?: number; thinkingEfforts?: string[]; defaultThinkingLevel?: string }) | undefined;
 export function readModelCapabilities(value: unknown): ModelCapabilityFields;
-export function inferredModelCapabilities(id: string, supplied?: unknown): { fields: ModelCapabilityFields; source?: string; modalities?: string[]; maxInputTokens?: number };
+export function inferredModelCapabilities(id: string, supplied?: unknown): { fields: ModelCapabilityFields; source?: string; modalities?: string[]; maxInputTokens?: number; thinkingEfforts?: string[]; defaultThinkingLevel?: string };

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { FileCode2, GitBranch, GitCommitHorizontal, Plus, RefreshCw, Save, Search, Square, TerminalSquare, Trash2, X } from 'lucide-react';
 import { native, request } from '../lib/bridge';
+import CodeEditor from '../components/CodeEditor';
 import type { Language } from '../lib/types';
 import '@xterm/xterm/css/xterm.css';
 import './workspace-tools.css';
@@ -132,7 +133,7 @@ function WorkspaceWorktrees({ cwd, language, onProject }: PanelProps & Pick<Prop
   return <div className="workspace-tool-content"><div className="workspace-tool-actions"><button className="quiet-button" disabled={busy} onClick={() => void run('worktree.list', { cwd })}><RefreshCw size={14} />{zh ? '刷新工作树' : 'Refresh worktrees'}</button></div>{error && <p className="workspace-tool-error" role="alert">{error}</p>}<div className="workspace-worktrees">{items.map((item, index) => <article key={item.path}><strong>{item.branch || (zh ? '分离 HEAD' : 'Detached HEAD')}</strong><code>{item.path}</code><div className="workspace-tool-actions"><button className="quiet-button" disabled={!onProject || normalizedPath(item.path) === normalizedPath(cwd)} onClick={() => onProject?.(item.path)}>{zh ? '打开项目' : 'Open project'}</button>{index > 0 && <button className="quiet-button" disabled={busy || item.locked || normalizedPath(item.path) === normalizedPath(cwd)} onClick={() => setRemove(item.path)}><Trash2 size={13} />{zh ? '移除' : 'Remove'}</button>}</div>{remove === item.path && <div className="workspace-tool-confirm"><p>{zh ? '移除这个工作树目录？Git 历史和分支会保留。' : 'Remove this worktree directory? Git history and branches remain.'}</p><button className="secondary-button" disabled={busy} onClick={() => void run('worktree.remove', { cwd, path: item.path })}>{zh ? '移除工作树' : 'Remove worktree'}</button><button className="quiet-button" onClick={() => setRemove('')}>{zh ? '取消' : 'Cancel'}</button></div>}</article>)}</div><form className="workspace-worktree-form" onSubmit={event => { event.preventDefault(); void run('worktree.add', { cwd, path, branch, ref }); }}><strong>{zh ? '创建独立工作树' : 'Create an independent worktree'}</strong><label>{zh ? '新目录完整路径' : 'New directory absolute path'}<input value={path} onChange={event => setPath(event.target.value)} placeholder="D:\projects\task-worktree" required /></label><label>{zh ? '新分支名称（可选）' : 'New branch name (optional)'}<input value={branch} onChange={event => setBranch(event.target.value)} /></label><label>{zh ? '起始 Git 引用' : 'Starting Git ref'}<input value={ref} onChange={event => setRef(event.target.value)} placeholder="HEAD" /></label><button className="secondary-button" disabled={busy || !path.trim()}><Plus size={14} />{zh ? '创建工作树' : 'Create worktree'}</button></form></div>;
 }
 
-type Document = { path: string; content: string; saved: string; revision: string; encoding: string; newline: string };
+type Document = { path: string; content: string; saved: string; revision: string; encoding: string; newline: string; readOnly: boolean };
 const editorCache = new Map<string, { documents: Document[]; active: string }>();
 function WorkspaceEditor({ cwd, language, target }: PanelProps & { target?: OpenFile }) {
   const zh = language === 'zh';
@@ -143,7 +144,8 @@ function WorkspaceEditor({ cwd, language, target }: PanelProps & { target?: Open
   const [files, setFiles] = useState<string[]>([]); const [filter, setFilter] = useState('');
   const [error, setError] = useState(''); const [saving, setSaving] = useState(''); const [reloading, setReloading] = useState(''); const [confirm, setConfirm] = useState<{ path: string; action: 'close' | 'reload' }>();
   const [location, setLocation] = useState<{ path: string; line: number }>();
-  const textarea = useRef<HTMLTextAreaElement>(null);
+  const [openingPath, setOpeningPath] = useState('');
+  const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const liveDocuments = useRef(documents); liveDocuments.current = documents;
   const mounted = useRef(true);
   const opening = useRef(new Map<string, Promise<void>>());
@@ -159,15 +161,20 @@ function WorkspaceEditor({ cwd, language, target }: PanelProps & { target?: Open
     window.addEventListener('beforeunload', beforeUnload);
     return () => { mounted.current = false; window.removeEventListener('beforeunload', beforeUnload); };
   }, [cwd]);
+  const read = async (path: string) => {
+    const readOnly = /^(?:[a-z]:[\\/]|[\\/])/i.test(path);
+    const result = readOnly ? await request('file.preview', { path }) : await request('file.get', { cwd, path });
+    return { ...result, readOnly };
+  };
   const open = async (path: string, line = 1) => {
     const revision = ++selection.current.revision;
     selection.current.path = path;
-    setError('');
+    setError(''); setOpeningPath(path);
     try {
       if (!liveDocuments.current.some(document => document.path === path)) {
         let pending = opening.current.get(path);
         if (!pending) {
-          pending = request('file.get', { cwd, path }).then(result => {
+          pending = read(path).then(result => {
             if (!mounted.current || liveDocuments.current.some(document => document.path === path)) return;
             const content = normalizedText(result.content);
             const next = [...liveDocuments.current, { ...result, path, content, saved: content }];
@@ -180,22 +187,13 @@ function WorkspaceEditor({ cwd, language, target }: PanelProps & { target?: Open
       // 同一文件共用读取，只有最后一次选择可以改变当前文件与定位。
       if (mounted.current && selection.current.revision === revision) { activePath.current = path; setActive(path); setLocation({ path, line }); }
     } catch (error) { if (mounted.current && selection.current.revision === revision) setError(message(error)); }
+    finally { if (mounted.current && selection.current.revision === revision) setOpeningPath(''); }
   };
   const selectDocument = (path: string) => { selection.current = { revision: selection.current.revision + 1, path }; activePath.current = path; setLocation(undefined); setActive(path); };
   useEffect(() => { if (target) void open(target.path, target.line); }, [target?.path, target?.line, target?.nonce]);
-  useEffect(() => {
-    if (!textarea.current || location?.path !== active || !document) return;
-    const lines = document.content.split('\n');
-    const line = Math.max(1, Math.min(location.line, lines.length));
-    const offset = lines.slice(0, line - 1).reduce((length, value) => length + value.length + 1, 0);
-    textarea.current.focus(); textarea.current.setSelectionRange(offset, offset + lines[line - 1].length);
-    const lineHeight = parseFloat(getComputedStyle(textarea.current).lineHeight) || 20;
-    textarea.current.scrollTop = Math.max(0, (line - 3) * lineHeight);
-    setLocation(undefined);
-  }, [location, active, documents.length]);
   const save = async (path = active) => {
     const snapshot = liveDocuments.current.find(document => document.path === path);
-    if (!snapshot || savingPath.current) return false;
+    if (!snapshot || snapshot.readOnly || savingPath.current) return false;
     savingPath.current = path;
     setSaving(path); setError('');
     try {
@@ -219,7 +217,7 @@ function WorkspaceEditor({ cwd, language, target }: PanelProps & { target?: Open
     setError(''); setReloading(path);
     const snapshot = liveDocuments.current.find(document => document.path === path)?.content;
     try {
-      const result = await request('file.get', { cwd, path });
+      const result = await read(path);
       if (!mounted.current) return;
       const content = normalizedText(result.content);
       if (liveDocuments.current.find(document => document.path === path)?.content !== snapshot) { setConfirm({ path, action: 'reload' }); return; }
@@ -234,10 +232,14 @@ function WorkspaceEditor({ cwd, language, target }: PanelProps & { target?: Open
     else if (action === 'close') close(path); else void reload(path);
   };
   const visible = files.filter(path => path.toLowerCase().includes(filter.toLowerCase()));
-  return <div className="workspace-editor" onKeyDown={event => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); event.stopPropagation(); void save(); } }}><div className="workspace-tool-form"><input aria-label={zh ? '查找文件名' : 'Find file names'} placeholder={zh ? '查找并打开文件…' : 'Find and open a file…'} value={filter} onChange={event => setFilter(event.target.value)} /></div>{(filter || !documents.length) && <div className="workspace-editor-files">{visible.slice(0, 150).map(path => <button title={path} key={path} onClick={() => { void open(path); setFilter(''); }}><FileCode2 size={13} /><span>{path}</span></button>)}{visible.length > 150 && <p className="workspace-tool-hint">{zh ? '输入文件名缩小结果范围。' : 'Enter a file name to narrow the results.'}</p>}</div>}
+  return <div className="workspace-editor" aria-busy={!!openingPath || !!reloading} onKeyDown={event => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); event.stopPropagation(); void save(); } }}><div className="workspace-tool-form"><input aria-label={zh ? '查找文件名' : 'Find file names'} placeholder={zh ? '查找并打开文件…' : 'Find and open a file…'} value={filter} onChange={event => setFilter(event.target.value)} /></div>{(filter || !documents.length) && <div className="workspace-editor-files">{visible.slice(0, 150).map(path => <button title={path} key={path} onClick={() => { void open(path); setFilter(''); }}><FileCode2 size={13} /><span>{path}</span></button>)}{visible.length > 150 && <p className="workspace-tool-hint">{zh ? '输入文件名缩小结果范围。' : 'Enter a file name to narrow the results.'}</p>}</div>}
     <div className="workspace-document-tabs">{documents.map(document => <div key={document.path} className={active === document.path ? 'active' : ''}><button title={document.path} onClick={() => selectDocument(document.path)}>{document.content !== document.saved && <span aria-label={zh ? '未保存' : 'Unsaved'}>●</span>}{document.path.split(/[\\/]/).at(-1)}</button><button className="icon-button" aria-label={`${zh ? '关闭' : 'Close'} ${document.path}`} disabled={saving === document.path} onClick={() => requestAction(document.path, 'close')}><X size={12} /></button></div>)}</div>
-    {error && <p className="workspace-tool-error" role="alert">{error}</p>}{confirm && <div className="workspace-tool-confirm"><p>{zh ? `${confirm.path} 有未保存修改。` : `${confirm.path} has unsaved changes.`}</p>{confirm.action === 'close' && <button className="secondary-button" disabled={!!saving} onClick={() => { void save(confirm.path).then(saved => { if (saved) close(confirm.path); }); }}>{zh ? '保存并关闭' : 'Save and close'}</button>}<button className="quiet-button" disabled={!!saving} onClick={() => { if (confirm.action === 'close') close(confirm.path); else void reload(confirm.path); }}>{confirm.action === 'close' ? zh ? '放弃修改并关闭' : 'Discard and close' : zh ? '重载文件' : 'Reload file'}</button><button className="quiet-button" onClick={() => setConfirm(undefined)}>{zh ? '取消' : 'Cancel'}</button></div>}
-    {document && <><div className="workspace-editor-toolbar"><code title={document.path}>{document.path}</code><button className="quiet-button" disabled={!!saving || document.content === document.saved} onClick={() => void save()}><Save size={14} />{saving === active ? zh ? '保存中…' : 'Saving…' : zh ? '保存' : 'Save'}</button><button className="icon-button" aria-label={zh ? '重载文件' : 'Reload file'} disabled={!!saving} onClick={() => requestAction(active, 'reload')}><RefreshCw size={14} /></button></div><textarea ref={textarea} className="workspace-editor-text" disabled={reloading === active} aria-label={document.path} value={document.content} onChange={event => change(event.target.value)} spellCheck={false} wrap="off" onKeyDown={event => { if (event.key === 'Tab') { event.preventDefault(); const input = event.currentTarget; const start = input.selectionStart; const end = input.selectionEnd; change(document.content.slice(0, start) + '  ' + document.content.slice(end)); requestAnimationFrame(() => input.setSelectionRange(start + 2, start + 2)); } }} /><p className="workspace-tool-hint">{document.encoding.toUpperCase()} · {document.newline.toUpperCase()} · {document.content.split('\n').length} {zh ? '行' : 'lines'} · Ctrl+S</p></>}
+    {openingPath && <p className="workspace-tool-hint" role="status">{zh ? `正在打开 ${openingPath}…` : `Opening ${openingPath}…`}</p>}{error && <p className="workspace-tool-error" role="alert">{error}</p>}{confirm && <div className="workspace-tool-confirm"><p>{zh ? `${confirm.path} 有未保存修改。` : `${confirm.path} has unsaved changes.`}</p>{confirm.action === 'close' && <button className="secondary-button" disabled={!!saving} onClick={() => { void save(confirm.path).then(saved => { if (saved) close(confirm.path); }); }}>{zh ? '保存并关闭' : 'Save and close'}</button>}<button className="quiet-button" disabled={!!saving} onClick={() => { if (confirm.action === 'close') close(confirm.path); else void reload(confirm.path); }}>{confirm.action === 'close' ? zh ? '放弃修改并关闭' : 'Discard and close' : zh ? '重载文件' : 'Reload file'}</button><button className="quiet-button" onClick={() => setConfirm(undefined)}>{zh ? '取消' : 'Cancel'}</button></div>}
+    {document ? <>
+      <div className="workspace-editor-toolbar"><FileCode2 size={15} /><code title={document.path}>{document.path}</code>{document.readOnly ? <span className="workspace-read-only">{zh ? '只读预览' : 'Read only'}</span> : <button className="quiet-button" disabled={!!saving || document.content === document.saved} onClick={() => void save()}><Save size={14} />{saving === active ? zh ? '保存中…' : 'Saving…' : zh ? '保存' : 'Save'}</button>}<button className="icon-button" aria-label={zh ? '重载文件' : 'Reload file'} disabled={!!saving} onClick={() => requestAction(active, 'reload')}><RefreshCw size={14} /></button></div>
+      <CodeEditor key={document.path} path={document.path} value={document.content} readOnly={document.readOnly || reloading === active} language={language} location={location?.path === active ? location : undefined} onChange={change} onCursor={(line, column) => setCursor({ line, column })} />
+      <div className="workspace-editor-status"><span>{zh ? `行 ${cursor.line}，列 ${cursor.column}` : `Ln ${cursor.line}, Col ${cursor.column}`}</span><span>{document.encoding.toUpperCase()} · {document.newline.toUpperCase()}</span><span>{document.content.split('\n').length} {zh ? '行' : 'lines'}</span></div>
+    </> : !openingPath && <div className="workspace-editor-empty"><FileCode2 size={26} /><strong>{zh ? '打开文件开始查看' : 'Open a file to begin'}</strong><p>{zh ? '通过文件名搜索、消息中的路径或工具结果打开文件。' : 'Find a file above or open a path from messages and tool results.'}</p></div>}
   </div>;
 }
 

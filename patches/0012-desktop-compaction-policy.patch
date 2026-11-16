@@ -1,5 +1,5 @@
 diff --git a/packages/agent/src/compaction/compaction.ts b/packages/agent/src/compaction/compaction.ts
-index ce5500f..b00e764 100644
+index 661c6b1..a938bd5 100644
 --- a/packages/agent/src/compaction/compaction.ts
 +++ b/packages/agent/src/compaction/compaction.ts
 @@ -59,7 +59,7 @@ import {
@@ -20,7 +20,7 @@ index ce5500f..b00e764 100644
  }
  
  /**
-@@ -1685,13 +1687,12 @@ function buildCompactionV2Reasoning(
+@@ -1725,13 +1727,12 @@ function buildCompactionV2Reasoning(
  }
  
  /**
@@ -38,7 +38,7 @@ index ce5500f..b00e764 100644
  	return AIError.is(AIError.classify(previousError), AIError.Flag.AuthFailed) ? nextError : previousError;
  }
  
-@@ -2285,7 +2286,7 @@ export async function compact(
+@@ -2323,7 +2324,7 @@ export async function compact(
  		}
  	}
  
@@ -47,7 +47,7 @@ index ce5500f..b00e764 100644
  		throw new NativeCompactionError(nativeCompactionError);
  	}
  	if (!usedRemoteCompaction && nativeSummary === undefined) await ensureExtraContext();
-@@ -2387,7 +2388,11 @@ export async function compact(
+@@ -2428,7 +2429,11 @@ export async function compact(
  		...(shortSummary !== undefined ? { shortSummary } : {}),
  		firstKeptEntryId: nativeSummary !== undefined ? nativeFirstKeptEntryId : firstKeptEntryId,
  		tokensBefore,
@@ -201,10 +201,10 @@ index 747a4ca..7f7e283 100644
  	thresholdTokens: cfgCompactionThresholdTokens,
  	reserveTokens: cfgCompactionReserveTokens,
 diff --git a/packages/coding-agent/src/session/session-maintenance.ts b/packages/coding-agent/src/session/session-maintenance.ts
-index 877d574..afd090a 100644
+index 516f368..7cbb77f 100644
 --- a/packages/coding-agent/src/session/session-maintenance.ts
 +++ b/packages/coding-agent/src/session/session-maintenance.ts
-@@ -33,6 +33,7 @@ import {
+@@ -34,6 +34,7 @@ import {
  	invalidateMessageCache,
  	isTranscriptUsageAnchor,
  	NativeCompactionError,
@@ -212,15 +212,15 @@ index 877d574..afd090a 100644
  	prepareCompaction,
  	promptBudgetTokens,
  	RESCUE_SHAKE_CONFIG,
-@@ -72,7 +73,6 @@ import { isRecord, logger, prompt, Snowflake, toError } from "@oh-my-pi/pi-utils
- import * as snapcompact from "@oh-my-pi/snapcompact";
+@@ -75,7 +76,6 @@ import * as snapcompact from "@oh-my-pi/snapcompact";
  import { writeArtifact } from "./artifacts";
+ import { cfgOffline } from "../config/auxiliary-model-policy";
  import type { ModelRegistry } from "../config/model-registry";
 -import { CHAT_MODEL_ROLE_IDS } from "../config/model-roles";
  import type { Settings } from "../config/settings";
  import type { ExtensionRunner, SessionBeforeCompactResult } from "../extensibility/extensions";
  import type { CompactOptions, ContextUsage } from "../extensibility/extensions/types";
-@@ -104,7 +104,7 @@ import {
+@@ -107,7 +107,7 @@ import {
  } from "./messages";
  import { isTerminalTextAssistantAnswer } from "./queued-messages";
  import {
@@ -229,7 +229,7 @@ index 877d574..afd090a 100644
  	resolveContextPromotionConfiguredTarget,
  	resolveRoleModelFull,
  } from "./role-models";
-@@ -123,6 +123,7 @@ import {
+@@ -131,6 +131,7 @@ import {
  	cfgCompactionAutoContinue,
  	cfgCompactionEnabled,
  	cfgCompactionMethodOrder,
@@ -237,7 +237,7 @@ index 877d574..afd090a 100644
  	cfgContextPromotionEnabled,
  	cfgSnapcompactShape,
  } from "./context-settings";
-@@ -339,6 +340,7 @@ interface ArmedSpeculation {
+@@ -352,6 +353,7 @@ interface ArmedSpeculation {
  	result: CompactionResult;
  	action: "context-full" | "handoff" | "remote";
  	method: CompactionMethod;
@@ -245,7 +245,7 @@ index 877d574..afd090a 100644
  	codexCompaction?: CodexCompactionContext;
  	/** Last branch entry covered by the speculated summary's source snapshot. */
  	snapshotLeafId: string;
-@@ -1400,6 +1402,7 @@ export class SessionMaintenance {
+@@ -1401,6 +1403,7 @@ export class SessionMaintenance {
  								canUseLiveProviderNativeCompaction(candidate, activeModel, effectiveSettings)) &&
  							(!remoteReader || canReplayRemoteCompactionFrom(candidate, remoteReader))
  					: undefined,
@@ -253,7 +253,7 @@ index 877d574..afd090a 100644
  			);
  			if ((requireProviderRemote || remoteReader) && compactionCandidates.length === 0) {
  				this.#host.emitNotice(
-@@ -1621,7 +1624,8 @@ export class SessionMaintenance {
+@@ -1692,7 +1695,8 @@ export class SessionMaintenance {
  				!compactionAbortController.signal.aborted &&
  				!(error instanceof CompactionCancelledError) &&
  				selectedMethodIndex >= 0 &&
@@ -263,7 +263,7 @@ index 877d574..afd090a 100644
  			) {
  				this.#host.emitNotice(
  					"warning",
-@@ -2296,17 +2300,13 @@ export class SessionMaintenance {
+@@ -2351,17 +2355,13 @@ export class SessionMaintenance {
  				error: error instanceof Error ? error.message : String(error),
  			});
  			if (this.#speculation === run) this.#speculation = undefined;
@@ -283,7 +283,7 @@ index 877d574..afd090a 100644
  			) {
  				this.#failedNativeSpeculation = nativeKey;
  			}
-@@ -2425,6 +2425,7 @@ export class SessionMaintenance {
+@@ -2480,6 +2480,7 @@ export class SessionMaintenance {
  				method === "remote" && !effectiveSettings.remoteEndpoint
  					? candidate => canUseLiveProviderNativeCompaction(candidate, model, effectiveSettings)
  					: undefined,
@@ -291,7 +291,7 @@ index 877d574..afd090a 100644
  			);
  			if (candidates.length === 0) return clear();
  			const codexCompaction = createCodexCompactionContext({
-@@ -2457,6 +2458,7 @@ export class SessionMaintenance {
+@@ -2512,6 +2513,7 @@ export class SessionMaintenance {
  				},
  				action: method === "remote" ? "remote" : "context-full",
  				method,
@@ -299,7 +299,7 @@ index 877d574..afd090a 100644
  				codexCompaction,
  				snapshotLeafId,
  				contextTokensAtStart: contextTokens,
-@@ -2489,6 +2491,7 @@ export class SessionMaintenance {
+@@ -2544,6 +2546,7 @@ export class SessionMaintenance {
  		const model = this.#model;
  		if (!model) return false;
  		const settings = this.#compactionSettings;
@@ -307,7 +307,7 @@ index 877d574..afd090a 100644
  		if (
  			armed.result.preserveData &&
  			!remotePreserveReusable(armed.result.preserveData, model, resolveMethodSettings(settings, armed.method))
-@@ -3639,58 +3642,30 @@ export class SessionMaintenance {
+@@ -3704,66 +3707,32 @@ export class SessionMaintenance {
  		return candidate;
  	}
  
@@ -335,9 +335,14 @@ index 877d574..afd090a 100644
 -		availableModels = availableModels.map(model => registry.fitContextWindow(model, settings));
 -		const candidates: Model[] = [];
 -		const seen = new Set<string>();
+-		const activeProvider = this.#model?.provider;
+-		const offline = cfgOffline.get(settings);
+-		// Offline mode keeps auxiliary requests on the active provider.
+-		const offlineBlocked = (model: Model): boolean =>
+-			offline && (!activeProvider || model.provider !== activeProvider);
 -
 -		const addCandidate = (model: Model | undefined): void => {
--			if (!model) return;
+-			if (!model || offlineBlocked(model)) return;
 -			const key = `${model.provider}/${model.id}`;
 -			if (seen.has(key)) return;
 -			seen.add(key);
@@ -360,6 +365,9 @@ index 877d574..afd090a 100644
 -
 -		const sortedByContext = [...availableModels].sort((a, b) => (b.contextWindow ?? 0) - (a.contextWindow ?? 0));
 -		for (const model of sortedByContext) {
+-			// Offline skips other providers' models without consuming the single
+-			// largest-context slot; a caller-filter rejection still consumes it.
+-			if (offlineBlocked(model)) continue;
 -			if (!seen.has(`${model.provider}/${model.id}`)) {
 -				addCandidate(model);
 -				break;
@@ -371,6 +379,8 @@ index 877d574..afd090a 100644
 +		const selected = selector ? resolveConfiguredModelTarget(selector, preferredModel, availableModels) : preferredModel;
 +		if (!selected) throw new Error(`Configured summary model is unavailable: ${selector}`);
 +		const model = this.#host.modelRegistry.fitContextWindow(selected, settings);
++		// 离线辅助策略保留当前供应商边界。
++		if (cfgOffline.get(settings) && model.provider !== this.#model?.provider) return [];
 +		return !filter || filter(model) ? [model] : [];
  	}
  
@@ -380,7 +390,7 @@ index 877d574..afd090a 100644
  		if (!currentModel) {
  			return new Error(
  				"Compaction requires a model with usable credentials, but no authenticated compaction model is available.",
-@@ -3698,7 +3673,7 @@ export class SessionMaintenance {
+@@ -3771,7 +3740,7 @@ export class SessionMaintenance {
  		}
  		return new Error(
  			`Compaction requires usable credentials for ${currentModel.provider}/${currentModel.id}. ` +
@@ -389,7 +399,7 @@ index 877d574..afd090a 100644
  		);
  	}
  
-@@ -3782,7 +3757,7 @@ export class SessionMaintenance {
+@@ -3859,7 +3828,7 @@ export class SessionMaintenance {
  		}
  
  		if (nativeCompactionFailure) throw nativeCompactionFailure.error;
@@ -398,7 +408,7 @@ index 877d574..afd090a 100644
  	}
  
  	async #prepareCompactionFromHooks(
-@@ -5774,6 +5749,7 @@ export class SessionMaintenance {
+@@ -5935,6 +5904,7 @@ export class SessionMaintenance {
  					method === "remote" && !effectiveSettings.remoteEndpoint && liveModel
  						? candidate => canUseLiveProviderNativeCompaction(candidate, liveModel, effectiveSettings)
  						: undefined,
@@ -406,7 +416,7 @@ index 877d574..afd090a 100644
  				);
  				const retrySettings = cfgRetry.get(this.#host.settings);
  				const telemetry = resolveTelemetry(this.#host.agent.telemetry, this.#host.sessionId());
-@@ -5858,7 +5834,7 @@ export class SessionMaintenance {
+@@ -6019,7 +5989,7 @@ export class SessionMaintenance {
  								candidate.api,
  							);
  							if (AIError.is(id, AIError.Flag.AuthFailed)) {
@@ -415,7 +425,7 @@ index 877d574..afd090a 100644
  								break;
  							}
  							if (AIError.is(id, AIError.Flag.Timeout)) {
-@@ -6102,7 +6078,10 @@ export class SessionMaintenance {
+@@ -6263,7 +6233,10 @@ export class SessionMaintenance {
  					: reason === "incomplete"
  						? `Incomplete response recovery failed: ${errorMessage}`
  						: `Auto-compaction failed: ${errorMessage}`;

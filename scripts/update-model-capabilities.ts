@@ -23,7 +23,8 @@ const models: Record<string, unknown>[] = [];
 for (const [provider, family] of Object.entries(families)) {
   for (const model of Object.values(decoder.getCatalogProvider(catalog, provider) ?? {}) as Record<string, unknown>[]) {
     if (typeof model.id !== 'string' || !family.test(model.id)) continue;
-    models.push({ id: model.id, source: `OMP ${lock.runtimeVersion} / ${provider}`, ...Object.fromEntries(fields.filter(field => model[field] != null).map(field => [field, model[field]])) });
+    const thinking = model.thinking as { efforts?: string[]; defaultLevel?: string } | undefined;
+    models.push({ id: model.id, source: `OMP ${lock.runtimeVersion} / ${provider}`, ...Object.fromEntries(fields.filter(field => model[field] != null).map(field => [field, model[field]])), ...(thinking?.efforts?.length ? { thinkingEfforts: thinking.efforts } : {}), ...(thinking?.defaultLevel ? { defaultThinkingLevel: thinking.defaultLevel } : {}) });
   }
 }
 models.sort((a, b) => String(a.id).localeCompare(String(b.id), 'en'));

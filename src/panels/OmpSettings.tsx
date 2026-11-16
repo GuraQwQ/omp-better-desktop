@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useId, useRef, useState } from 'react';
 import { Plus, RefreshCw, X } from 'lucide-react';
 import { rpc } from '../lib/bridge';
-import { parseSettingInput, parseSettingLines, parseSettingRecord, settingApplicable, settingCategory, settingManagedInDesktop, settingMatches, settingOptionValues, settingText, settingView, type SettingRecordRow } from '../lib/settings-values';
+import { localizeError } from '../lib/i18n';
+import { parseSettingInput, parseSettingLines, parseSettingRecord, settingApplicable, settingCategory, settingMatches, settingOptionValues, settingText, settingView, type SettingRecordRow } from '../lib/settings-values';
 import type { Json, Language } from '../lib/types';
 import Select from '../components/Select';
 import './omp-settings.css';
@@ -9,7 +10,7 @@ import './omp-settings.css';
 const categories: Record<string, [string, string]> = {
   model: ['模型', 'Models'], context: ['上下文', 'Context'], memory: ['记忆', 'Memory'],
   tools: ['工具', 'Tools'], tasks: ['任务', 'Tasks'], files: ['文件', 'Files'], shell: ['Shell', 'Shell'],
-  interaction: ['交互', 'Interaction'], providers: ['服务', 'Services'], appearance: ['终端外观', 'Terminal'], advanced: ['高级', 'Advanced'],
+  interaction: ['交互', 'Interaction'], providers: ['服务', 'Services'], appearance: ['外观', 'Appearance'], advanced: ['高级', 'Advanced'], terminal: ['无关GUI配置', 'Terminal & TUI'],
 };
 const sources: Record<string, [string, string]> = {
   env: ['环境变量', 'Environment'], runtime: ['当前运行时', 'Runtime'], overlay: ['启动配置', 'Launch overlay'],
@@ -27,7 +28,7 @@ const groupNames: Record<string, string> = {
   'Read Summaries': '读取摘要', Reading: '读取', 'Retry & Fallback': '重试与回退', 'Rules (TTSR)': '规则（TTSR）',
   Sampling: '采样', Services: '服务', Skills: '技能', Speech: '语音', 'Startup & Updates': '启动与更新',
   'Status Line': '状态栏', Stream: '流式输出', Subagents: '子代理', Theme: '主题', Thinking: '思考',
-  Bash: 'Bash 命令', Git: 'Git', GitHub: 'GitHub', LSP: '语言服务（LSP）',
+  Bash: 'Bash 命令', Git: 'Git', GitHub: 'GitHub', LSP: '语言服务（LSP）', Find: '检索', Hindsight: 'Hindsight 记忆', Mnemopi: 'Mnemopi 记忆',
   Timeouts: '超时', 'Tiny Model': '小型模型', Todos: '待办', Vision: '视觉',
 };
 
@@ -51,18 +52,19 @@ export default function OmpSettings({ sessionId, language, initialQuery = '' }: 
       const result = await rpc(sessionId, 'desktop_settings', { operation: 'list' });
       void rpc(sessionId, 'get_available_models').then(models => { if (current === revision.current && target === activeSession.current) setSummaryModels(models.models ?? []); }).catch(() => {});
       if (current === revision.current && target === activeSession.current) { settingsSession.current = target; setSettings(result.settings); }
-    } catch (error) { if (current === revision.current && target === activeSession.current) setError(String(error)); }
+    } catch (error) { if (current === revision.current && target === activeSession.current) setError(localizeError(String(error), language)); }
     finally { if (current === revision.current && target === activeSession.current) setLoading(false); }
   };
   useEffect(() => { void load(); return () => { revision.current++; }; }, [sessionId]);
   const values = Object.fromEntries(settings.map(setting => [setting.path, setting.value ?? setting.defaultValue]));
-  const visible = settingsSession.current === sessionId ? settings.filter(setting => settingManagedInDesktop(setting) && (query.trim() ? settingMatches(setting, query, language) : settingCategory(setting) === category && settingApplicable(setting, values))) : [];
+  const visible = settingsSession.current === sessionId ? settings.filter(setting => (settingCategory(setting) === 'terminal') === (category === 'terminal') && (query.trim() ? settingMatches(setting, query, language) : settingCategory(setting) === category && settingApplicable(setting, values))) : [];
   const groups = [...new Set(visible.map(setting => setting.ui?.group ?? ''))];
   return <div className="omp-settings">
     <div className="settings-section-heading"><h2>{zh ? 'OMP 配置' : 'OMP settings'}</h2><button className="icon-button" title={zh ? '刷新' : 'Refresh'} disabled={loading} onClick={() => void load()}><RefreshCw size={15} /></button></div>
     <p className="settings-hint">{zh ? '更改保存到当前 OMP 配置的全局层。每项显示实际生效的来源；项目、启动参数或环境变量可覆盖全局值。' : 'Changes are saved globally in the active OMP profile. Each setting shows its effective source; project, launch and environment values can override global values.'}</p>
     <input className="settings-search" type="search" aria-label={zh ? '搜索 OMP 配置' : 'Search OMP settings'} placeholder={zh ? '搜索设置名称或配置键' : 'Search names or setting keys'} value={query} onChange={event => setQuery(event.target.value)} />
     <nav className="settings-tabs" aria-label={zh ? '配置分类' : 'Setting categories'}>{Object.entries(categories).filter(([id]) => settings.some(setting => settingCategory(setting) === id)).map(([id, names]) => <button key={id} aria-pressed={category === id && !query.trim()} onClick={() => { setCategory(id); setQuery(''); }}>{names[zh ? 0 : 1]}</button>)}</nav>
+    {category === 'terminal' && <p className="settings-hint">{zh ? '管理 OMP 命令行与终端界面的外观、输入和通知。' : 'Appearance, input and notifications for the OMP command line and terminal interface.'}</p>}
     {error && <p role="alert" className="settings-error">{error}</p>}
     {loading ? <p role="status">{zh ? '正在读取配置…' : 'Loading settings…'}</p> : !visible.length ? <p className="settings-hint">{zh ? '没有匹配的设置。' : 'No matching settings.'}</p> : groups.map(group => <section key={group} className="settings-field-group">{group && <h3>{zh ? groupNames[group] ?? group : group}</h3>}{visible.filter(setting => (setting.ui?.group ?? '') === group).map(setting => <SettingField key={`${sessionId}:${setting.path}`} setting={setting.path === 'compaction.summaryModel' ? { ...setting, ui: { ...setting.ui, options: [{ value: '', label: zh ? '原会话模型' : 'Current conversation model' }, ...summaryModels.map(model => ({ value: `${model.provider}/${model.id}`, label: `${model.name ?? model.id} / ${model.provider}` })), ...(setting.value && !summaryModels.some(model => `${model.provider}/${model.id}` === setting.value) ? [{ value: setting.value, label: setting.value }] : [])] } } : setting} language={language} save={async (value, reset) => {
       const current = revision.current;
@@ -98,7 +100,7 @@ export function SettingField({ setting, language, save }: { setting: Json; langu
     catch { setError(zh ? setting.type === 'number' ? '请输入有效数字。' : '请检查数组或对象的格式。' : setting.type === 'number' ? 'Enter a valid number.' : 'Check the array or object format.'); return; }
     setBusy(true);
     try { await save(parsed, reset); if (reset) { setValue(stored); setRecordInvalid(false); setEditorRevision(previous => previous + 1); } setSaved(true); }
-    catch (error) { setError(String(error)); }
+    catch (error) { setError(localizeError(String(error), language)); }
     finally { setBusy(false); }
   };
   const structured = ['array', 'object', 'record'].includes(setting.type);

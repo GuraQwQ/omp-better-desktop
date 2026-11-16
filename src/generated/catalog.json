@@ -1102,14 +1102,6 @@
     "source": "packages/coding-agent/src/slash-commands/builtin-skills.ts"
   },
   {
-    "name": "seance",
-    "kind": "slash",
-    "description": "Consult a saved session without resuming it",
-    "surface": "terminal",
-    "rpc": false,
-    "source": "packages/coding-agent/src/slash-commands/seance.ts"
-  },
-  {
     "name": "read",
     "kind": "tool",
     "description": "",

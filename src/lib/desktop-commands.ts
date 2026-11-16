@@ -57,7 +57,7 @@ export interface DesktopCommands {
   'attachment.clipboard': Command<Empty, ComposerAttachment[]>;
   'attachment.discard': Command<FilePath & { managed: boolean }, null>;
   'attachment.btw': Command<{ message: string; attachments: ComposerAttachment[] }, { message: string; images: { type: 'image'; data: string; mimeType: string }[]; warnings: string[] }>;
-  'models.list': Command<Cwd, ModelCatalogResult>;
+  'models.list': Command<Cwd & { refresh?: boolean }, ModelCatalogResult>;
   'session.list': Command<{ cwd?: string }, SessionSummary[]>;
   'session.search': Command<{ query: string; cwd?: string; includeArchived?: boolean; cursor?: string; limit?: number }, Page<{ session: ArchivedSession; messageId: string; role: string; snippet: string }>>;
   'session.locate': Command<FilePath & { messageId?: string; limit?: number }, HistoryPage>;
@@ -83,6 +83,7 @@ export interface DesktopCommands {
   'workspace.search': Command<Cwd & { query: string; requestId: string; caseSensitive?: boolean; limit?: number }, { matches: { path: string; line: number; text: string }[]; truncated: boolean; cancelled: boolean; skipped: number; errors?: string[] }>;
   'workspace.search.cancel': Command<{ requestId: string }, null>;
   'file.get': Command<Cwd & FilePath, FileValue>;
+  'file.preview': Command<FilePath, FileValue & { readOnly: true }>;
   'file.save': Command<Cwd & FilePath & { content: string; baseRevision: string }, FileValue>;
   'git.status': Command<Cwd, GitStatus>;
   'git.diff': Command<Cwd & { path?: string; staged?: boolean }, { diff: string }>;

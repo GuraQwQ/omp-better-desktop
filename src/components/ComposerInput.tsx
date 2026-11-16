@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useRef, useState, type RefObject } from 'react';
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { Command, File, Puzzle, Sparkles } from 'lucide-react';
 import { request } from '../lib/bridge';
 import { fileMentionAt, insertFileMention, matchingFiles } from '../lib/file-mentions';
@@ -14,6 +14,8 @@ export default function ComposerInput({ value, onChange, onSend, onRecall, disab
   commands?: CatalogEntry[]; language?: Language; onCommandsOpen?: () => void;
 }) {
   const [caret, setCaret] = useState(0);
+  const newlineCaret = useRef<number | null>(null);
+  useLayoutEffect(() => { if (newlineCaret.current !== null) { const next = newlineCaret.current; newlineCaret.current = null; textareaRef.current?.setSelectionRange(next, next); setCaret(next); } }, [value]);
   const [dismissed, setDismissed] = useState(false);
   const [active, setActive] = useState(0);
   const [listing, setListing] = useState<{ cwd: string; files: string[] } | null>(null);
@@ -75,7 +77,15 @@ export default function ComposerInput({ value, onChange, onSend, onRecall, disab
       onCompositionEnd={event => { composition.current = false; compositionEndedAt.current = performance.now(); setComposing(false); setCaret(event.currentTarget.selectionStart); }}
       onKeyDown={event => {
         if (composingInput(event.nativeEvent, composition.current)) return;
-        if (event.key === 'Enter' && performance.now() - compositionEndedAt.current < 500) { event.preventDefault(); compositionEndedAt.current = -Infinity; return; }
+        if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey && performance.now() - compositionEndedAt.current < 500) { event.preventDefault(); compositionEndedAt.current = -Infinity; return; }
+        if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.altKey) {
+          event.preventDefault(); event.stopPropagation();
+          compositionEndedAt.current = -Infinity;
+          const start = event.currentTarget.selectionStart, end = event.currentTarget.selectionEnd;
+          newlineCaret.current = start + 1;
+          onChange(value.slice(0, start) + '\n' + value.slice(end)); setDismissed(true);
+          return;
+        }
         const action = open ? completionKey(event, count) : undefined;
         if (action) {
           event.preventDefault(); event.stopPropagation();
