@@ -1,7 +1,8 @@
 import { modelCatalog } from '../lib/model-catalog';
 import { useEffect, useRef, useState } from 'react';
 import { rpc } from '../lib/bridge';
-import type { Copy } from '../lib/i18n';
+import { localizeError, type Copy } from '../lib/i18n';
+import { localizeNativeText } from '../lib/native-ui-text';
 import type { Json, Language } from '../lib/types';
 
 export default function ProviderAccounts({ sessionId, language, t, onError }: { sessionId: string; language: Language; t: Copy; onError: (error: unknown) => void }) {
@@ -21,13 +22,13 @@ export default function ProviderAccounts({ sessionId, language, t, onError }: { 
     try {
       const result = await rpc(sessionId, 'get_login_providers');
       if (current === revision.current) setProviders(result.providers);
-    } catch (error) { if (current === revision.current) setError(String(error)); }
+    } catch (error) { if (current === revision.current) setError(localizeError(String(error), language)); }
     finally { if (current === revision.current) setLoading(false); }
   };
   useEffect(() => { setAccounts({}); setExpanded(''); void load(); return () => { revision.current++; }; }, [sessionId]);
   const act = async (action: () => Promise<unknown>) => {
     setBusy(true); setError('');
-    try { await action(); modelCatalog.invalidate(); } catch (error) { setError(String(error)); onError(error); } finally { setBusy(false); }
+    try { await action(); modelCatalog.invalidate(); } catch (error) { setError(localizeError(String(error), language)); onError(error); } finally { setBusy(false); }
   };
   const readAccounts = async (providerId: string) => {
     const current = revision.current;
@@ -42,7 +43,7 @@ export default function ProviderAccounts({ sessionId, language, t, onError }: { 
       <div className="setting-row"><div><strong>{provider.name}</strong><small>{provider.authenticated ? zh ? '已连接' : 'Connected' : zh ? '尚未登录' : 'Not signed in'}</small></div><button className="quiet-button" disabled={busy} onClick={() => void act(async () => { await rpc(sessionId, 'login', { providerId: provider.id }); await load(); if (expanded === provider.id) await readAccounts(provider.id); })}>{t.login}</button>{provider.authenticated && <button className="quiet-button" disabled={busy} aria-expanded={expanded === provider.id} onClick={() => { if (expanded === provider.id) setExpanded(''); else { setExpanded(provider.id); void act(() => readAccounts(provider.id)); } }}>{zh ? '账户' : 'Accounts'}</button>}</div>
       {expanded === provider.id && (accounts[provider.id] ?? []).map(account => {
         const key = `${provider.id}:${account.credentialId}`;
-        return <div className="setting-row" key={key}><div><strong>{account.label}</strong><small>{account.detail}{account.active ? zh ? ' / 当前使用' : ' / Active' : ''}</small></div>{confirm === key ? <><button className="quiet-button" disabled={busy} onClick={() => void act(async () => { await rpc(sessionId, 'logout', { providerId: provider.id, credentialId: account.credentialId }); setConfirm(''); await load(); await readAccounts(provider.id); })}>{zh ? '确认退出' : 'Confirm sign out'}</button><button className="quiet-button" disabled={busy} onClick={() => setConfirm('')}>{t.cancel}</button></> : <button className="quiet-button" disabled={busy} onClick={() => setConfirm(key)}>{zh ? '退出账户' : 'Sign out'}</button>}</div>;
+        return <div className="setting-row" key={key}><div><strong>{account.label}</strong><small>{localizeNativeText(account.detail, language)}{account.active ? zh ? ' / 当前使用' : ' / Active' : ''}</small></div>{confirm === key ? <><button className="quiet-button" disabled={busy} onClick={() => void act(async () => { await rpc(sessionId, 'logout', { providerId: provider.id, credentialId: account.credentialId }); setConfirm(''); await load(); await readAccounts(provider.id); })}>{zh ? '确认退出' : 'Confirm sign out'}</button><button className="quiet-button" disabled={busy} onClick={() => setConfirm('')}>{t.cancel}</button></> : <button className="quiet-button" disabled={busy} onClick={() => setConfirm(key)}>{zh ? '退出账户' : 'Sign out'}</button>}</div>;
       })}
     </div>)}
   </section>;

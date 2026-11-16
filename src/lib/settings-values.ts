@@ -23,7 +23,7 @@ export function settingOptionValues(setting: Json): (string | number | boolean)[
   }) ?? [];
 }
 
-const commonOptionsZh: Record<string, string> = { default: '默认', auto: '自动', on: '开启', off: '关闭', enabled: '开启', disabled: '关闭', true: '是', false: '否', global: '全局', project: '项目', never: '从不', always: '始终', inherit: '沿用上级', all: '全部' };
+const commonOptionsZh: Record<string, string> = { default: '默认', auto: '自动', on: '开启', off: '关闭', enabled: '开启', disabled: '关闭', true: '是', false: '否', global: '全局', project: '项目', never: '从不', always: '始终', inherit: '沿用上级', all: '全部', none: '无', minimal: '极低', low: '低', medium: '中', high: '高', xhigh: '更高', max: '最高', custom: '自定义', manual: '手动', system: '系统', light: '浅色', dark: '深色', stable: '稳定版', canary: '预览版' };
 
 export function settingView(setting: Json, language: Language) {
   const translated = language === 'zh' ? settingsZh[setting.path ?? setting.id] : undefined;
@@ -71,6 +71,10 @@ export function parseSettingLines(text: string): string[] {
 }
 
 export function settingCategory(setting: Json): string {
+  if (setting.path === 'images.autoResize' || setting.path === 'images.blockImages') return 'model';
+  // 原生界面行为集中保留；模型、认证、工具与共享运行策略仍按原分类显示。
+  if (!settingManagedInDesktop(setting) || /^(?:tui\.|terminal\.|theme\.|statusLine\.|display\.|composer\.|spelling\.|paste\.|stt\.)/.test(setting.path)
+    || ['symbolPreset', 'colorBlindMode', 'showHardwareCursor', 'doubleEscapeAction', 'treeFilterMode', 'autocompleteMaxVisible', 'emojiAutocomplete', 'autoResume', 'git.enabled', 'input.bareExitOnEmptySession', 'input.bareSlashCommands', 'startup.quiet', 'startup.showSplash', 'startup.setupWizard', 'startup.checkUpdate', 'startup.changelogMode', 'update.channel', 'update.auto', 'completion.notify', 'error.notify', 'ask.notify', 'recap.enabled', 'recap.idleSeconds', 'task.showResolvedModelBadge', 'btw.inject', 'extensionRenderers.assistantText', 'extensionRenderers.transcriptPresenters'].includes(setting.path)) return 'terminal';
   return setting.ui?.tab ?? 'advanced';
 }
 

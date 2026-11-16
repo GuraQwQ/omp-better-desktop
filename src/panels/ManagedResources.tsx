@@ -5,6 +5,7 @@ import AgentSourceIcon from '../components/AgentSourceIcon';
 import { pickPath } from '../lib/bridge';
 import { displayPath } from '../lib/display-path';
 import { localizeError } from '../lib/i18n';
+import { localizeNativeText } from '../lib/native-ui-text';
 import { agentModelOptions, keyValueLines, lineValues, manage, settingInput, type ManagedItem } from '../lib/management';
 import type { Json, Language } from '../lib/types';
 import './managed-resources.css';
@@ -12,6 +13,7 @@ import './managed-resources.css';
 interface Props { resource: string; sessionId: string; language: Language; onError: (error: unknown) => void }
 type Words = ReturnType<typeof words>;
 const words = (language: Language) => language === 'zh' ? {
+  language: 'zh' as const,
   refresh: '刷新', add: '添加', create: '创建', save: '保存', cancel: '取消', close: '收起', edit: '编辑', remove: '删除', confirmRemove: '确认删除',
   search: '搜索名称或来源…', loading: '正在读取…', empty: '暂无条目', noMatches: '没有匹配的条目', working: '正在处理…', done: '已完成', retry: '重试', nextSession: '重新连接会话后生效。',
   enabled: '已启用', disabled: '已停用', enable: '启用', disable: '停用', details: '详情', preview: '内容', advanced: '高级设置', name: '名称', description: '说明',
@@ -25,6 +27,7 @@ const words = (language: Language) => language === 'zh' ? {
   searchModels: '搜索模型或提供商…', prewalk: '预先执行', on: '开启', off: '关闭', host: '主机地址', username: '用户名', port: '端口', keyPath: '密钥文件', choose: '选择文件',
   compat: '兼容模式', hooks: 'Hooks', commands: '自定义命令', templates: '提示词模板', memory: '记忆', optional: '可选', invalid: '请检查输入。',
 } : {
+  language: 'en' as const,
   refresh: 'Refresh', add: 'Add', create: 'Create', save: 'Save', cancel: 'Cancel', close: 'Collapse', edit: 'Edit', remove: 'Delete', confirmRemove: 'Confirm delete',
   search: 'Search name or source…', loading: 'Loading…', empty: 'No items yet', noMatches: 'No matching items', working: 'Working…', done: 'Done', retry: 'Retry', nextSession: 'Reconnect the session to apply.',
   enabled: 'Enabled', disabled: 'Disabled', enable: 'Enable', disable: 'Disable', details: 'Details', preview: 'Content', advanced: 'Advanced settings', name: 'Name', description: 'Description',
@@ -73,7 +76,7 @@ function useManager({ resource, sessionId, language, onError }: Props, listArgs:
     try {
       const result = await manage(sessionId, targetResource, action, args);
       if (!active.current) return;
-      const message = result.message ?? (action === 'test' ? JSON.stringify(result, null, 2) : words(language).done);
+      const message = result.message ? localizeNativeText(result.message, language) : action === 'test' ? JSON.stringify(result, null, 2) : words(language).done;
       setNotice(result.restartRequired ? `${message} ${words(language).nextSession}` : message);
       if (refresh) await load();
       return result;
@@ -109,10 +112,10 @@ function Page({ manager, title, hint, text, children, add, query, setQuery }: { 
   </section>;
 }
 
-const matches = (item: ManagedItem, query: string) => `${item.name} ${item.description ?? ''} ${item.source ?? ''}`.toLocaleLowerCase().includes(query.toLocaleLowerCase());
+const matches = (item: ManagedItem, query: string, language: Language) => `${item.name} ${item.description ?? ''} ${localizeNativeText(item.descriptions?.[language] ?? item.description, language)} ${item.source ?? ''}`.toLocaleLowerCase().includes(query.toLocaleLowerCase());
 function Empty({ items, query, text }: { items: ManagedItem[]; query?: string; text: Words }) { return !items.length ? <p className="managed-empty">{query ? text.noMatches : text.empty}</p> : null; }
 function ItemTitle({ item, text }: { item: ManagedItem; text: Words }) {
-  return <div className="managed-item-title"><div className="agent-source-name"><AgentSourceIcon source={item.importSource ?? item.provider ?? item.source} path={item.importPath ?? item.filePath ?? item.path} /><strong>{item.name}</strong></div><div className="managed-meta">{item.scope && <span>{item.scope === 'user' ? text.user : item.scope === 'project' ? text.project : item.scope}</span>}{item.managed && <span>{text.managed}</span>}{item.type && <span>{String(item.type)}</span>}{item.source && <span title={displayPath(item.source)}>{displayPath(item.source)}</span>}{item.enabled !== undefined && <span>{item.enabled ? text.enabled : text.disabled}</span>}{item.status && <span>{String(item.status)}</span>}</div>{item.description && <p>{item.description}</p>}</div>;
+  return <div className="managed-item-title"><div className="agent-source-name"><AgentSourceIcon source={item.importSource ?? item.provider ?? item.source} path={item.importPath ?? item.filePath ?? item.path} /><strong>{item.name}</strong></div><div className="managed-meta">{item.scope && <span>{item.scope === 'user' ? text.user : item.scope === 'project' ? text.project : item.scope}</span>}{item.managed && <span>{text.managed}</span>}{item.type && <span>{String(item.type)}</span>}{item.source && <span title={displayPath(item.source)}>{displayPath(item.source)}</span>}{item.enabled !== undefined && <span>{item.enabled ? text.enabled : text.disabled}</span>}{item.status && <span>{localizeNativeText(item.status, text.language)}</span>}</div>{item.description && <p>{localizeNativeText(item.descriptions?.[text.language] ?? item.description, text.language)}</p>}</div>;
 }
 function Scope({ value, onChange, text, disabled }: { value: string; onChange: (value: string) => void; text: Words; disabled?: boolean }) {
   return <label className="managed-field"><span>{text.scope}</span><Select label={text.scope} value={value} onChange={onChange} disabled={disabled} options={[{ value: 'user', label: text.user }, { value: 'project', label: text.project }]} /></label>;
@@ -137,7 +140,7 @@ function Detail({ manager, item, text, children, args }: { manager: Manager; ite
   const load = async () => {
     setLoading(true); setError('');
     try { const result = await manager.detail(item.id, args); if (active.current) setDetail(result); }
-    catch (error) { if (active.current) setError(error instanceof Error ? error.message : String(error)); }
+    catch (error) { if (active.current) setError(localizeError(error instanceof Error ? error.message : String(error), text.language)); }
     finally { if (active.current) setLoading(false); }
   };
   return <details className="managed-detail" onToggle={event => { if (event.currentTarget.open && !detail && !loading && !error) void load(); }}><summary><ChevronDown size={13} />{text.details}</summary>{loading ? <p role="status">{text.loading}</p> : error ? <div role="alert"><p>{error}</p><button type="button" className="quiet-button" onClick={() => void load()}>{text.retry}</button></div> : detail ? <><BodyPreview item={detail} />{children?.(detail)}</> : null}</details>;
@@ -164,7 +167,7 @@ function McpPage(props: Props) {
     catch (error) { m.fail(error); }
     finally { setCancelling(false); }
   };
-  const shown = m.items.filter(item => matches(item, query));
+  const shown = m.items.filter(item => matches(item, query, props.language));
   return <Page manager={m} title={t.mcp} hint={t.mcpHint} text={t} query={query} setQuery={setQuery} add={<button className="secondary-button" disabled={m.busy} onClick={() => setAdding(true)}><Plus size={14} />{t.add}</button>}>
     {adding && <form className="managed-form" onSubmit={event => { event.preventDefault(); void submit(); }}><fieldset disabled={m.busy}>
       <div className="managed-columns"><label className="managed-field">{t.name}<input value={name} required onChange={event => setName(event.target.value)} /></label><Scope value={scope} onChange={setScope} text={t} /></div>
@@ -181,7 +184,7 @@ function SkillsPage(props: Props) {
   const [query, setQuery] = useState(''), [edit, setEdit] = useState<ManagedItem | null | undefined>();
   const [name, setName] = useState(''), [description, setDescription] = useState(''), [body, setBody] = useState('');
   const open = (item: ManagedItem | null) => { setEdit(item); setName(item?.name ?? ''); setDescription(item?.description ?? ''); setBody(item?.body ?? item?.content ?? ''); };
-  const shown = m.items.filter(item => matches(item, query));
+  const shown = m.items.filter(item => matches(item, query, props.language));
   return <Page manager={m} title={t.skills} hint={t.skillsHint} text={t} query={query} setQuery={setQuery} add={<button className="secondary-button" disabled={m.busy} onClick={() => open(null)}><Plus size={14} />{t.create}</button>}>
     {edit !== undefined && <form className="managed-form" onSubmit={event => { event.preventDefault(); void m.run(edit ? 'update' : 'create', { id: edit?.id, name: name.trim(), description: description.trim(), body }).then(result => { if (result) setEdit(undefined); }); }}><fieldset disabled={m.busy}><label className="managed-field">{t.skillName}<input required value={name} disabled={!!edit} onChange={event => setName(event.target.value)} /></label><label className="managed-field">{t.description}<input required value={description} onChange={event => setDescription(event.target.value)} /></label><label className="managed-field">{t.body}<textarea aria-label={t.body} required rows={10} value={body} onChange={event => setBody(event.target.value)} /></label></fieldset><FormActions manager={m} text={t} cancel={() => setEdit(undefined)} /></form>}
     <Empty items={shown} query={query} text={t} />{shown.map(item => <article className="managed-item" key={item.id}><ItemTitle item={item} text={t} /><div className="managed-actions"><Toggle manager={m} item={item} text={t} />{item.managed && <Delete manager={m} item={item} action="delete" text={t} />}</div><Detail manager={m} item={item} text={t} key={`${item.id}:${m.version}`}>{detail => detail.managed || item.managed ? <button type="button" className="quiet-button" disabled={m.busy} onClick={() => open(detail)}>{t.edit}</button> : null}</Detail></article>)}
@@ -193,7 +196,7 @@ function PluginsPage(props: Props) {
   const [query, setQuery] = useState(''), [adding, setAdding] = useState(false), [source, setSource] = useState(''), [scope, setScope] = useState('user');
   const [marketplaces, setMarketplaces] = useState<string[]>([]);
   const isMarketplace = marketplaces.some(name => source.trim().endsWith(`@${name}`));
-  const shown = m.items.filter(item => matches(item, query));
+  const shown = m.items.filter(item => matches(item, query, props.language));
   return <><Page manager={m} title={t.plugins} hint={t.pluginsHint} text={t} query={query} setQuery={setQuery} add={<button type="button" className="secondary-button" disabled={m.busy} onClick={() => setAdding(true)}><Plus size={14} />{t.install}</button>}>
     {adding && <form className="managed-form" onSubmit={event => { event.preventDefault(); void m.run('install', { source: source.trim(), scope: isMarketplace ? scope : 'user' }).then(result => { if (result) { setAdding(false); setSource(''); } }); }}><fieldset disabled={m.busy}><label className="managed-field">{t.installSource}<input value={source} required placeholder={t.installHint} onChange={event => setSource(event.target.value)} /></label><Scope value={isMarketplace ? scope : 'user'} onChange={setScope} text={t} disabled={!isMarketplace} /><small>{t.pluginScope}</small></fieldset><FormActions manager={m} text={t} cancel={() => setAdding(false)} /></form>}
     <Empty items={shown} query={query} text={t} />{shown.map(item => <article className="managed-item" key={`${item.scope}:${item.id}`}><ItemTitle item={item} text={t} /><div className="managed-actions"><Toggle manager={m} item={item} text={t} /><button type="button" className="quiet-button" disabled={m.busy} onClick={() => void m.run('update', { id: item.id, scope: item.scope })}>{t.update}</button><Delete manager={m} item={item} text={t} label={t.uninstall} /></div><Detail manager={m} item={item} text={t} args={{ scope: item.scope }} key={`${item.scope}:${item.id}:${m.version}`}>{detail => <PluginSettings item={{ ...detail, scope: item.scope }} manager={m} text={t} />}</Detail></article>)}
@@ -247,7 +250,7 @@ function AgentsPage(props: Props) {
     finally { if (revision === modelRequest.current) setModelsLoading(false); }
   }, [props.sessionId, m.fail]);
   useEffect(() => { void loadModels(); return () => { modelRequest.current++; }; }, [loadModels]);
-  const shown = m.items.filter(item => matches(item, query));
+  const shown = m.items.filter(item => matches(item, query, props.language));
   return <Page manager={{ ...m, load: async () => { await Promise.all([m.load(), loadModels()]); } }} title={t.agents} hint={t.agentsHint} text={t} query={query} setQuery={setQuery}><Empty items={shown} query={query} text={t} />{shown.map(item => <article className="managed-item" key={item.id}><ItemTitle item={item} text={t} /><div className="managed-actions"><Toggle item={item} manager={m} text={t} /></div><AgentOptions item={item} manager={m} text={t} models={models} modelsLoading={modelsLoading} key={`${item.id}:${m.version}`} /></article>)}</Page>;
 }
 function AgentOptions({ item, manager, text, models, modelsLoading }: { item: ManagedItem; manager: Manager; text: Words; models: Json[]; modelsLoading: boolean }) {
@@ -271,7 +274,7 @@ function SshPage(props: Props) {
     try { const result = await m.run(test ? 'test' : editing ? 'update' : 'create', { name: name.trim(), scope, previousName: editing?.name, previousScope: editing?.scope, host: hostValue() }, !test); if (result && !test) setEditing(undefined); }
     catch (error) { m.fail(error); }
   };
-  const shown = m.items.filter(item => matches(item, query));
+  const shown = m.items.filter(item => matches(item, query, props.language));
   return <Page manager={m} title={t.ssh} hint={t.sshHint} text={t} query={query} setQuery={setQuery} add={<button type="button" className="secondary-button" disabled={m.busy} onClick={() => open(null)}><Plus size={14} />{t.add}</button>}>
     {editing !== undefined && <form className="managed-form" onSubmit={event => { event.preventDefault(); void submit(); }}><fieldset disabled={m.busy}><div className="managed-columns"><label className="managed-field">{t.name}<input value={name} required onChange={event => setName(event.target.value)} /></label><Scope value={scope} onChange={setScope} text={t} /></div><label className="managed-field">{t.host}<input value={host} required onChange={event => setHost(event.target.value)} /></label><div className="managed-columns"><label className="managed-field">{t.username}<input value={username} onChange={event => setUsername(event.target.value)} /></label><label className="managed-field">{t.port}<input value={port} type="number" min={1} max={65535} placeholder="22" onChange={event => setPort(event.target.value)} /></label></div><details className="managed-detail"><summary><ChevronDown size={13} />{t.advanced}</summary><label className="managed-field">{t.keyPath}<div className="managed-file-input"><input aria-label={t.keyPath} value={keyPath} onChange={event => setKeyPath(event.target.value)} /><button type="button" className="quiet-button" onClick={() => void pickPath(false).then(value => { if (value) setKeyPath(value); }).catch(m.fail)}><FolderOpen size={14} />{t.choose}</button></div></label><label className="managed-field">{t.description}<input value={description} onChange={event => setDescription(event.target.value)} /></label><label className="managed-checkbox"><input type="checkbox" checked={compat} onChange={event => setCompat(event.target.checked)} />{t.compat}</label></details></fieldset><FormActions manager={m} text={t} cancel={() => setEditing(undefined)}><button type="button" className="quiet-button" disabled={m.busy || !host.trim()} onClick={() => void submit(true)}>{t.test}</button></FormActions></form>}
     <Empty items={shown} query={query} text={t} />{shown.map(item => <article className="managed-item" key={`${item.scope}:${item.id}`}><ItemTitle item={item} text={t} /><code className="managed-path">{item.username ? `${item.username}@` : ''}{item.host}{item.port ? `:${item.port}` : ''}</code><div className="managed-actions">{!item.readOnly && <button type="button" className="quiet-button" disabled={m.busy} onClick={() => open(item)}>{t.edit}</button>}<button type="button" className="quiet-button" disabled={m.busy} onClick={() => void m.run('test', { id: item.id, host: { host: item.host, username: item.username, port: item.port, keyPath: item.keyPath, description: item.description, compat: item.compat } }, false)}>{t.test}</button>{!item.readOnly && <Delete item={item} manager={m} text={t} action="delete" />}</div></article>)}
@@ -286,7 +289,7 @@ function ResourceInventory(props: Props) {
 function InventorySection(props: Props & { kind: string }) {
   const m = useManager(props, { kind: props.kind }), t = words(props.language);
   const [query, setQuery] = useState('');
-  const shown = m.items.filter(item => matches(item, query));
+  const shown = m.items.filter(item => matches(item, query, props.language));
   const title = t[props.kind as 'hooks' | 'commands' | 'templates' | 'memory'];
   return <Page manager={m} title={title} text={t} query={query} setQuery={setQuery}><Empty items={shown} query={query} text={t} />{shown.map(item => <article className="managed-item" key={item.id}><ItemTitle item={item} text={t} />{props.kind === 'hooks' && <div className="managed-actions"><Toggle item={item} manager={m} text={t} args={{ kind: 'hooks' }} /></div>}<Detail key={`${item.id}:${m.version}`} item={item} manager={m} text={t} args={{ kind: props.kind }} /></article>)}</Page>;
 }

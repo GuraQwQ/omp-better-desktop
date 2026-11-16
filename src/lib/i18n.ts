@@ -1,4 +1,5 @@
 import type { Language } from './types';
+import { localizeNativeText } from './native-ui-text';
 
 const en = {
   quoteMessage: 'Quote message', quote: 'Quote', selectionActions: 'Selection actions', annotate: 'Annotate', sideQuestion: 'Side question', closeSelectionActions: 'Close selection actions', loadLater: 'Load later messages',
@@ -184,5 +185,5 @@ export function localizeError(message: string, language: Language): string {
     'Open the desktop application to access local projects and the OMP runtime. / 请打开桌面应用以访问本地项目和 OMP 运行时。': ['Open the desktop application to access local projects and the OMP runtime.', '请打开桌面应用以访问本地项目和 OMP 运行时。'],
     'Choose a folder from the desktop application. / 请在桌面应用中选择文件夹。': ['Choose a folder from the desktop application.', '请在桌面应用中选择文件夹。'],
   };
-  return browserOnly[message]?.[language === 'zh' ? 1 : 0] ?? (language === 'zh' ? errorTranslations[message] ?? message : message);
+  return browserOnly[message]?.[language === 'zh' ? 1 : 0] ?? (language === 'zh' ? errorTranslations[message] ?? localizeNativeText(message, language) : message);
 }
