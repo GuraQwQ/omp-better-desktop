@@ -48,6 +48,7 @@ pub struct Session {
     pub path: Arc<Mutex<Option<PathBuf>>>,
     settled: Arc<AtomicBool>,
     side_running: Arc<AtomicBool>,
+    swarm: Arc<crate::swarm::Control>,
     capture_context: PathBuf,
     launch: crate::launch::ResolvedLaunch,
     questions: Arc<Questions>,
@@ -58,6 +59,7 @@ pub struct Session {
 impl Drop for Session {
     fn drop(&mut self) {
         self.questions.close();
+        self.swarm.close();
         let _ = std::fs::remove_file(&self.capture_context);
         if let Some(parent) = self.capture_context.parent() {
             let _ = std::fs::remove_dir(parent);
@@ -92,6 +94,27 @@ fn btw_running(record: &Value) -> bool {
         .and_then(|turns| turns.last())
         .unwrap_or(record)["status"]
         == "running"
+}
+
+fn control_swarm(
+    client: &Client,
+    swarm: &crate::swarm::Control,
+    action: &str,
+    args: Value,
+) -> Result<Value, String> {
+    let commands = client
+        .call_raw(json!({"type":"get_available_commands"}))
+        .map_err(|error| error.to_string())?;
+    if !commands["commands"].as_array().is_some_and(|commands| {
+        commands
+            .iter()
+            .any(|command| command["name"] == "desktop-swarm")
+    }) {
+        return Err("协作扩展尚未加载，请重新连接会话。".into());
+    }
+    swarm.request(action, args, |frame| {
+        client.call_raw(frame).map_err(|error| error.to_string())
+    })
 }
 
 #[cfg(test)]
@@ -132,6 +155,7 @@ impl Sessions {
                 active.as_deref() != Some(id.as_str())
                     && session.settled.load(Ordering::Acquire)
                     && !session.side_running.load(Ordering::Acquire)
+                    && !session.swarm.busy()
                     && !session.questions.has_pending()
                     && Arc::strong_count(&session.client) == 1
             })
@@ -217,11 +241,22 @@ impl Sessions {
         let mut process = command(root)?;
         let launch = crate::launch::resolve(root, &cwd)?;
         let async_questions = launch.async_questions;
+        let swarm_extension = crate::swarm::install(root)?;
+        process.env("OMP_DESKTOP_SWARM_DIR", root.join("swarm"));
+        process.env(
+            "OMP_DESKTOP_SWARM_ENABLED",
+            if crate::config(root)?["preferences"]["features"]["swarm"] == true {
+                "1"
+            } else {
+                "0"
+            },
+        );
         process.env("OMP_DESKTOP_REQUEST_CAPTURE_SESSION_ID", &id);
         process
             .current_dir(&cwd)
             .args(["--mode", "rpc-ui"])
             .args(&launch.arguments);
+        process.arg("--extension").arg(swarm_extension);
         if async_questions {
             let overlay = crate::questions::install_overlay(root)?;
             process.arg(format!("--config={}", overlay.display()));
@@ -268,6 +303,7 @@ impl Sessions {
             state["isSettled"].as_bool().unwrap_or(false),
         ));
         let side_running = Arc::new(AtomicBool::new(false));
+        let swarm = Arc::new(crate::swarm::Control::default());
         let path_cell = Arc::new(Mutex::new(actual_path.clone()));
         let result = json!({"id":id,"cwd":cwd,"path":actual_path,"state":state});
         self.sessions.lock().unwrap().insert(
@@ -279,6 +315,7 @@ impl Sessions {
                 path: path_cell.clone(),
                 settled: settled.clone(),
                 side_running: side_running.clone(),
+                swarm: swarm.clone(),
                 capture_context: capture_context.clone(),
                 launch,
                 questions,
@@ -294,6 +331,14 @@ impl Sessions {
             // 单独消费事件，控制请求不会排在 UI 渲染之后。
             while let Ok(event) = receiver.recv() {
                 let event = event_value(event);
+                if let Some(payload) = crate::swarm::event(&event) {
+                    swarm.publish(&payload);
+                    let mut event = payload;
+                    event["type"] = json!("desktop_swarm");
+                    emit(&app, &id, event);
+                    app.state::<crate::Desktop>().sessions.release_idle(&app);
+                    continue;
+                }
                 if event["type"] == "extension_ui_request" {
                     if event["method"] == "browser_session" {
                         let Some(client) = browser_client.upgrade() else {
@@ -347,6 +392,7 @@ impl Sessions {
                 }
             }
             browser_logins.cancel(&id, None);
+            swarm.close();
             let session = app
                 .state::<crate::Desktop>()
                 .sessions
@@ -364,6 +410,38 @@ impl Sessions {
             }
         });
         Ok(result)
+    }
+
+    pub fn swarm_control(&self, id: &str, action: &str, args: Value) -> Result<Value, String> {
+        let (client, swarm, access) = {
+            let sessions = self.sessions.lock().unwrap();
+            let session = sessions.get(id).ok_or("请重新连接会话后使用协作功能。")?;
+            (
+                session.client.clone(),
+                session.swarm.clone(),
+                session.access.clone(),
+            )
+        };
+        let _access = access.gate.read().map_err(|error| error.to_string())?;
+        if access.deleting.load(Ordering::Acquire) {
+            return Err("正在删除会话，请等待操作结束。".into());
+        }
+        control_swarm(&client, &swarm, action, args)
+    }
+
+    pub fn swarm_enabled(&self, app: &AppHandle, enabled: bool) {
+        let ids: Vec<_> = self.sessions.lock().unwrap().keys().cloned().collect();
+        for id in ids {
+            if let Err(error) =
+                self.swarm_control(&id, if enabled { "enable" } else { "disable" }, json!({}))
+            {
+                emit(
+                    app,
+                    &id,
+                    json!({"type":"notice","level":"error","message":format!("协作设置已保存，当前连接未能应用：{error}。请重新连接。宿主中的新连接将使用已保存设置。" )}),
+                );
+            }
+        }
     }
 
     pub fn rpc(&self, app: AppHandle, id: &str, frame: Value) -> Result<Value, String> {
@@ -539,6 +617,9 @@ impl Sessions {
         let session = {
             let mut sessions = self.sessions.lock().unwrap();
             if let Some(session) = sessions.get(id) {
+                if session.swarm.busy() {
+                    return Err("协作成员仍在工作，请先暂停协作后关闭。".into());
+                }
                 if !session.settled.load(Ordering::Acquire) {
                     return Err(
                         "This session still has active work. Stop it before closing.".into(),
@@ -585,6 +666,7 @@ impl Sessions {
                     session.client.clone(),
                     session.access.clone(),
                     session.questions.clone(),
+                    session.swarm.clone(),
                 )
             })
             .collect();
@@ -611,7 +693,7 @@ impl Sessions {
         let mut reset = DeleteAccess {
             gates: targets
                 .iter()
-                .map(|(_, _, access, _)| access.clone())
+                .map(|(_, _, access, _, _)| access.clone())
                 .collect(),
             committed: false,
         };
@@ -619,7 +701,7 @@ impl Sessions {
             access.deleting.store(true, Ordering::Release);
         }
         // 先解除等待确认，再等已有 RPC 退出；不再允许新请求写入这个会话。
-        for (_, client, _, questions) in &targets {
+        for (_, client, _, questions, _) in &targets {
             questions.interrupt(|| {
                 client
                     .call_raw(json!({"type":"abort"}))
@@ -631,7 +713,9 @@ impl Sessions {
             .iter()
             .map(|access| access.gate.write().map_err(|error| error.to_string()))
             .collect::<Result<_, _>>()?;
-        for (_, client, _, _) in &targets {
+        // 独占删除期间结清成员，避免禁用后又被并发请求重新启动。
+        for (_, client, _, _, swarm) in &targets {
+            control_swarm(client, swarm, "disable", json!({}))?;
             client
                 .call_raw(json!({"type":"btw_cancel"}))
                 .map_err(|error| error.to_string())?;
@@ -651,7 +735,7 @@ impl Sessions {
         }
         // 文件回收失败时保留同一连接；成功后才移除运行时和界面身份。
         let result = crate::session_library::delete_session(root, request)?;
-        for (id, _, _, _) in &targets {
+        for (id, _, _, _, _) in &targets {
             let removed = self.sessions.lock().unwrap().remove(id);
             self.browser_logins.cancel(id, None);
             emit(
@@ -674,13 +758,14 @@ impl Sessions {
             .lock()
             .unwrap()
             .values()
-            .map(|s| (s.client.clone(), s.questions.clone()))
+            .map(|s| (s.client.clone(), s.questions.clone(), s.swarm.clone()))
             .collect();
         let handles: Vec<_> = clients
             .into_iter()
-            .map(|(client, questions)| {
+            .map(|(client, questions, swarm)| {
                 thread::spawn(move || {
                     questions.close();
+                    let _ = control_swarm(&client, &swarm, "disable", json!({}));
                     let _ = client.call_raw(json!({"type":"abort"}));
                 })
             })
@@ -717,6 +802,9 @@ impl Sessions {
         let (cwd, path, launch_args) = {
             let sessions = self.sessions.lock().unwrap();
             let session = sessions.get(id).ok_or("Open a session first.")?;
+            if session.swarm.busy() {
+                return Err("请先暂停协作，再切换到此会话的终端界面。".into());
+            }
             if !session.settled.load(Ordering::Acquire) {
                 return Err("Stop the active work before opening its TUI.".into());
             }

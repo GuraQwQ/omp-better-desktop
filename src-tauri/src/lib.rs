@@ -16,6 +16,7 @@ mod session_library;
 mod sessions;
 mod shells;
 mod storage;
+mod swarm;
 mod workspace;
 mod workspace_tools;
 
@@ -111,7 +112,7 @@ fn set_preferences(root: &Path, patch: &Value) -> Result<Value, String> {
                     values.iter().all(|(key, value)| {
                         matches!(
                             key.as_str(),
-                            "reviews" | "browser" | "cards" | "externalSessions"
+                            "reviews" | "browser" | "cards" | "externalSessions" | "swarm"
                         ) && value.is_boolean()
                     })
                 }) => {}
@@ -218,6 +219,9 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
         "preferences.set" => {
             let _lock = desktop.configuration.lock().unwrap();
             let preferences = set_preferences(root, &request["patch"])?;
+            if let Some(enabled) = request["patch"]["features"]["swarm"].as_bool() {
+                desktop.sessions.swarm_enabled(&app, enabled);
+            }
             if preferences["features"]["cards"] != true {
                 for (label, window) in app.webview_windows() {
                     if label.starts_with("card-") {
@@ -381,6 +385,22 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
             text(&request, "id")?,
             request["command"].clone(),
         ),
+        "swarm.control" => {
+            let action = text(&request, "action")?;
+            if !matches!(action, "status" | "disable" | "stop")
+                && config(root)?["preferences"]["features"]["swarm"] != true
+            {
+                return Err("请先在进阶设置中开启 Swarm 协作。".into());
+            }
+            desktop.sessions.swarm_control(
+                text(&request, "id")?,
+                action,
+                request["args"]
+                    .as_object()
+                    .map(|args| json!(args))
+                    .unwrap_or(json!({})),
+            )
+        }
         "session.ui" => desktop.sessions.ui(
             app.clone(),
             text(&request, "id")?,

@@ -19,6 +19,7 @@ The webview calls `invoke('desktop_command', { request })`. Requests have a stri
 | session.open | cwd, path? | `{id,cwd,path?,state}` |
 | session.close | id | `{path}`; refuses while unsettled; `path` is null until the session is persisted |
 | session.rpc | id, command | OMP response data |
+| swarm.control | id, action, args? | 协作快照；action 为 status/enable/disable/create/add/post/stop/resume |
 | session.ui | id, response | native: null; asynchronous ask: `{accepted,ack}` or `{cancelled:true}` |
 | workspace.diff | cwd | `{diff,status}` |
 | workspace.files | cwd | relative file path array |
@@ -109,7 +110,7 @@ OMP 的 RPC、CLI 和内置终端统一设置 `PI_NATIVES_DIR=<dataRoot>/cache/n
 
 ### 桌面工作区与资料库
 
-通用设置包含轮次显示、后台完成通知、异步提问和四个默认关闭的开关：结构化评审、浏览器工作区入口、浮动任务卡、外部会话查看。外观只管理语言、主题与动效。features 的局部保存合并现有设置，避免快速修改不同开关互相覆盖。勾选与开关统一使用全局控件样式，减少动态效果时保留清晰的最终状态。
+通用设置包含轮次显示、后台完成通知、异步提问；工作区功能中的结构化评审、浏览器工作区入口、浮动任务卡、外部会话查看默认关闭，进阶中的 Swarm 协作也默认关闭。外观只管理语言、主题与动效。features 的局部保存合并现有设置，避免快速修改不同开关互相覆盖。勾选与开关统一使用全局控件样式，减少动态效果时保留清晰的最终状态。
 
 | 请求 | 关键字段 | 返回或行为 |
 |---|---|---|
@@ -155,3 +156,17 @@ genui.get/save/call/clear 由原生配置门控；可选持久化用 genui.sqlit
 输入框的 Enter 发送，Shift+Enter 或 Mod+Enter 换行；输入法组合期间保留候选确认语义。右侧分栏默认预览宽度增加 20px，用户手动调整后的布局继续保存。内置文件查看器提供行号、语法高亮、查找与版本冲突保留；项目外文件按完整路径只读预览。
 
 OMP 设置按 GUI 适用性分组，终端/TUI 专属配置集中到“无关GUI配置”。中文标签、选项、内置代理描述及登录提示仅作用于显示层，持久化配置值、登录回复与代理提示词保持原值。
+
+### 子代理与 Swarm 协作
+
+普通子代理使用宿主已订阅的 `progress` 事件，经 `desktop-event` 传入前端。任务工具卡只展示所属 `parentToolCallId` 的成员；点击成员打开右侧详情，使用 `get_subagents` 和带字节游标的 `get_subagent_messages` 读取轨迹。运行中的成员可通过 `steer_subagent` 纠偏或 `cancel_subagent` 停止；结束、等待或中止的普通成员不通过这两个接口恢复。原生同伴消息按实际 `irc_message` 显示。
+
+`preferences.features.swarm` 默认关闭。开启后，桌面随包扩展提供持久公告板、稳定命名成员、定向消息和新消息唤醒，复用 OMP 公共扩展与 SDK，不修改内核。Coordinator 使用主会话，Worker 与 Verifier 使用各自会话；成员直接交付、审查和返工。Verifier 不提供 write/edit 工具，仍可通过已获准的执行工具验证。成员继承父会话允许的工具范围和模型注册表，执行遵循 OMP 原有工具与扩展路径。
+
+宿主将嵌入的扩展幂等安装到 `<dataRoot>/desktop-extensions/swarm/`，并通过 `--extension` 加载。面板控制发送 `/desktop-swarm <JSON>`，由本地扩展命令处理并检查 `agentInvoked:false`；创建目标之后的任务规划和成员执行会调用模型。扩展通过 `ui.setStatus('desktop:swarm', JSON.stringify({requestId?,snapshot,error?}))` 回传，宿主转换为 `{type:'desktop_swarm',requestId?,snapshot,error?}`；控制失败拒绝请求，完整快照不作为模型消息广播。
+
+公告板、成员游标与会话文件保存在 `<dataRoot>/swarm/` 下，以根会话身份隔离，属于持久业务数据。成员可继承工作目录，或使用从已提交 HEAD 创建的独立 Git 工作副本；工作副本中的变更由用户检查和合入。停止成员、暂停协作、关闭功能和删除根会话前会结算运行成员，保留已保存的成员记录与工作成果。待处理或运行中的协作阻止空闲回收；终端接管与手动关闭要求先暂停。重新连接后读取持久快照，功能关闭时不派发工作。
+
+用户可从公告板或成员详情定向发言。`post` 的 `args.delivery` 为 `note` 或 `nudge`，界面默认留言：只保存记录，不唤醒成员；提醒或纠偏使用原生安全投递边界，成员后续回应仍记录在公告板。手动停止的成员需要显式恢复。主会话中的新约束由 Coordinator 判断影响范围并定向传达；转发记录、成员实际回应与 Verifier 复验分别构成可检查的进度，不因主会话收到纠错就声称修改已完成。
+
+面板默认显示可搜索与筛选的公告板，消息使用稳定 `#seq` 引用，长消息可展开与收起；成员信息与原始轨迹按需展开。关系图根据实际公告板发送者和收件人生成，提供消息进度回看及实时末端；回看不会发起模型调用。分栏、叠层和最大化复用现有工作区布局。

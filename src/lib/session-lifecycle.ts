@@ -190,6 +190,7 @@ export class SessionLifecycle {
       const empty = replaceMessages && state.sessionFile === null && nextPath === undefined;
       const transcriptKey = sessionKey({ id, path: nextPath });
       const replaced = this.transcripts.get(id) !== transcriptKey;
+      const identityChanged = !!current.state.sessionId && !!mergedState.sessionId && current.state.sessionId !== mergedState.sessionId;
       const retained = empty ? source.pending.reduce<SessionView>((retained, question) => completeQuestion(retained, question), current) :
         current.path && (!nextPath || sessionPathKey(nextPath) !== sessionPathKey(current.path)) ? clearQuestions(current) : current;
       const priorMessages = empty ? new Set(source.messages.map(message => message.id)) : undefined;
@@ -206,6 +207,7 @@ export class SessionLifecycle {
         messages = enrichToolMessages([...merged.values()]);
       }
       this.write({ ...retained, state: mergedState, title: snapshot.title ? current.title : state.sessionName ?? (replaceMessages && newTitle ? newTitle : current.title), path: nextPath,
+        ...(identityChanged ? { agents: undefined, swarm: undefined } : {}),
         ...(empty ? { messages: snapshot.messages ? current.messages.filter(message => !priorMessages!.has(message.id)) : [], nextCursor: undefined } :
           messages && (!snapshot.messages || replaced) ? { messages, nextCursor: history!.nextCursor } : {}) });
       if (empty || messages && (!snapshot.messages || replaced)) this.transcripts.set(id, transcriptKey);
@@ -249,7 +251,7 @@ export class SessionLifecycle {
     if (previous === next) return;
     if (next.historyOnly) this.released.add(next.id);
     const pathChanged = previous?.path !== next.path;
-    if (previous?.path && pathChanged && (!next.path || sessionPathKey(previous.path) !== sessionPathKey(next.path)) || previous && !previous.historyOnly && next.historyOnly) this.invalidate(next.id);
+    if (previous?.state.sessionId && next.state.sessionId && previous.state.sessionId !== next.state.sessionId || previous?.path && pathChanged && (!next.path || sessionPathKey(previous.path) !== sessionPathKey(next.path)) || previous && !previous.historyOnly && next.historyOnly) this.invalidate(next.id);
     for (const snapshot of this.snapshots.get(next.id) ?? []) {
       for (const key of new Set([...Object.keys(previous?.state ?? {}), ...Object.keys(next.state)])) if (previous?.state[key] !== next.state[key] || (key in (previous?.state ?? {})) !== (key in next.state)) snapshot.state.add(key);
       if (event && (event.type !== 'prompt_result' || event.sessionSettled)) for (const key of confirmedState[event.type] ?? []) snapshot.state.add(key);

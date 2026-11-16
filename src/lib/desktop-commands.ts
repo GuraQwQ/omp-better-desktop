@@ -72,6 +72,7 @@ export interface DesktopCommands {
   'session.activate': Command<{ id: string | null }, null>;
   'session.open': Command<Cwd & { path?: string }, { id: string; cwd: string; path: string | null; state: Json }>;
   'session.rpc': Command<Id & { command: Json }, Json>;
+  'swarm.control': Command<Id & { action: 'status' | 'enable' | 'disable' | 'create' | 'add' | 'post' | 'stop' | 'resume'; args?: Json }, Json>;
   'session.ui': Command<Id & { response: Json }, null>;
   'session.close': Command<Id, { path: string | null }>;
   'usage.summary': Command<{ cwd?: string; from?: string; to?: string }, UsageSummary>;

@@ -123,6 +123,7 @@ pub fn session_path(root: &Path, path: &Path) -> Result<PathBuf, String> {
     let real = fs::canonicalize(path).map_err(|e| e.to_string())?;
     let managed = fs::canonicalize(root.join("omp")).map_err(|e| e.to_string())?;
     let allowed = real.starts_with(managed)
+        || fs::canonicalize(root.join("swarm")).is_ok_and(|directory| real.starts_with(directory))
         || crate::launch::session_roots(root)?.iter().any(|directory| {
             fs::canonicalize(directory).is_ok_and(|directory| real.starts_with(directory))
         });

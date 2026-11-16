@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
+import { ArrowLeftRight, Columns2, Maximize2, PanelsTopLeft, X } from 'lucide-react';
 import type { Language } from '../lib/types';
 import './split-workspace.css';
 import { useWorkspaceLayout } from '../lib/use-workspace-layout';
@@ -50,6 +51,11 @@ export default function SplitWorkspace({ children, preview, closePreview, langua
     if (drag.current.requested > .82) finish(false);
   };
   const current = ratio ?? (bounds().width ? clamp(1 - 380 / bounds().width) : .64);
+  const modes = [
+    { value: 'split', label: zh ? '分栏' : 'Split', Icon: Columns2 },
+    { value: 'overlay', label: zh ? '叠层' : 'Overlay', Icon: PanelsTopLeft },
+    { value: 'max', label: zh ? '最大化' : 'Maximize', Icon: Maximize2 },
+  ] as const;
   return <div ref={container} className={`split-workspace${preview ? ` has-preview is-${mode}` : ''}${swapped ? ' is-swapped' : ''}${dragging ? ' is-dragging' : ''}`} style={ratio === null ? undefined : { '--split-left': `${ratio * 100}%` } as CSSProperties}>
     {children}
     {preview && <><div ref={handle} className="workspace-divider" role="separator" aria-label={zh ? '调整聊天与预览宽度' : 'Resize chat and preview'} aria-orientation="vertical" aria-valuemin={Math.round(bounds().min * 100)} aria-valuemax={Math.round(bounds().max * 100)} aria-valuenow={Math.round(current * 100)} tabIndex={0}
@@ -61,6 +67,6 @@ export default function SplitWorkspace({ children, preview, closePreview, langua
         if (event.key === 'End') { closePreview(); return; }
         setRatio(event.key === 'Home' || event.key === 'Enter' ? null : clamp(current + (event.key === 'ArrowRight' ? .025 : -.025)));
       }} />
-      <div className="workspace-preview"><div className="workspace-preview-tools"><button className="quiet-button" aria-pressed={swapped} onClick={() => setSwapped(value => !value)}>{zh ? '左右换位' : 'Swap sides'}</button>{(['split', 'overlay', 'max'] as const).map(value => <button className="quiet-button" key={value} aria-pressed={mode === value} onClick={() => setMode(value)}>{value === 'split' ? zh ? '分栏' : 'Split' : value === 'overlay' ? zh ? '叠层' : 'Overlay' : zh ? '最大化' : 'Maximize'}</button>)}{mode !== 'split' && <button className="quiet-button" onClick={closePreview}>{zh ? '关闭' : 'Close'}</button>}</div>{preview}{dragging && <div className="preview-drag-shield" />}</div></>}
+      <div className="workspace-preview"><div className="workspace-preview-tools" role="group" aria-label={zh ? '工作区布局' : 'Workspace layout'}><button className="icon-button" title={zh ? '左右换位' : 'Swap sides'} aria-label={zh ? '左右换位' : 'Swap sides'} aria-pressed={swapped} onClick={() => setSwapped(value => !value)}><ArrowLeftRight size={14} /></button>{modes.map(({ value, label, Icon }) => <button className="icon-button" key={value} title={label} aria-label={label} aria-pressed={mode === value} onClick={() => setMode(value)}><Icon size={14} /></button>)}{mode !== 'split' && <button className="icon-button" title={zh ? '关闭' : 'Close'} aria-label={zh ? '关闭' : 'Close'} onClick={closePreview}><X size={14} /></button>}</div>{preview}{dragging && <div className="preview-drag-shield" />}</div></>}
   </div>;
 }
