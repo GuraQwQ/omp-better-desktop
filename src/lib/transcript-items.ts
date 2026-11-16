@@ -1,4 +1,5 @@
 import type { Message } from './types';
+import { projectThinkflowMessages, thinkflowReceipt } from './thinkflow-display';
 
 export type TranscriptItem =
   | { kind: 'message'; id: string; message: Message }
@@ -15,6 +16,7 @@ export function toolFailed(message: Message): boolean {
 }
 
 export function projectTranscript(messages: Message[]): TranscriptItem[] {
+  messages = projectThinkflowMessages(messages);
   const scopes: number[] = [];
   const scopeKeys: string[] = [];
   const results = new Map<number, Set<string>>();
@@ -33,6 +35,11 @@ export function projectTranscript(messages: Message[]): TranscriptItem[] {
   }
 
   const items: TranscriptItem[] = [];
+  const groupable = (message: Message) => {
+    const details = message.result?.details ?? message.partialResult?.details ?? message.details;
+    const receipt = thinkflowReceipt(details?.thinkflow);
+    return !receipt || receipt.status === 'success';
+  };
   let previousScope = -1;
   messages.forEach((source, index) => {
     // 上游的展示标记只控制投影，原始消息继续用于上下文和历史。
@@ -49,7 +56,7 @@ export function projectTranscript(messages: Message[]): TranscriptItem[] {
     const previous = items.at(-1);
     if (isToolMessage(message)) {
       // 分小组保留虚拟列表的边界，避免一次展开创建整轮的工具节点。
-      if (previous?.kind === 'tools' && previous.messages.length < 20 && previousScope === scopes[index] && !toolFailed(message) && !toolFailed(previous.messages.at(-1)!)) previous.messages.push(message);
+      if (previous?.kind === 'tools' && previous.messages.length < 20 && previousScope === scopes[index] && groupable(message) && groupable(previous.messages.at(-1)!) && !toolFailed(message) && !toolFailed(previous.messages.at(-1)!)) previous.messages.push(message);
       else items.push({ kind: 'tools', id: `tools:${scopeKeys[index]}:${message.toolCallId ?? message.id}`, messages: [message] });
     } else {
       items.push({ kind: 'message', id: `message:${message.id}`, message });
