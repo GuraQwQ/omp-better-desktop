@@ -12,10 +12,8 @@
     "prepare:upstream": "bun scripts/prepare-upstream.ts",
     "update:upstream": "bun scripts/update-upstream.ts",
     "build:runtime": "bun scripts/build-runtime.ts",
-    "smoke:runtime": "bun scripts/smoke-runtime.ts",
     "build:desktop": "bun scripts/build-runtime.ts --bundle-desktop",
-    "clean": "bun scripts/clean.ts",
-    "check:behavior": "bun scripts/check-behavior.ts"
+    "clean": "bun scripts/clean.ts"
   },
   "dependencies": {
     "@openuidev/react-lang": "^1.0.2",

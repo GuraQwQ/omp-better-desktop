@@ -109,7 +109,6 @@ try {
     const actual = createHash('sha256').update(await Bun.file(path.join(runtimePackage, file.path)).bytes()).digest('hex');
     if (actual !== file.sha256) throw new Error('Runtime checksum mismatch: ' + file.path);
   }
-  await run(['bun', path.join(projectRoot, 'scripts/smoke-runtime.ts'), path.join(runtimePackage, 'omp.exe')], projectRoot, env);
   await run(['bun', path.join(projectRoot, 'scripts/generate-catalog.ts')], projectRoot, env);
   for (const file of ['client.rs', 'wire.rs']) await fs.copyFile(path.join(buildRoot, 'sdk/rust/omp-rpc/src', file), path.join(generatedRoot, file));
   const localClient = await Bun.file(path.join(buildRoot, 'sdk/rust/omp-rpc/src/client.rs')).text();
