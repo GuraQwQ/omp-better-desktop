@@ -185,7 +185,7 @@ diff --git a/packages/coding-agent/src/discovery/desktop-imports.ts b/packages/c
 new file mode 100644
 --- /dev/null
 +++ b/packages/coding-agent/src/discovery/desktop-imports.ts
-@@ -0,0 +1,603 @@
+@@ -0,0 +1,609 @@
 +import * as fs from "node:fs/promises";
 +import * as os from "node:os";
 +import * as path from "node:path";
@@ -608,6 +608,11 @@ new file mode 100644
 +	});
 +}
 +
++function disableSameName(manifest: Manifest, selected: DesktopImportItem): void {
++	if (selected.enabled) for (const item of manifest.items)
++		if (item.id !== selected.id && item.kind === selected.kind && item.name === selected.name) item.enabled = false;
++}
++
 +async function saveEntry(entry: DesktopImportItem, requireExisting = false): Promise<void> {
 +	await withFileLock(manifestPath(), async () => {
 +		const manifest = await readManifest();
@@ -620,7 +625,7 @@ new file mode 100644
 +			if (requireExisting && manifest.items[index].revision && !entry.revision) return;
 +			manifest.items[index] = { ...entry, enabled: requireExisting ? manifest.items[index].enabled : entry.enabled };
 +		}
-+		if (entry.enabled) for (const item of manifest.items) if (item.id !== entry.id && item.kind === entry.kind && item.name === entry.name) item.enabled = false;
++		disableSameName(manifest, manifest.items.find(item => item.id === entry.id)!);
 +		await publish(manifest);
 +	});
 +}
@@ -715,6 +720,7 @@ new file mode 100644
 +					const selected = current.items.find(item => item.id === entry.id);
 +					if (!selected) throw Error("此导入记录已不存在。");
 +					selected.enabled = action === "enable";
++					disableSameName(current, selected);
 +					await publish(current);
 +				});
 +			}
