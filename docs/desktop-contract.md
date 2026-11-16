@@ -57,15 +57,15 @@ The webview calls `invoke('desktop_command', { request })`. Requests have a stri
 
 MCP 与 SSH 使用资源自身的用户/项目作用域；第三方只读来源不提供删除。技能编辑仅作用于 OMP 托管技能。插件使用原生 `install`/本地链接和市场管理器，配置页按插件声明的 schema 生成。Hooks 可启停；命令、模板和记忆资源提供来源与内容浏览。
 
-桌面 RPC 与终端设置 `OMP_DESKTOP_MANAGED_RESOURCES=1`，技能和 MCP 的自动发现限定为 OMP 原生目录、托管技能与已启用的导入条目。“发现与导入”只有在用户点击操作后才扫描 `.agent/.agents`、Gemini、Claude、Codex、Trae、ZCode、CC Switch 以及用户指定目录。`desktop_manage {resource:'imports',action,args}` 支持 `sources/discover/list/link/enable/disable/remove`；初次链接保持停用，启用与重新连接由用户分别操作。
+桌面 RPC 与终端设置 `OMP_DESKTOP_MANAGED_RESOURCES=1`，技能和 MCP 的自动发现限定为 OMP 原生目录、托管技能与已启用的导入条目。“发现与导入”只有在用户点击操作后才扫描 `.agent/.agents`、Gemini、Claude、Codex、Trae、ZCode、CC Switch 以及用户指定目录。`desktop_manage {resource:'imports',action,args}` 支持 `sources/discover/list/install/update/repair/enable/disable/remove`。发现结果用于批量选择并导入，已导入资源在独立列表管理；导入默认启用，技能即时刷新，MCP 变更通过“应用到当前会话”重新连接生效。
 
-技能链接整个原始目录；MCP 链接原始配置所在目录，由适配器在内存中解析 JSON、TOML 或 CC Switch SQLite。注册表只保存来源引用、服务标识和启用状态，不保存凭据副本。SQLite 在真实原始路径以只读方式打开，以读取同目录 WAL。移除操作只删除受管链接与注册项，原数据保留。测试使用隔离的空技能、空 MCP 目录，真实本机发现测试保持所有链接停用。
+技能复制完整目录与引用文件；MCP 从 JSON、TOML 或 CC Switch SQLite 解析所选服务，并保存独立的规范化配置副本；stdio 程序及其运行文件沿用明确显示的执行目录。已导入资源使用应用副本，来源移除后仍可使用；更新副本是显式操作。旧链接清单逐项迁移并校验内容，部分完成可重试；来源缺失的条目保留并提供重新选择来源恢复。移除只清理应用副本与登记，原始来源保持原样。
 
 ### 外部格式映射
 
 | 来源 | 技能与 MCP 来源 | 转为 OMP |
 |---|---|---|
-| `.agent/.agents` | `C:/.agent`、用户和项目对应目录下的 `skills/*/SKILL.md`、MCP JSON | 原技能目录链接；`mcpServers` 按原服务键读取 |
+| `.agent/.agents` | `C:/.agent`、用户和项目对应目录下的 `skills/*/SKILL.md`、MCP JSON | 复制技能目录；`mcpServers` 按所选服务保存副本 |
 | Gemini / Antigravity | `.gemini/skills`、`config/skills`、`antigravity/skills`；Gemini `settings.json`；Antigravity 全局 `~/.gemini/config/mcp_config.json` 与工作区 `.agents/mcp_config.json` | `command/args/env/cwd` → stdio；Gemini `httpUrl` → HTTP、`url` → SSE；Antigravity `serverUrl`（或 `url`）→ Streamable HTTP；保留 headers、超时和可支持的 OAuth 元数据。技能与 MCP 管理列表返回原始 `importSource/importPath`，用于来源展示 |
 | Claude | `.claude/skills`、`~/.claude.json` 顶层及 `projects[path].mcpServers`、项目 `.mcp.json` | 每个来源与服务键单独引用，保留项目来源及停用状态 |
 | Codex | `.agents/skills`、`.codex/config.toml` 的 `[mcp_servers]` | `http_headers/env_http_headers/bearer_token_env_var` → 请求头；秒单位超时转毫秒；环境变量只在启用后的内存解析 |
@@ -91,6 +91,8 @@ MCP 与 SSH 使用资源自身的用户/项目作用域；第三方只读来源�
 
 Host module ownership: `storage.rs` implements runtime/data functions taking `root: &Path`; `sessions.rs` owns RPC/PTY; `lib.rs` owns routing and application lifecycle. `storage.rs` exports `current_runtime`, `install_runtime`, `rollback_runtime`, `discover_omp`, `import_omp`, `takeover`, and `clean_cache`, returning `Result<serde_json::Value,String>` except `current_runtime` returns `Result<Option<PathBuf>,String>`.
 
+模型选择器先读取本地目录快照并后台刷新，联网发现按所选供应商推进；打开设置不使模型目录无条件失效。思考档位读取当前原生模型支持列表。
+
 前端 `SessionLifecycle` 集中管理会话建立、恢复、重连、身份、事件合并、状态快照、历史分页及请求顺序。同一来源的建立请求共享结果，无持久路径的草稿在运行 ID 替换后仍能定位连接；历史补齐失败保留可见身份并允许重试。本地操作即时发布，运行时事件按帧发布；后到的旧快照保留请求期间已经更新的字段。轻量刷新继承未完成的完整历史刷新，切换底层会话时合并新历史和期间到达的消息，并保持工具调用与结果配对。草稿与页面选择由界面管理，连接等待期间用户的新输入优先保留。
 
 桌面斜杠命令由 `resolveCommand` 统一解释来源、参数和执行去向，输入框与命令面板共用这份规则。原生 RPC 与 CLI 表单继续直接使用生成协议；扩展同名命令由其原生来源处理。MCP 的发现与运行时读取共用来源格式 Module，各来源 Adapter 集中处理原配置读取、停用状态和格式映射，导入登记继续负责链接与启停。
@@ -109,6 +111,7 @@ OMP 的 RPC、CLI 和内置终端统一设置 `PI_NATIVES_DIR=<dataRoot>/cache/n
 |---|---|---|
 | workspace.search / workspace.search.cancel | cwd, query, requestId | 遵循忽略规则的全文匹配；可取消 |
 | file.get / file.save | cwd, path, content, baseRevision | 读取版本；保留编码与换行，冲突保留草稿 |
+| file.preview | path | 按完整路径只读预览项目外文本，保留项目内保存边界 |
 | git.status / git.diff / git.stage / git.unstage / git.commit | cwd, paths?, message? | 状态、差异与 Git 操作 |
 | worktree.list / worktree.add / worktree.remove | cwd, path?, branch?, ref? | Git 管理工作树 |
 | shell.open/list/read/write/resize/rename/close | cwd?, id?, name?, data?, cols?, rows? | 独立终端；desktop-shell 事件带 id 和单调 seq |
@@ -123,7 +126,7 @@ OMP 的 RPC、CLI 和内置终端统一设置 `PI_NATIVES_DIR=<dataRoot>/cache/n
 | browser.open / system.open_url | url | 系统默认浏览器；浏览器工作区开关仅控制其面板 |
 | card.open/sync/get/focus | id, value?, sessionId? | 独立任务卡；关闭设置时收回卡片窗口 |
 
-工作区、资料库和各业务面板分模块维护。App 连接入口与会话；调度和布局在独立 Hook 中，终端生命周期由原生 `ManagedPty` 管理。OMP 终端接管与独立终端共享启动、输入、尺寸和回收规则，各自保留输出事件和缓冲。Windows 的 ConPTY 主机与终端子进程一起托管，正常关闭、取消和持有者异常退出均回收本次创建的进程。
+会话库与定时任务通过侧栏进入独立页面；右侧工具栏只保留随对话使用的工作区与辅助面板。工作区、资料库和各业务面板分模块维护。App 连接入口与会话；调度和布局在独立 Hook 中，终端生命周期由原生 `ManagedPty` 管理。OMP 终端接管与独立终端共享启动、输入、尺寸和回收规则，各自保留输出事件和缓冲。Windows 的 ConPTY 主机与终端子进程一起托管，正常关闭、取消和持有者异常退出均回收本次创建的进程。
 
 选段操作栏按点击位置显示，并在视口边缘翻转或夹紧；旁问与批注使用独立侧栏。旁问以稳定会话路径保存问答、选段与草稿，沿用原生 btw 流式事件，并显式携带当前保留的连续问答。清空或逐条删除后，后续请求只使用剩余上下文；迟到事件不能写回已清除的记录，取消绑定原请求的运行会话。清空、持久化或取消失败均保留可重试入口。
 
@@ -144,3 +147,7 @@ GenUI runtime、地图和公式在实际使用时加载，关闭或未选组件�
 genui.get/save/call/clear 由原生配置门控；可选持久化用 genui.sqlite 的短事务和 baseRevision 检查。文档与状态使用稳定会话路径和消息块标识，修复使用目标与源码版本链，旧修复不会覆盖新源码。genui.document/document.release 注册短期独立文档，genui 协议响应提供自身 CSP；脚本通过受控消息桥请求已选能力。本地表单变化不调用模型，动作或修复请求才发送消息。
 
 `GenUIViews` 统一管理生成界面输入、卸载缓存、保存队列与冲突恢复。清空等待已发出的保存完成并撤销旧排队写入，期间的新编辑在清空后保存。`sendGenUIPrompt` 只在实际发送确认后记住说明注入；动作与修复获得提交失败反馈，发送忙碌或失败时保留可重试状态。
+
+输入框的 Enter 发送，Shift+Enter 或 Mod+Enter 换行；输入法组合期间保留候选确认语义。右侧分栏默认预览宽度增加 20px，用户手动调整后的布局继续保存。内置文件查看器提供行号、语法高亮、查找与版本冲突保留；项目外文件按完整路径只读预览。
+
+OMP 设置按 GUI 适用性分组，终端/TUI 专属配置集中到“无关GUI配置”。中文标签、选项、内置代理描述及登录提示仅作用于显示层，持久化配置值、登录回复与代理提示词保持原值。
