@@ -1,24 +1,42 @@
-.import-source-list { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; margin: 24px 0 18px; }
-.import-source-list legend { margin-bottom: 14px; }
+.import-view-switch { display: flex; gap: 4px; border-bottom: 1px solid var(--line-soft); margin: 20px 0 24px; }
+.import-view-switch > button { display: inline-flex; align-items: center; gap: 7px; padding: 9px 12px; color: var(--secondary); font-size: 13px; border-radius: var(--radius-action) var(--radius-action) 0 0; }
+.import-view-switch > button[aria-pressed='true'] { background: var(--selected); color: var(--text); font-weight: var(--weight-strong); box-shadow: inset 0 -2px var(--accent); }
+.import-view-switch > button > span { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.import-discovery-controls { margin-bottom: 28px; }
+.import-source-list { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; margin: 0 0 18px; }
+.import-source-list legend { margin-bottom: 14px; font-weight: var(--weight-medium); }
 .import-source-list > label { display: flex; align-items: flex-start; gap: 9px; min-width: 0; }
-.import-source-list input, .import-candidate > input { width: 14px; height: 14px; margin: 3px 0 0; flex: 0 0 auto; accent-color: var(--accent); }
-.import-source-list strong { display: block; font-size: 12px; font-weight: var(--weight-medium); }
-.import-source-list small { display: block; font-size: 12px; line-height: 1.6; margin-top: 3px; overflow-wrap: anywhere; }
+.import-source-list input, .import-candidate > input { width: 16px; height: 16px; margin: 2px 0 0; flex: 0 0 auto; accent-color: var(--accent); }
+.import-source-list strong { display: block; font-size: 13px; font-weight: var(--weight-medium); }
+.import-source-list small { display: block; color: var(--muted); font-size: 12px; line-height: 1.6; margin-top: 3px; overflow-wrap: anywhere; }
 .import-source-list > label > span { min-width: 0; }
-.import-paths { margin-bottom: 18px; }
-.import-main-actions { margin: 20px 0; }
-.import-main-actions > button:first-child, .import-link-action > button:first-child { margin-left: 0; }
-.import-progress { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; color: var(--secondary); font-size: 12px; margin: 14px 0; }
-.import-reconnect { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 16px 0; }
-.import-reconnect p { margin: 0; font-size: 12px; color: var(--secondary); }
-.import-results { margin-top: 28px; }
-.import-results > h3 { margin-bottom: 12px; }
-.import-selection-actions { margin-bottom: 4px; }
-.import-selection-actions > button:first-child { margin-left: 0; }
-.import-selection-actions > span { margin-left: auto; color: var(--secondary); font-size: 12px; }
-.import-candidate { display: flex; gap: 10px; align-items: flex-start; }
-.import-item-title { min-width: 0; flex: 1; }
-.import-candidate > small { flex-shrink: 0; }
-.import-item-title > .import-warning { color: var(--danger); }
-.import-enabled-state { margin-right: 8px; font-size: 12px; color: var(--secondary); }
-@media (max-width: 760px) { .import-source-list { grid-template-columns: 1fr; gap: 12px; } .import-selection-actions > span { flex-basis: 100%; margin: 5px 0; } .import-candidate > small { white-space: normal; max-width: 65px; } }
+.import-paths { margin: 0 0 18px; }
+.import-progress, .import-reconnect { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 16px 0; }
+.import-progress, .import-reconnect p, .import-selection-hint { color: var(--secondary); font-size: 12px; }
+.import-reconnect { padding: 12px 0; border-block: 1px solid var(--line-soft); }
+.import-reconnect p { margin: 0; flex: 1 1 280px; }
+.import-list-toolbar { margin: 18px 0 14px; }
+.import-list-toolbar > input { min-width: 150px; }
+.import-selection-hint { margin: 0 0 10px; line-height: 1.6; }
+.import-selection-actions { margin-bottom: 6px; }
+.import-selection-actions > span { margin-left: auto; color: var(--secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
+.import-resource-row { display: flex; align-items: flex-start; gap: 12px; padding-block: 18px; }
+.import-item-title { flex: 1 1 auto; min-width: 0; }
+.import-kind { margin-left: 3px; color: var(--muted); font-size: 11px; }
+.import-row-controls { display: grid; justify-items: end; gap: 6px; max-width: 350px; }
+.import-row-controls > .managed-actions { justify-content: flex-end; gap: 2px; }
+.import-row-controls .quiet-button { font-size: 12px; padding: 6px 8px; }
+.import-state, .import-enabled-state { color: var(--secondary); font-size: 12px; white-space: nowrap; }
+.import-state.is-enabled { color: var(--success); }
+.import-state.has-problem, .import-item-title > .import-warning { color: var(--danger); }
+.import-locations { margin-top: 7px; font-size: 12px; color: var(--secondary); }
+.import-locations > summary { cursor: pointer; width: fit-content; color: var(--muted); }
+.import-locations > span { display: block; margin-top: 8px; color: var(--muted); }
+.import-locations code { margin-top: 4px; overflow-wrap: anywhere; white-space: normal; }
+.import-remove-confirm { display: flex; flex-wrap: wrap; justify-content: end; gap: 4px; }
+.import-remove-confirm > p { flex-basis: 100%; margin: 4px 0; color: var(--secondary); font-size: 12px; text-align: right; }
+@media (max-width: 1100px) { .import-resource-row:not(.import-candidate) { flex-wrap: wrap; } .import-row-controls { flex-basis: 100%; max-width: none; justify-items: start; } .import-row-controls > .managed-actions { justify-content: start; } .import-remove-confirm { justify-content: start; } .import-remove-confirm > p { text-align: left; } }
+@media (max-width: 760px) { .import-source-list { grid-template-columns: 1fr; gap: 12px; } .import-selection-actions > span { flex-basis: 100%; margin: 5px 0; } .import-candidate > .import-enabled-state { max-width: 65px; white-space: normal; } .import-list-toolbar { flex-wrap: wrap; } }
+
+.import-execution { color: var(--secondary); font-size: 12px; overflow-wrap: anywhere; }
+.import-execution > span { display: block; color: var(--muted); margin-top: 3px; }
