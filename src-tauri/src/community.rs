@@ -59,6 +59,7 @@ pub fn install(root: &Path, id: &str, format: &str, profile: &str) -> Result<Val
         .arg(platform::external_path(&helper))
         .current_dir(&root)
         .envs(platform::runtime_environment(&root))
+        .envs(crate::network::environment())
         .env("BUN_BE_BUN", "1")
         .env("OMP_PROFILE", profile)
         .env_remove("PI_PROFILE")

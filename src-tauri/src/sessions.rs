@@ -139,6 +139,7 @@ pub fn command(root: &Path) -> Result<Command, String> {
         .ok_or("Install a matching OMP runtime in Settings first.")?;
     let mut command = Command::new(executable);
     command.envs(runtime_environment(root));
+    command.envs(crate::network::environment());
     command.env("OMP_DESKTOP_MANAGED_RESOURCES", "1");
     command.envs(request_capture::environment(root));
     hidden(&mut command);

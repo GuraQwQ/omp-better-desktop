@@ -8,6 +8,7 @@ mod genui;
 mod history;
 mod launch;
 mod model_catalog;
+mod network;
 mod platform;
 mod providers;
 mod questions;
