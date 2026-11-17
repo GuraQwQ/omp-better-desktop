@@ -21,7 +21,7 @@ const groupNames: Record<string, string> = {
   Advisor: '顾问', Agent: '代理', Approvals: '审批', 'Auto-Learn': '自动学习', 'Available Tools': '可用工具',
   Collab: '协作', 'Commands & Skills': '命令与技能', Compaction: '上下文压缩', Composer: '输入框', Computer: '计算机操作',
   Developer: '开发者', 'Discovery & MCP': '发现与 MCP', Display: '显示', Editing: '编辑', 'Eval & Runtimes': '执行环境',
-  Execution: '执行', Experimental: '实验功能', Extensions: '扩展', General: '常规', 'Grep & Browser': '检索与浏览器',
+  Execution: '执行', Experimental: '实验功能', Extensions: '扩展', General: '常规', 'Grep & Browser': '检索与浏览器', Disassembler: '反汇编', Ghidra: 'Ghidra',
   Images: '图片', Input: '输入', Isolation: '隔离', 'Magic Keywords': '快捷关键词', Modes: '模式', Notifications: '通知',
   'Output Limits': '输出限制', Power: '电源', Prewalk: '预先执行', Privacy: '隐私', Prompt: '提示词', Protocol: '协议',
   'Read Summaries': '读取摘要', Reading: '读取', 'Retry & Fallback': '重试与回退', 'Rules (TTSR)': '规则（TTSR）',

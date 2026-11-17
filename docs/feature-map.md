@@ -1,6 +1,6 @@
 # OMP feature map
 
-Generated from upstream `90935366da0c368a437da4343ae748b03a2ffe97`. This is an inventory of execution surfaces, not a claim that each surface has been verified. Settings are discovered live using `desktop_settings`; every registry entry uses the settings form.
+Generated from upstream `3e8cff3b7ce19a805c11a26a6dd1703066435851`. This is an inventory of execution surfaces, not a claim that each surface has been verified. Settings are discovered live using `desktop_settings`; every registry entry uses the settings form.
 
 | Kind | Capability | Surface |
 |---|---|---|
@@ -152,7 +152,6 @@ Generated from upstream `90935366da0c368a437da4343ae748b03a2ffe97`. This is an i
 | tool | `ast_edit` | tools |
 | tool | `ask` | tools |
 | tool | `debug` | tools |
-| tool | `ida` | tools |
 | tool | `eval` | tools |
 | tool | `github` | tools |
 | tool | `glob` | tools |

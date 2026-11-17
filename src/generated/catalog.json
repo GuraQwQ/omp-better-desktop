@@ -1151,13 +1151,6 @@
     "source": "packages/coding-agent/src/tools/builtin-names.ts"
   },
   {
-    "name": "ida",
-    "kind": "tool",
-    "description": "",
-    "surface": "tools",
-    "source": "packages/coding-agent/src/tools/builtin-names.ts"
-  },
-  {
     "name": "eval",
     "kind": "tool",
     "description": "",

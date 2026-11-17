@@ -1,0 +1,27 @@
+diff --git a/packages/coding-agent/src/config/settings.ts b/packages/coding-agent/src/config/settings.ts
+--- a/packages/coding-agent/src/config/settings.ts
++++ b/packages/coding-agent/src/config/settings.ts
+@@ -3059,6 +3059,23 @@
+ 
+ 	/** Apply schema migrations to raw settings */
+ 	#migrateRawSettings(raw: RawSettings, captureLegacyChangelogVersion = true): RawSettings {
++		// 旧 IDA 选择保留原后端语义，新键优先；各配置层重复读取与保存都可恢复迁移。
++		const legacyIda = isRecord(raw.ida) ? raw.ida : undefined;
++		const disassembler = isRecord(raw.disassembler) ? raw.disassembler : {};
++		for (const [oldKey, newKey] of [["enabled", "backend"], ["maxOpen", "maxOpen"], ["idleCloseSec", "idleCloseSec"]]) {
++			const previous = legacyIda?.[oldKey] ?? raw[`ida.${oldKey}`];
++			const current = disassembler[newKey] ?? raw[`disassembler.${newKey}`];
++			const migrated = oldKey === "enabled" ? (typeof previous === "boolean" ? (previous ? "ida" : "none") : undefined) : previous;
++			if (current !== undefined || migrated !== undefined) {
++				disassembler[newKey] = current ?? migrated;
++				raw.disassembler = disassembler;
++			}
++			if (legacyIda) delete legacyIda[oldKey];
++			delete raw[`ida.${oldKey}`];
++			delete raw[`disassembler.${newKey}`];
++		}
++		if (legacyIda && Object.keys(legacyIda).length === 0) delete raw.ida;
++
+ 		// queueMode -> steeringMode
+ 		if ("queueMode" in raw && !("steeringMode" in raw)) {
+ 			raw.steeringMode = raw.queueMode;
