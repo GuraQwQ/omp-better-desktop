@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import modelFields from './provider-model-fields.json' with { type: 'json' };
 import { inferredModelCapabilities } from './model-metadata.mjs';
 
-const protocols = new Set(['openai-completions', 'openai-responses', 'anthropic-messages']);
+const protocols = new Set(['openai-completions', 'openai-responses', 'anthropic-messages', 'google-generative-ai']);
 const record = value => value && typeof value === 'object' && !Array.isArray(value);
 const providerFields = ['auth', 'authHeader', 'headers', 'discovery', 'disableStrictTools', 'transport', 'compat'];
 const discoveryTypes = new Set(['ollama', 'llama.cpp', 'lm-studio', 'openai-models-list', 'proxy', 'litellm', 'apple-foundation-models']);
@@ -72,7 +72,9 @@ function baseUrl(value, api) {
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw Error('Enter an HTTP or HTTPS provider URL.');
   url.search = ''; url.hash = '';
   url.pathname = url.pathname.replace(/\/+$/, '').replace(/\/models$/, '');
-  if (!url.pathname || url.pathname === '/') url.pathname = api === 'anthropic-messages' ? '' : '/v1';
+  if (!url.pathname || url.pathname === '/') url.pathname = api === 'google-generative-ai' ? '/v1beta' : api === 'anthropic-messages' ? '' : '/v1';
+  if (api === 'openai-completions' && url.hostname === 'generativelanguage.googleapis.com' && /^\/v1(?:beta)?$/.test(url.pathname)) url.pathname = '/v1beta/openai';
+  if (api === 'google-generative-ai' && url.hostname === 'generativelanguage.googleapis.com') url.pathname = url.pathname.replace(/\/openai$/, '');
   return url.toString().replace(/\/$/, '');
 }
 
@@ -122,10 +124,12 @@ export function modelRows(body) {
   const values = Array.isArray(body) ? body : Array.isArray(body?.data) ? body.data : Array.isArray(body?.models) ? body.models : [];
   const models = new Map();
   for (const value of values) {
-    const id = typeof value === 'string' ? value : typeof value?.id === 'string' ? value.id : typeof value?.name === 'string' ? value.name.replace(/^models\//, '') : '';
+    if (Array.isArray(value?.supportedGenerationMethods) && !value.supportedGenerationMethods.includes('generateContent')) continue;
+    const id = (typeof value === 'string' ? value : typeof value?.id === 'string' ? value.id : typeof value?.name === 'string' ? value.name : '').replace(/^models\//, '');
     if (id) {
       const inferred = inferredModelCapabilities(id, value);
-      models.set(id, { id, ...(typeof value?.display_name === 'string' ? { name: value.display_name } : {}), ...inferred.fields, maxInputTokens: inferred.maxInputTokens, capabilitySource: inferred.source });
+      const name = value?.display_name ?? value?.displayName;
+      models.set(id, { id, ...(typeof name === 'string' ? { name } : {}), ...inferred.fields, maxInputTokens: inferred.maxInputTokens, capabilitySource: inferred.source });
     }
   }
   return [...models.values()];
@@ -146,7 +150,7 @@ async function getPage(address, headers, signal) {
   for (let redirects = 0; redirects < 4; redirects++) {
     let response;
     try { response = await fetch(current, { headers, redirect: 'manual', signal }); }
-    catch { throw Error('The provider model catalog could not be reached.'); }
+    catch { throw Error(signal.aborted ? 'The provider model catalog timed out. Check the network and proxy settings.' : 'The provider model catalog could not be reached.'); }
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const next = new URL(response.headers.get('location') ?? '', current);
       if (next.origin !== origin || next.username || next.password) throw Error('The model catalog redirected to another provider.');
@@ -169,13 +173,15 @@ async function discover(config, input) {
   if ((typeof key !== 'string' || !key || key.startsWith('!')) && !['none', 'oauth'].includes(options.auth)) throw Error('Enter an API key to fetch models.');
   key = options.auth !== 'none' && typeof key === 'string' ? process.env[key] ?? key : '';
   const headers = new Headers(options.headers);
-  if (key && input.api === 'anthropic-messages') { if (!headers.has('x-api-key')) headers.set('x-api-key', key); if (!headers.has('anthropic-version')) headers.set('anthropic-version', '2023-06-01'); }
+  if (key && input.api === 'google-generative-ai') { if (!headers.has('x-goog-api-key')) headers.set('x-goog-api-key', key); }
+  else if (key && input.api === 'anthropic-messages') { if (!headers.has('x-api-key')) headers.set('x-api-key', key); if (!headers.has('anthropic-version')) headers.set('anthropic-version', '2023-06-01'); }
   else if (key && !headers.has('authorization')) headers.set('authorization', `Bearer ${key}`);
   const signal = AbortSignal.timeout(Math.max(1, Math.floor(options.discovery?.timeoutMs ?? 10000)));
   const supplied = new URL(input.baseUrl);
   supplied.search = ''; supplied.hash = '';
-  const paths = options.discovery?.injectV1 === false ? [`${address}/models`] : endpoints(address);
-  const candidates = supplied.pathname.replace(/\/$/, '').endsWith('/models') ? [...new Set([supplied.toString(), ...paths])] : paths;
+  const googleCompat = input.api === 'openai-completions' && supplied.hostname === 'generativelanguage.googleapis.com';
+  const paths = googleCompat || input.api === 'google-generative-ai' || options.discovery?.injectV1 === false ? [`${address}/models`] : endpoints(address);
+  const candidates = !googleCompat && supplied.pathname.replace(/\/$/, '').endsWith('/models') ? [...new Set([supplied.toString(), ...paths])] : paths;
   for (const candidate of candidates) {
     let page = await getPage(candidate, headers, signal);
     if (!page) continue;
@@ -183,11 +189,11 @@ async function discover(config, input) {
     const seen = new Set();
     for (let count = 0; page && count < 20; count++) {
       for (const model of modelRows(page.body)) models.set(model.id, model);
-      const cursor = page.body?.has_more ? page.body.last_id : page.body?.next_cursor;
+      const cursor = page.body?.nextPageToken ?? (page.body?.has_more ? page.body.last_id : page.body?.next_cursor);
       if (typeof cursor !== 'string' || !cursor || seen.has(cursor)) break;
       seen.add(cursor);
       const next = new URL(page.address);
-      next.searchParams.set(page.body.has_more ? 'after_id' : 'cursor', cursor);
+      next.searchParams.set(page.body.nextPageToken ? 'pageToken' : page.body.has_more ? 'after_id' : 'cursor', cursor);
       page = await getPage(next.toString(), headers, signal);
     }
     if (models.size) return { models: [...models.values()], endpoint: candidate };

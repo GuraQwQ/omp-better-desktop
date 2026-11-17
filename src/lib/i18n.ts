@@ -181,6 +181,14 @@ const errorTranslations: Record<string, string> = {
 };
 
 export function localizeError(message: string, language: Language): string {
+  const modelStatus = /^Model catalog HTTP (\d+)\.$/.exec(message);
+  if (language === 'zh' && modelStatus) {
+    const status = modelStatus[1];
+    const hint = ({ '401': '认证失败，请核对密钥与所选协议。', '403': '访问被拒绝，请核对密钥权限、地区与项目设置。', '429': '请求过多或配额不足，请稍后重试。' } as Record<string, string>)[status] ?? '请核对提供商地址与服务状态。';
+    return `模型目录请求失败（HTTP ${status}）：${hint}`;
+  }
+  if (language === 'zh' && message === 'The provider model catalog timed out. Check the network and proxy settings.') return '获取模型目录超时，请检查网络与代理设置。';
+  if (language === 'zh' && message === 'The provider model catalog could not be reached.') return '无法连接模型目录，请检查提供商地址、网络与代理设置。';
   const browserOnly: Record<string, [string, string]> = {
     'Open the desktop application to access local projects and the OMP runtime. / 请打开桌面应用以访问本地项目和 OMP 运行时。': ['Open the desktop application to access local projects and the OMP runtime.', '请打开桌面应用以访问本地项目和 OMP 运行时。'],
     'Choose a folder from the desktop application. / 请在桌面应用中选择文件夹。': ['Choose a folder from the desktop application.', '请在桌面应用中选择文件夹。'],

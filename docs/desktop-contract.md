@@ -54,6 +54,8 @@ The webview calls `invoke('desktop_command', { request })`. Requests have a stri
 - 模型角色按照 `modelRoleStorage` 保存到全局或当前项目；模型预设通过 `preset_save/preset_apply/preset_delete` 管理。候选模型及可用思考程度来自运行时。
 - 模型目录、能力和逐模型参数统一来自原生模型注册表中的提供商配置。显式配置的提供商采用用户选择的模型清单，其余已登录提供商沿用原生目录；模型选择器和角色页读取同一目录。保存或删除配置后刷新同一配置档案的已连接会话，进行中的调用使用原参数，下一次调用绑定更新后的能力。各会话保留当前选模和思考程度；当前模型被删除时需要重新选模。保存结果中的 `refreshErrors` 展示已保存配置对应的刷新问题。
 - 自定义提供商使用 `providers.config {operation:'list'|'save'|'delete',cwd,provider?}`，模型发现使用 `providers.discover {cwd,provider}`。提供商配置保存到当前数据根的 `omp/agent/models.yml`，命名配置档案使用 `omp/profiles/<profile>/agent/models.yml`（已有 `models.yaml` 时沿用）；只写入用户显式填写的逐模型覆盖，空值清除相应覆盖，其余字段采用供应商目录和 OMP 标准。
+- Gemini 原生协议为 `google-generative-ai`，使用 `x-goog-api-key` 认证与 `/v1beta/models`，按 `nextPageToken` 读取完整目录；Google OpenAI 兼容目录使用 `/v1beta/openai/models`。目录失败保留 HTTP 状态与网络超时原因。模型思考等级以已核验能力收窄上游默认范围，显式 `thinking` 配置优先。
+- 桌面启动的模型会话、目录助手与社区安装进程共享 Windows 静态代理读取；显式 HTTP/HTTPS/ALL_PROXY 环境变量优先，系统 IPv4 星号绕行规则转换成对应 CIDR，环回请求直接连接。
 - `launch.get {cwd}` 与 `launch.set {cwd,profile}` 读取或保存当前项目的启动参数。支持追加/替换系统提示词、附加目录、工具集合、配置档案、覆盖文件和会话目录，以及规则、LSP、工具和计划开关。启动配置随 `desktop.json` 保存，新连接的 RPC 会话使用它；接管该会话的终端沿用相同参数。变更会话目录后保留旧目录的历史发现入口。
 
 MCP 与 SSH 使用资源自身的用户/项目作用域；第三方只读来源不提供删除。技能编辑仅作用于 OMP 托管技能。插件使用原生 `install`/本地链接和市场管理器，配置页按插件声明的 schema 生成。Hooks 可启停；命令、模板和记忆资源提供来源与内容浏览。

@@ -13,16 +13,22 @@ const source = (await fs.readFile(sourceFile, 'utf8')).replace('import { isRecor
 const decoder = await import(`data:text/javascript;base64,${Buffer.from(new Bun.Transpiler({ loader: 'ts' }).transformSync(source)).toString('base64')}`);
 const catalog = decoder.openModelCatalog(await Bun.file(path.join(upstream, 'packages/catalog/src/models.json')).json());
 const families: Record<string, RegExp> = {
-  openai: /^gpt-6/i, anthropic: /^claude-/i, google: /^gemini-/i,
+  openai: /^(?:gpt-[456](?:[.-]|o)|o[134](?:-|$))/i, anthropic: /^claude-/i, google: /^gemini-/i,
   deepseek: /^deepseek-/i, zai: /^glm-/i, xai: /^grok-/i,
   moonshot: /^(kimi|moonshot)/i, minimax: /^minimax-m/i,
   'alibaba-token-plan': /^qwen/i,
+  'alibaba-coding-plan': /^qwen/i,
+  meta: /^muse-/i,
+  'muse-code': /^muse-/i,
 };
 const fields = ['contextWindow', 'maxContextWindow', 'maxTokens', 'reasoning', 'input', 'supportsTools'];
 const models: Record<string, unknown>[] = [];
+const seen = new Set<string>();
 for (const [provider, family] of Object.entries(families)) {
   for (const model of Object.values(decoder.getCatalogProvider(catalog, provider) ?? {}) as Record<string, unknown>[]) {
     if (typeof model.id !== 'string' || !family.test(model.id)) continue;
+    if (seen.has(model.id.toLowerCase())) continue;
+    seen.add(model.id.toLowerCase());
     const thinking = model.thinking as { efforts?: string[]; defaultLevel?: string } | undefined;
     models.push({ id: model.id, source: `OMP ${lock.runtimeVersion} / ${provider}`, ...Object.fromEntries(fields.filter(field => model[field] != null).map(field => [field, model[field]])), ...(thinking?.efforts?.length ? { thinkingEfforts: thinking.efforts } : {}), ...(thinking?.defaultLevel ? { defaultThinkingLevel: thinking.defaultLevel } : {}) });
   }

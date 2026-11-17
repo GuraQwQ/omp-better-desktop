@@ -2,7 +2,7 @@ import { modelCatalog } from '../lib/model-catalog';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronRight, RefreshCw } from 'lucide-react';
 import { request } from '../lib/bridge';
-import type { Copy } from '../lib/i18n';
+import { localizeError, type Copy } from '../lib/i18n';
 import type { Bootstrap, Json } from '../lib/types';
 import { displayPath } from '../lib/display-path';
 import { applyModelSelection } from '../lib/provider-models';
@@ -14,7 +14,7 @@ import './custom-providers.css';
 
 interface Provider { id: string; api: string; baseUrl: string; hasApiKey: boolean; models: (Json & { id: string })[]; options: Json }
 interface Configuration { configPath: string; takeover: { enabled: boolean; active: boolean; unknown?: boolean }; providers: Provider[]; savedProvider?: string; refreshErrors?: string[] }
-const protocols = [{ value: 'openai-completions', label: 'OpenAI Chat Completions' }, { value: 'openai-responses', label: 'OpenAI Responses' }, { value: 'anthropic-messages', label: 'Anthropic Messages' }];
+const protocols = [{ value: 'openai-completions', label: 'OpenAI Chat Completions' }, { value: 'openai-responses', label: 'OpenAI Responses' }, { value: 'anthropic-messages', label: 'Anthropic Messages' }, { value: 'google-generative-ai', label: 'Gemini / Google Generative AI' }];
 const modelList = (value: string) => [...new Set(value.split(/\r?\n/).map(value => value.trim()).filter(Boolean))];
 const jsonText = (value: unknown) => value == null ? '' : JSON.stringify(value, null, 2);
 function jsonObject(value: string, label: string, invalid: string) {
@@ -107,7 +107,7 @@ export default function CustomProviders({ bootstrap, t, cwd, sessionId, ensureSe
         if (result.models.length) { setModels(result.models); setCheckedModels(new Set(currentIds.current)); setModelQuery(''); setModelPicker(true); }
         else setError(t.providerNoModels);
       }
-    } catch { if (revision.current === current) setError(t.providerDiscoveryFailed); }
+    } catch (error) { if (revision.current === current) setError(localizeError(error instanceof Error ? error.message : typeof error === 'string' ? error : t.providerDiscoveryFailed, bootstrap.preferences.language)); }
     finally { if (revision.current === current) setWorking(''); }
   };
   const edit = (change: () => void) => { revision.current++; setNotice(''); setError(''); setModels([]); setModelPicker(false); setWorking(''); setConfirmDelete(false); change(); };
@@ -128,6 +128,7 @@ export default function CustomProviders({ bootstrap, t, cwd, sessionId, ensureSe
   const optionalBoolean = (label: string, value: boolean | null | undefined, change: (value: boolean | null) => void) => <label>{label}<Select label={label} value={value == null ? '' : String(value)} disabled={locked} onChange={value => change(value === '' ? null : value === 'true')} options={[{ value: '', label: text.standard }, { value: 'true', label: t.on }, { value: 'false', label: t.off }]} /></label>;
   const changeApi = (value: string) => edit(() => {
     setApi(value);
+    if (value === 'google-generative-ai' && !baseUrl.trim()) setBaseUrl('https://generativelanguage.googleapis.com/v1beta');
     if (!selected) setOptions(previous => ({ ...previous, discovery: value.startsWith('openai') ? { type: 'openai-models-list' } : null }));
   });
   const save = async () => {
@@ -162,9 +163,10 @@ export default function CustomProviders({ bootstrap, t, cwd, sessionId, ensureSe
       <div className="provider-picker"><Select label={t.providerName} value={selected} disabled={locked} onChange={choose} options={[{ value: '', label: t.providerNew }, ...configuration.providers.map(provider => ({ value: provider.id, label: provider.id }))]} />
         <button className="quiet-button" aria-pressed={api.startsWith('openai')} disabled={locked} onClick={() => changeApi('openai-completions')}>{t.openaiTemplate}</button>
         <button className="quiet-button" aria-pressed={api === 'anthropic-messages'} disabled={locked} onClick={() => changeApi('anthropic-messages')}>{t.anthropicTemplate}</button>
+        <button type="button" className="quiet-button" aria-pressed={api === 'google-generative-ai'} disabled={locked} onClick={() => changeApi('google-generative-ai')}>Gemini</button>
       </div>
       <form className="provider-form" onSubmit={event => { event.preventDefault(); void save(); }}>
-        <div className="provider-fields"><label>{t.providerName}<input aria-label={t.providerName} value={id} disabled={locked} required onChange={event => edit(() => setId(event.target.value))} placeholder={api === 'anthropic-messages' ? 'my-anthropic' : 'my-openai'} /></label>
+        <div className="provider-fields"><label>{t.providerName}<input aria-label={t.providerName} value={id} disabled={locked} required onChange={event => edit(() => setId(event.target.value))} placeholder={api === 'google-generative-ai' ? 'my-gemini' : api === 'anthropic-messages' ? 'my-anthropic' : 'my-openai'} /></label>
           <label>{t.protocol}<Select label={t.protocol} value={api} disabled={locked} onChange={changeApi} options={protocols.some(option => option.value === api) ? protocols : [...protocols, { value: api, label: api }]} /></label></div>
         <label>{t.baseUrl}<input type="url" aria-label={t.baseUrl} value={baseUrl} disabled={locked} required placeholder="https://example.com/v1" onChange={event => edit(() => setBaseUrl(event.target.value))} /></label>
         <label>{t.apiKey}<input type="password" aria-label={t.apiKey} value={apiKey} disabled={locked} autoComplete="off" spellCheck={false} required={needsKey && !stored?.hasApiKey} placeholder={stored?.hasApiKey ? t.keepApiKey : ''} onChange={event => edit(() => setApiKey(event.target.value))} /></label>

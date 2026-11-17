@@ -1418,6 +1418,648 @@
       ]
     },
     {
+      "id": "gpt-4-turbo",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 128000,
+      "maxTokens": 4096,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gpt-4.1",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 1047576,
+      "maxTokens": 32768,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gpt-4.1-mini",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 1047576,
+      "maxTokens": 32768,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gpt-4.1-nano",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 1047576,
+      "maxTokens": 32768,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gpt-4o",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 128000,
+      "maxTokens": 16384,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gpt-4o-2024-05-13",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 128000,
+      "maxTokens": 4096,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gpt-4o-2024-08-06",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 128000,
+      "maxTokens": 16384,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gpt-4o-2024-11-20",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 128000,
+      "maxTokens": 16384,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gpt-4o-mini",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 128000,
+      "maxTokens": 16384,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gpt-4o-mini-transcribe",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 16000,
+      "maxTokens": 2000,
+      "reasoning": false,
+      "input": [
+        "text"
+      ],
+      "supportsTools": false
+    },
+    {
+      "id": "gpt-4o-transcribe",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 16000,
+      "maxTokens": 2000,
+      "reasoning": false,
+      "input": [
+        "text"
+      ],
+      "supportsTools": false
+    },
+    {
+      "id": "gpt-5-chat-latest",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 128000,
+      "maxTokens": 16384,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gpt-5-codex",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 272000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    {
+      "id": "gpt-5-mini",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 400000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    {
+      "id": "gpt-5-nano",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 400000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    {
+      "id": "gpt-5-pro",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 400000,
+      "maxTokens": 272000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    {
+      "id": "gpt-5.1",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 400000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    {
+      "id": "gpt-5.1-chat-latest",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 128000,
+      "maxTokens": 16384,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    {
+      "id": "gpt-5.1-codex",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 272000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    {
+      "id": "gpt-5.1-codex-max",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 272000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    {
+      "id": "gpt-5.1-codex-mini",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 272000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "medium",
+        "high"
+      ]
+    },
+    {
+      "id": "gpt-5.2",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 400000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "gpt-5.2-chat-latest",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 128000,
+      "maxTokens": 16384,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "gpt-5.2-codex",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 272000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "gpt-5.2-pro",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 400000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "gpt-5.3-chat-latest",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 128000,
+      "maxTokens": 16384,
+      "reasoning": false,
+      "input": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "id": "gpt-5.3-codex",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 272000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "gpt-5.3-codex-spark",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 128000,
+      "maxTokens": 32000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "gpt-5.4",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "gpt-5.4-mini",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 400000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "gpt-5.4-nano",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 400000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "gpt-5.4-pro",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 1050000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "gpt-5.5",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 1050000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "gpt-5.5-pro",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 1050000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "gpt-5.6",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 1050000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "id": "gpt-5.6-cyber",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 400000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "id": "gpt-5.6-luna",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 1050000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "id": "gpt-5.6-luna-pro",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 1050000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "id": "gpt-5.6-sol",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 1050000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "id": "gpt-5.6-sol-pro",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 1050000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "id": "gpt-5.6-terra",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 1050000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "id": "gpt-5.6-terra-pro",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 1050000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
       "id": "gpt-6-astra",
       "source": "OMP 18.22.0 / openai",
       "contextWindow": 1050000,
@@ -2332,8 +2974,402 @@
       ]
     },
     {
+      "id": "muse-ember-1.0",
+      "source": "OMP 18.22.0 / meta",
+      "contextWindow": 1048576,
+      "maxTokens": 524288,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "id": "muse-spark-1.1",
+      "source": "OMP 18.22.0 / meta",
+      "contextWindow": 1048576,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "muse-spark-1.2",
+      "source": "OMP 18.22.0 / meta",
+      "contextWindow": 1048576,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "muse-spark-1.2-contributor",
+      "source": "OMP 18.22.0 / meta",
+      "contextWindow": 1048576,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "muse-spark-1.3",
+      "source": "OMP 18.22.0 / meta",
+      "contextWindow": 1048576,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "id": "muse-spark-1.3-contributor",
+      "source": "OMP 18.22.0 / meta",
+      "contextWindow": 1048576,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "id": "muse-wonder-1.0",
+      "source": "OMP 18.22.0 / meta",
+      "contextWindow": 1048576,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "id": "muse-wonder-1.0-contributor",
+      "source": "OMP 18.22.0 / muse-code",
+      "contextWindow": 1048576,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "id": "muse-wonder-full-1.0",
+      "source": "OMP 18.22.0 / muse-code",
+      "contextWindow": 1048576,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "id": "muse-wonder-full-1.0-contributor",
+      "source": "OMP 18.22.0 / muse-code",
+      "contextWindow": 1048576,
+      "maxTokens": 131072,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "id": "o1",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 200000,
+      "maxTokens": 100000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "o1-pro",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 200000,
+      "maxTokens": 100000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "o3",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 200000,
+      "maxTokens": 100000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "o3-deep-research",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 200000,
+      "maxTokens": 100000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "o3-mini",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 200000,
+      "maxTokens": 100000,
+      "reasoning": true,
+      "input": [
+        "text"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "o3-pro",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 200000,
+      "maxTokens": 100000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "o4-mini",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 200000,
+      "maxTokens": 100000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "o4-mini-deep-research",
+      "source": "OMP 18.22.0 / openai",
+      "contextWindow": 200000,
+      "maxTokens": 100000,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "qwen3-coder-next",
+      "source": "OMP 18.22.0 / alibaba-coding-plan",
+      "contextWindow": 262144,
+      "maxTokens": 65536,
+      "reasoning": false,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "qwen3-coder-plus",
+      "source": "OMP 18.22.0 / alibaba-coding-plan",
+      "contextWindow": 1000000,
+      "maxTokens": 65536,
+      "reasoning": false,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "qwen3-max-2026-01-23",
+      "source": "OMP 18.22.0 / alibaba-coding-plan",
+      "contextWindow": 262144,
+      "maxTokens": 32768,
+      "reasoning": false,
+      "input": [
+        "text"
+      ]
+    },
+    {
+      "id": "qwen3.5-plus",
+      "source": "OMP 18.22.0 / alibaba-coding-plan",
+      "contextWindow": 1000000,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    {
       "id": "qwen3.6-flash",
       "source": "OMP 18.22.0 / alibaba-token-plan",
+      "contextWindow": 1000000,
+      "maxTokens": 65536,
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "thinkingEfforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    {
+      "id": "qwen3.6-plus",
+      "source": "OMP 18.22.0 / alibaba-coding-plan",
       "contextWindow": 1000000,
       "maxTokens": 65536,
       "reasoning": true,

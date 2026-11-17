@@ -24,3 +24,23 @@ index 5b507e0..b86943b 100644
  	const reference = options.useDefaults
  		? resolveModelReference(resolvedModel.id, getBundledModelReferenceIndex())
  		: undefined;
+@@ -176,6 +184,19 @@ export function finalizeCustomModel(resolvedModel: CustomModelOverlay, options: Cu
+ 	// Explicit custom limits outrank the catalog `limits-patch` buildModel applied.
+ 	if (resolvedModel.contextWindow !== undefined) built.contextWindow = resolvedModel.contextWindow;
+ 	if (resolvedModel.maxTokens !== undefined) built.maxTokens = resolvedModel.maxTokens;
++	if (options.useDefaults && !resolvedModel.thinking && built.thinking) {
++		const inferred = inferredModelCapabilities(resolvedModel.id);
++		if (inferred.thinkingEfforts?.length) {
++			const efforts = inferred.thinkingEfforts as typeof built.thinking.efforts;
++			const defaultLevel = inferred.defaultThinkingLevel ?? built.thinking.defaultLevel;
++			built.thinking = {
++				...built.thinking,
++				efforts,
++				defaultLevel: efforts.includes(defaultLevel as typeof efforts[number])
++					? defaultLevel as typeof efforts[number] : undefined,
++			};
++		}
++	}
+ 	return built;
+ }
+ 
