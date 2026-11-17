@@ -115,6 +115,8 @@ function ImportPage({ language, cwd, ensureSession, reconnect }: Props) {
   const available = candidates.filter(item => matches(item) && !hasCopy(item) && !item.warning);
   const selectedCount = candidates.filter(item => selected.includes(item.id) && !hasCopy(item) && !item.warning).length;
   const kindOptions = [{ value: 'all', label: t.all }, { value: 'skill', label: t.skill }, { value: 'mcp', label: t.mcp }];
+  const showList = view === 'imported' || discovered;
+  const progress = busy && <div className="import-progress" role="status"><span>{stopRequested ? t.stopping : working === 'discover' ? t.scanning : working === 'install' ? `${t.importing} ${notice}` : t.working}</span>{working === 'install' && <button type="button" className="quiet-button" disabled={stopRequested} onClick={() => { stop.current = true; setStopRequested(true); }}>{t.stop}</button>}</div>;
 
   return <section className="managed-resources import-resources" aria-label={t.title} aria-busy={busy}>
     <header className="managed-header"><div><h2>{t.title}</h2><p>{t.intro}</p></div></header>
@@ -127,13 +129,17 @@ function ImportPage({ language, cwd, ensureSession, reconnect }: Props) {
       <details className="managed-detail import-paths"><summary><ChevronDown size={13} />{t.paths}</summary><label className="managed-field">{t.pathsHint}<textarea rows={3} disabled={busy} value={paths} onChange={event => setPaths(event.target.value)} /></label></details>
       <button type="button" className="secondary-button" disabled={busy || !cwd || !selectedSources.length && !lineValues(paths).length} onClick={scan}><RefreshCw size={14} />{t.scan}</button>
     </div>}
-    {busy && <div className="import-progress" role="status"><span>{stopRequested ? t.stopping : working === 'discover' ? t.scanning : working === 'install' ? `${t.importing} ${notice}` : t.working}</span>{working === 'install' && <button type="button" className="quiet-button" disabled={stopRequested} onClick={() => { stop.current = true; setStopRequested(true); }}>{t.stop}</button>}</div>}
+    {!showList && progress}
     {error && <div className="managed-feedback" role="alert"><p>{error}</p><button type="button" className="quiet-button" disabled={busy} onClick={() => retry.current?.()}>{t.retry}</button></div>}
     {!busy && notice && <p className="managed-notice" role="status">{notice}</p>}
     {needsReconnect && <div className="import-reconnect"><p>{t.reconnectHint}</p>{reconnect && <button type="button" className="secondary-button" disabled={busy} onClick={apply}>{t.reconnect}</button>}</div>}
-    {(view === 'imported' || discovered) && <>
-      <div className="managed-toolbar import-list-toolbar"><input type="search" aria-label={t.search} placeholder={t.search} value={query} onChange={event => setQuery(event.target.value)} /><Select label={t.all} value={kind} onChange={setKind} options={kindOptions} />{view === 'imported' && <button type="button" className="quiet-button" disabled={busy} onClick={() => void perform('list', readImported)}><RefreshCw size={14} />{t.refresh}</button>}</div>
-      {view === 'discover' && <><p className="import-selection-hint">{t.selectionHint}</p><div className="managed-actions import-selection-actions"><button type="button" className="secondary-button" disabled={busy || !selectedCount} onClick={install}><Download size={14} />{t.install}{selectedCount ? ` (${selectedCount})` : ''}</button><button type="button" className="quiet-button" disabled={busy || !available.length} onClick={() => setSelected(old => [...new Set([...old, ...available.map(item => item.id)])])}>{t.select}</button><button type="button" className="quiet-button" disabled={busy || !selected.length} onClick={() => setSelected([])}>{t.clear}</button><span>{t.checked(selectedCount)}</span></div></>}
+    {showList && <>
+      {view === 'discover' && <p className="import-selection-hint">{t.selectionHint}</p>}
+      <div className="import-list-controls">
+        <div className="managed-toolbar import-list-toolbar"><input type="search" aria-label={t.search} placeholder={t.search} value={query} onChange={event => setQuery(event.target.value)} /><Select label={t.all} value={kind} onChange={setKind} options={kindOptions} />{view === 'imported' && <button type="button" className="quiet-button" disabled={busy} onClick={() => void perform('list', readImported)}><RefreshCw size={14} />{t.refresh}</button>}</div>
+        {view === 'discover' && <div className="managed-actions import-selection-actions"><button type="button" className="secondary-button" disabled={busy || !selectedCount} onClick={install}><Download size={14} />{t.install}{selectedCount ? ` (${selectedCount})` : ''}</button><button type="button" className="quiet-button" disabled={busy || !available.length} onClick={() => setSelected(old => [...new Set([...old, ...available.map(item => item.id)])])}>{t.select}</button><button type="button" className="quiet-button" disabled={busy || !selected.length} onClick={() => setSelected([])}>{t.clear}</button><span aria-live="polite">{t.checked(selectedCount)}</span></div>}
+        {progress}
+      </div>
       {!visible.length && !busy && <p className="managed-empty">{query || kind !== 'all' ? t.noMatches : view === 'imported' ? t.empty : t.noResults}</p>}
       <div className="import-resource-list">{visible.map(item => <article key={item.id} className={`managed-item import-resource-row ${view === 'discover' ? 'import-candidate' : ''}`}>
         {view === 'discover' && <input type="checkbox" aria-label={t.selectItem(item.name)} disabled={busy || hasCopy(item) || !!item.warning} checked={selected.includes(item.id)} onChange={event => setSelected(old => event.target.checked ? [...old, item.id] : old.filter(id => id !== item.id))} />}
