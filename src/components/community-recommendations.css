@@ -1,0 +1,11 @@
+.community-recommendations { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.community-recommendations > button { white-space: nowrap; }
+.community-feedback { flex-basis: 100%; font-size: 12px; color: var(--secondary); max-width: 45ch; overflow-wrap: anywhere; }
+.community-menu { position: fixed; z-index: 1300; padding: 8px 16px; overflow: auto; }
+.community-entry { padding: 8px 0 12px; }
+.community-entry + .community-entry { border-top: 1px solid var(--line-soft); }
+.community-entry-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.community-entry-heading strong { font-size: 13px; font-weight: var(--weight-strong); }
+.community-entry p, .community-menu-feedback { color: var(--secondary); font-size: 12px; line-height: 1.65; margin: 4px 0 10px; overflow-wrap: anywhere; }
+.community-formats { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.community-feedback.is-error, .community-menu-feedback.is-error { color: var(--danger); }

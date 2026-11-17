@@ -153,6 +153,8 @@ genui.get/save/call/clear 由原生配置门控；可选持久化用 genui.sqlit
 
 OMP 设置按 GUI 适用性分组，终端/TUI 专属配置集中到“无关GUI配置”。中文标签、选项、内置代理描述及登录提示仅作用于显示层，持久化配置值、登录回复与代理提示词保持原值。
 
+“社区推荐”按用户选择下载官方内容：Ponytail 使用原生 Pi 插件，grill-me 提供实际 grilling 技能或 Matt Pocock 官方插件套件，CodeGraph 安装 MCP 及其官方平台运行时。`community.install` 在应用数据目录安装并返回技能路径、插件结果或 MCP 配置；技能继续使用受管副本导入，MCP 通过既有配置写入。安装可重复执行并恢复缺失文件，完整安装保留本地修改。Matt 插件的 grill-me 别名仅将宿主专属 Skill 调用改为 OMP 的 `read skill://grilling`。社区下载缓存随应用缓存清理，已安装内容和配置继续保留。
+
 ### 子代理与 Swarm 协作
 
 普通子代理使用宿主已订阅的 `progress` 事件，经 `desktop-event` 传入前端。任务工具卡只展示所属 `parentToolCallId` 的成员；点击成员打开右侧详情，使用 `get_subagents` 和带字节游标的 `get_subagent_messages` 读取轨迹。运行中的成员可通过 `steer_subagent` 纠偏或 `cancel_subagent` 停止；结束、等待或中止的普通成员不通过这两个接口恢复。原生同伴消息按实际 `irc_message` 显示。
