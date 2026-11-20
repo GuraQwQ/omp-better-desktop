@@ -517,7 +517,7 @@ export default function App() {
   };
   const chooseModel = async (model: Json) => {
     const selection = selectionRevision.current;
-    try { const current = await openSession(); const result = await rpc(current.id, 'set_model', { provider: model.provider, modelId: model.id }); lifecycle.update(current.id, current => ({ ...current, state: { ...current.state, model: result.model ?? result ?? model } })); if (selection === selectionRevision.current) { setModelPicker(false); modelButton.current?.focus(); } } catch (e) { showError(e); }
+    try { const current = await openSession(); await rpc(current.id, 'set_model', { provider: model.provider, modelId: model.id }); await lifecycle.refresh(current.id); if (selection === selectionRevision.current) { setModelPicker(false); modelButton.current?.focus(); } } catch (e) { showError(e); }
   };
   const answer = async (id: string, response: Json) => {
     const owner = lifecycle.current[id];

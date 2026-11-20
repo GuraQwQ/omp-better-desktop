@@ -15,11 +15,15 @@
 .import-progress, .import-reconnect p, .import-selection-hint { color: var(--secondary); font-size: 12px; }
 .import-reconnect { padding: 12px 0; border-block: 1px solid var(--line-soft); }
 .import-reconnect p { margin: 0; flex: 1 1 280px; }
-.import-list-toolbar { margin: 18px 0 14px; }
+/* 抵消设置滚动容器的上内边距，让吸附后的操作条贴齐可视边缘。 */
+.import-list-controls { position: sticky; top: -32px; z-index: 2; padding: 12px 0; margin-top: 18px; background: var(--surface); border-bottom: 1px solid var(--line-soft); }
+.import-list-toolbar { margin: 0; }
 .import-list-toolbar > input { min-width: 150px; }
 .import-selection-hint { margin: 0 0 10px; line-height: 1.6; }
-.import-selection-actions { margin-bottom: 6px; }
+.import-selection-actions { margin: 10px 0 0; }
+.import-selection-actions > button:first-child { margin-left: 0; }
 .import-selection-actions > span { margin-left: auto; color: var(--secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
+.import-list-controls .import-progress { margin: 10px 0 0; }
 .import-resource-row { display: flex; align-items: flex-start; gap: 12px; padding-block: 18px; }
 .import-item-title { flex: 1 1 auto; min-width: 0; }
 .import-kind { margin-left: 3px; color: var(--muted); font-size: 11px; }
@@ -37,6 +41,8 @@
 .import-remove-confirm > p { flex-basis: 100%; margin: 4px 0; color: var(--secondary); font-size: 12px; text-align: right; }
 @media (max-width: 1100px) { .import-resource-row:not(.import-candidate) { flex-wrap: wrap; } .import-row-controls { flex-basis: 100%; max-width: none; justify-items: start; } .import-row-controls > .managed-actions { justify-content: start; } .import-remove-confirm { justify-content: start; } .import-remove-confirm > p { text-align: left; } }
 @media (max-width: 760px) { .import-source-list { grid-template-columns: 1fr; gap: 12px; } .import-selection-actions > span { flex-basis: 100%; margin: 5px 0; } .import-candidate > .import-enabled-state { max-width: 65px; white-space: normal; } .import-list-toolbar { flex-wrap: wrap; } }
+@media (max-width: 1120px) { .import-list-controls { top: -28px; } }
+@media (max-width: 620px) { .import-list-controls { top: -20px; } }
 
 .import-execution { color: var(--secondary); font-size: 12px; overflow-wrap: anywhere; }
 .import-execution > span { display: block; color: var(--muted); margin-top: 3px; }

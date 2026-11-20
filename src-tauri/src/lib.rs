@@ -1,12 +1,14 @@
 mod attachments;
 mod bootstrap;
 mod browser_login;
+mod community;
 mod desktop_extras;
 mod desktop_tools;
 mod genui;
 mod history;
 mod launch;
 mod model_catalog;
+mod network;
 mod platform;
 mod providers;
 mod questions;
@@ -230,6 +232,21 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
                 }
             }
             Ok(preferences)
+        }
+        "community.install" => {
+            let _shared = desktop.data_access.read().unwrap();
+            let launch = launch::resolve(root, Path::new(text(&request, "cwd")?))?;
+            let profile = launch
+                .arguments
+                .iter()
+                .find_map(|argument| argument.strip_prefix("--profile="))
+                .unwrap_or("default");
+            community::install(
+                root,
+                text(&request, "id")?,
+                text(&request, "format")?,
+                profile,
+            )
         }
         "runtime.install" | "runtime.rollback" | "runtime.clean" | "data.import"
         | "data.takeover" => {

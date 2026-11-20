@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 
 import { ChevronDown, FolderOpen, Plus, RefreshCw } from 'lucide-react';
 import Select from '../components/Select';
 import AgentSourceIcon from '../components/AgentSourceIcon';
+import CommunityRecommendations from '../components/CommunityRecommendations';
 import { pickPath } from '../lib/bridge';
 import { displayPath } from '../lib/display-path';
 import { localizeError } from '../lib/i18n';
@@ -10,7 +11,7 @@ import { agentModelOptions, keyValueLines, lineValues, manage, settingInput, typ
 import type { Json, Language } from '../lib/types';
 import './managed-resources.css';
 
-interface Props { resource: string; sessionId: string; language: Language; onError: (error: unknown) => void }
+interface Props { resource: string; sessionId: string; cwd: string; language: Language; onError: (error: unknown) => void }
 type Words = ReturnType<typeof words>;
 const words = (language: Language) => language === 'zh' ? {
   language: 'zh' as const,
@@ -102,9 +103,9 @@ function ManagementPage(props: Props) {
   return null;
 }
 
-function Page({ manager, title, hint, text, children, add, query, setQuery }: { manager: Manager; title: string; hint?: string; text: Words; children: ReactNode; add?: ReactNode; query?: string; setQuery?: (value: string) => void }) {
+function Page({ manager, title, hint, text, children, add, query, setQuery, community }: { manager: Manager; title: string; hint?: string; text: Words; children: ReactNode; add?: ReactNode; query?: string; setQuery?: (value: string) => void; community?: Props }) {
   return <section className="managed-resources" aria-label={title} aria-busy={manager.loading || manager.busy}>
-    <header className="managed-header"><div><h2>{title}</h2>{hint && <p>{hint}</p>}</div><button type="button" className="quiet-button" disabled={manager.busy || manager.loading} onClick={() => void manager.load()}><RefreshCw size={14} />{text.refresh}</button></header>
+    <header className="managed-header"><div><h2>{title}</h2>{hint && <p>{hint}</p>}</div><div className="managed-header-actions">{community && <CommunityRecommendations resource={community.resource} sessionId={community.sessionId} cwd={community.cwd} language={community.language} disabled={manager.busy || manager.loading} onInstalled={manager.load} />}<button type="button" className="quiet-button" disabled={manager.busy || manager.loading} onClick={() => void manager.load()}><RefreshCw size={14} />{text.refresh}</button></div></header>
     {(setQuery || add) && <div className="managed-toolbar">{setQuery && <input type="search" aria-label={text.search} placeholder={text.search} disabled={manager.busy} value={query} onChange={event => setQuery(event.target.value)} />}{add}</div>}
     {manager.error && <div className="managed-feedback" role="alert"><p>{manager.error}</p><button className="quiet-button" type="button" disabled={manager.busy} onClick={() => void manager.load()}>{text.retry}</button></div>}
     {(manager.notice || manager.busy) && <p className="managed-notice" role="status">{manager.busy ? text.working : manager.notice}</p>}
@@ -168,7 +169,7 @@ function McpPage(props: Props) {
     finally { setCancelling(false); }
   };
   const shown = m.items.filter(item => matches(item, query, props.language));
-  return <Page manager={m} title={t.mcp} hint={t.mcpHint} text={t} query={query} setQuery={setQuery} add={<button className="secondary-button" disabled={m.busy} onClick={() => setAdding(true)}><Plus size={14} />{t.add}</button>}>
+  return <Page manager={m} title={t.mcp} hint={t.mcpHint} community={props} text={t} query={query} setQuery={setQuery} add={<button className="secondary-button" disabled={m.busy} onClick={() => setAdding(true)}><Plus size={14} />{t.add}</button>}>
     {adding && <form className="managed-form" onSubmit={event => { event.preventDefault(); void submit(); }}><fieldset disabled={m.busy}>
       <div className="managed-columns"><label className="managed-field">{t.name}<input value={name} required onChange={event => setName(event.target.value)} /></label><Scope value={scope} onChange={setScope} text={t} /></div>
       <label className="managed-field">{t.transport}<Select label={t.transport} value={transport} onChange={setTransport} options={['stdio', 'http', 'sse'].map(value => ({ value, label: value === 'http' ? 'HTTP' : value === 'sse' ? 'SSE' : 'stdio' }))} /></label>
@@ -185,7 +186,7 @@ function SkillsPage(props: Props) {
   const [name, setName] = useState(''), [description, setDescription] = useState(''), [body, setBody] = useState('');
   const open = (item: ManagedItem | null) => { setEdit(item); setName(item?.name ?? ''); setDescription(item?.description ?? ''); setBody(item?.body ?? item?.content ?? ''); };
   const shown = m.items.filter(item => matches(item, query, props.language));
-  return <Page manager={m} title={t.skills} hint={t.skillsHint} text={t} query={query} setQuery={setQuery} add={<button className="secondary-button" disabled={m.busy} onClick={() => open(null)}><Plus size={14} />{t.create}</button>}>
+  return <Page manager={m} title={t.skills} hint={t.skillsHint} community={props} text={t} query={query} setQuery={setQuery} add={<button className="secondary-button" disabled={m.busy} onClick={() => open(null)}><Plus size={14} />{t.create}</button>}>
     {edit !== undefined && <form className="managed-form" onSubmit={event => { event.preventDefault(); void m.run(edit ? 'update' : 'create', { id: edit?.id, name: name.trim(), description: description.trim(), body }).then(result => { if (result) setEdit(undefined); }); }}><fieldset disabled={m.busy}><label className="managed-field">{t.skillName}<input required value={name} disabled={!!edit} onChange={event => setName(event.target.value)} /></label><label className="managed-field">{t.description}<input required value={description} onChange={event => setDescription(event.target.value)} /></label><label className="managed-field">{t.body}<textarea aria-label={t.body} required rows={10} value={body} onChange={event => setBody(event.target.value)} /></label></fieldset><FormActions manager={m} text={t} cancel={() => setEdit(undefined)} /></form>}
     <Empty items={shown} query={query} text={t} />{shown.map(item => <article className="managed-item" key={item.id}><ItemTitle item={item} text={t} /><div className="managed-actions"><Toggle manager={m} item={item} text={t} />{item.managed && <Delete manager={m} item={item} action="delete" text={t} />}</div><Detail manager={m} item={item} text={t} key={`${item.id}:${m.version}`}>{detail => detail.managed || item.managed ? <button type="button" className="quiet-button" disabled={m.busy} onClick={() => open(detail)}>{t.edit}</button> : null}</Detail></article>)}
   </Page>;
@@ -197,7 +198,7 @@ function PluginsPage(props: Props) {
   const [marketplaces, setMarketplaces] = useState<string[]>([]);
   const isMarketplace = marketplaces.some(name => source.trim().endsWith(`@${name}`));
   const shown = m.items.filter(item => matches(item, query, props.language));
-  return <><Page manager={m} title={t.plugins} hint={t.pluginsHint} text={t} query={query} setQuery={setQuery} add={<button type="button" className="secondary-button" disabled={m.busy} onClick={() => setAdding(true)}><Plus size={14} />{t.install}</button>}>
+  return <><Page manager={m} title={t.plugins} hint={t.pluginsHint} community={props} text={t} query={query} setQuery={setQuery} add={<button type="button" className="secondary-button" disabled={m.busy} onClick={() => setAdding(true)}><Plus size={14} />{t.install}</button>}>
     {adding && <form className="managed-form" onSubmit={event => { event.preventDefault(); void m.run('install', { source: source.trim(), scope: isMarketplace ? scope : 'user' }).then(result => { if (result) { setAdding(false); setSource(''); } }); }}><fieldset disabled={m.busy}><label className="managed-field">{t.installSource}<input value={source} required placeholder={t.installHint} onChange={event => setSource(event.target.value)} /></label><Scope value={isMarketplace ? scope : 'user'} onChange={setScope} text={t} disabled={!isMarketplace} /><small>{t.pluginScope}</small></fieldset><FormActions manager={m} text={t} cancel={() => setAdding(false)} /></form>}
     <Empty items={shown} query={query} text={t} />{shown.map(item => <article className="managed-item" key={`${item.scope}:${item.id}`}><ItemTitle item={item} text={t} /><div className="managed-actions"><Toggle manager={m} item={item} text={t} /><button type="button" className="quiet-button" disabled={m.busy} onClick={() => void m.run('update', { id: item.id, scope: item.scope })}>{t.update}</button><Delete manager={m} item={item} text={t} label={t.uninstall} /></div><Detail manager={m} item={item} text={t} args={{ scope: item.scope }} key={`${item.scope}:${item.id}:${m.version}`}>{detail => <PluginSettings item={{ ...detail, scope: item.scope }} manager={m} text={t} />}</Detail></article>)}
   </Page><MarketplacesPage {...props} resource="marketplaces" onInstalled={m.load} onSources={setMarketplaces} /></>;

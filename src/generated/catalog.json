@@ -366,7 +366,7 @@
   {
     "name": "worktree",
     "kind": "cli",
-    "description": "Add, list, or clear git worktrees (clone-first when enabled)",
+    "description": "List or clear managed Git and ovnfs worktrees, or add a linked Git worktree at a path",
     "surface": "cli",
     "source": "packages/coding-agent/src/commands/worktree.ts"
   },
@@ -571,7 +571,7 @@
   {
     "name": "handoff",
     "kind": "slash",
-    "description": "Summarize the session into a handoff document and compact in place",
+    "description": "Compact in the background with a handoff summary (alias for /compact handoff)",
     "surface": "prompt",
     "rpc": true,
     "source": "packages/coding-agent/src/slash-commands/builtin-lifecycle.ts"
@@ -1145,13 +1145,6 @@
   },
   {
     "name": "debug",
-    "kind": "tool",
-    "description": "",
-    "surface": "tools",
-    "source": "packages/coding-agent/src/tools/builtin-names.ts"
-  },
-  {
-    "name": "ida",
     "kind": "tool",
     "description": "",
     "surface": "tools",

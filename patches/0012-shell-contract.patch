@@ -1,17 +1,17 @@
 diff --git a/packages/coding-agent/src/exec/bash-executor.ts b/packages/coding-agent/src/exec/bash-executor.ts
-index 74d23c6de8..8f13bb6d1c 100644
+index b00ddfbbde8d13910371ec0bb91e3144859fa635..1ce4d75876c0cbcc177d7658b0cc58ea2ed68e08 100644
 --- a/packages/coding-agent/src/exec/bash-executor.ts
 +++ b/packages/coding-agent/src/exec/bash-executor.ts
-@@ -17,7 +17,7 @@ import {
- import { isShellTrace, type ShellTrace } from "@oh-my-pi/pi-wire";
+@@ -19,7 +19,7 @@ import { isShellTrace, type ShellTrace } from "@oh-my-pi/pi-wire";
  import { logger } from "@oh-my-pi/pi-utils";
+ import { formatRawOutputNotice } from "@oh-my-pi/pi-tui/tools/output-meta";
  import { $env } from "@oh-my-pi/pi-utils/env";
 -import { isCmdShell, isExecutable, type ShellConfig } from "@oh-my-pi/pi-utils/procmgr";
 +import { isCmdShell, isExecutable, isPosixShell, isPowerShell, type ShellConfig } from "@oh-my-pi/pi-utils/procmgr";
  import { Settings } from "../config/settings";
  import type { MinimizedMeta } from "@oh-my-pi/pi-tui/tools/output-meta";
  import { OutputSink, type OutputSummary } from "@oh-my-pi/pi-tui/tools/streaming-output";
-@@ -513,6 +513,39 @@ function resolveUserShellConfig(settings: Settings, baseConfig: ShellConfig): Sh
+@@ -633,6 +633,39 @@ function resolveUserShellConfig(settings: Settings, baseConfig: ShellConfig): Sh
  	};
  }
  
@@ -51,7 +51,7 @@ index 74d23c6de8..8f13bb6d1c 100644
  /**
   * Env for the user-shell PTY path: keep the non-interactive guards (pagers,
   * editors, credential prompts) but restore color — the PTY makes stdout a
-@@ -607,11 +640,11 @@ async function executeUserShellPty(run: {
+@@ -728,11 +761,11 @@ async function executeUserShellPty(run: {
  
  export async function executeBash(command: string, options?: BashExecutorOptions): Promise<BashResult> {
  	const settings = await Settings.init();
@@ -67,7 +67,7 @@ index 74d23c6de8..8f13bb6d1c 100644
  	// `!` hotkey commands on zsh/fish run in a real PTY: interactive shell
  	// startup (zle, job control, gitstatus) needs a TTY, and tools only emit
  	// color when stdout is one. bash keeps the snapshot + embedded-shell path;
-@@ -654,7 +687,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
+@@ -775,7 +808,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
  	// Never wrap in cmd.exe: it is only the Windows no-bash fallback for spawn
  	// paths, and the embedded shell runs the POSIX line better directly.
  	const finalCommand =
@@ -77,10 +77,10 @@ index 74d23c6de8..8f13bb6d1c 100644
  			: preflight.command;
  
 diff --git a/packages/coding-agent/src/exec/settings.ts b/packages/coding-agent/src/exec/settings.ts
-index f2da183bf9..2f93e13710 100644
+index fbc879b3728149f81278b7acfac228d1737467f3..31ed9134bf9267b905f70e6f53ea51031bc70147 100644
 --- a/packages/coding-agent/src/exec/settings.ts
 +++ b/packages/coding-agent/src/exec/settings.ts
-@@ -97,10 +97,31 @@ export const DEFAULT_BASH_INTERCEPTOR_RULES: BashInterceptorRule[] = [
+@@ -109,10 +109,31 @@ export const DEFAULT_BASH_INTERCEPTOR_RULES: BashInterceptorRule[] = [
  	},
  ];
  
@@ -115,37 +115,38 @@ index f2da183bf9..2f93e13710 100644
  export const cfgBashEnabled = register({
  	id: "bash.enabled",
 diff --git a/packages/coding-agent/src/prompts/tools/bash.md b/packages/coding-agent/src/prompts/tools/bash.md
-index 2319d2bf65..6a2a404603 100644
+index cff9d0d86185456fa6227b4bb933c89ffa526a1c..a0657bfb18c6f436b5321ccd04c236b52c2abeea 100644
 --- a/packages/coding-agent/src/prompts/tools/bash.md
 +++ b/packages/coding-agent/src/prompts/tools/bash.md
 @@ -1,4 +1,5 @@
 -Persistent bash 5.3.
 +{{#if shellContract}}{{shellContract}}
 +{{/if}}Persistent bash 5.3.
- cwd will reset after each turn, don't rely on cd; `pty` = interactive.
+ cwd will reset after each turn, don't rely on cd{{#if hasPty}}; `pty` = interactive{{/if}}.
  Internal URIs work as paths for builtins/coreutils, redirects, globs.
  In-process builtins, ahead of PATH: {{join builtins ", "}}.
 diff --git a/packages/coding-agent/src/tools/bash.ts b/packages/coding-agent/src/tools/bash.ts
-index 9e01fc2bcf..6eb0ce6fa1 100644
+index 4cadae3bf3cdfc54956214ed5d0eaffeb6eff4f9..e52d261ca69554c4afcaab623abdfe7ab03c492e 100644
 --- a/packages/coding-agent/src/tools/bash.ts
 +++ b/packages/coding-agent/src/tools/bash.ts
-@@ -21,6 +21,6 @@ import { isEnoent, logger, prompt } from "@oh-my-pi/pi-utils";
- import { isPosixShell } from "@oh-my-pi/pi-utils/procmgr";
- import { raceJobSettlement, resolveAutoBackgroundWaitMs } from "../async";
+@@ -30,7 +30,7 @@ import {
+ 	resolveAutoBackgroundWaitMs,
+ } from "../async";
+ import { type BoardEntry, registerOnBoard } from "../daemon/client";
 -import { applyDirenvPreflight, type BashResult, executeBash } from "../exec/bash-executor";
 +import { applyDirenvPreflight, type BashResult, describeBashShellRouting, executeBash } from "../exec/bash-executor";
+ import { shellMounts, shellProcessCommand } from "../exec/shell-process";
  import { InternalUrlRouter } from "../internal-urls";
  import { sessionResolveContext } from "../internal-urls/context";
- import { InternalUrlFilesystem, UrlFsError } from "../internal-urls/url-filesystem";
-@@ -78,6 +78,7 @@ import {
+@@ -106,6 +106,7 @@ import {
  } from "../exec/settings";
  import { cfgDisplayShellVisualization } from "../modes/settings";
  import { cfgSkillful } from "../session/settings";
 +import { cfgTokenOptimizationPromptGuidance } from "../session/context-settings";
  import { cfgWorktreeClone, ovnfsCommand } from "../task/settings";
+ import { sessionShellSpeech } from "../tts/shell-speech";
  import { nativeShapingOff, shapeToolText, shapingExperiment } from "../spotlight";
- import { SPOTLIGHT_FULL_OUTPUT_MAX_BYTES } from "../spotlight/types";
-@@ -643,6 +644,9 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
+@@ -883,6 +884,9 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
  		const evalBackends = resolveEvalBackends(this.session);
  		const isToolActive = (name: string, fallback: boolean): boolean => this.session.isToolActive?.(name) ?? fallback;
  		return prompt.render(bashDescription, {

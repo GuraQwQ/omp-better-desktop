@@ -45,6 +45,7 @@ export function readModelCapabilities(value) {
   }
   if (result.maxContextWindow && result.contextWindow && result.maxContextWindow < result.contextWindow) delete result.maxContextWindow;
   for (const field of ['reasoning', 'supportsTools']) if (typeof value[field] === 'boolean') result[field] = value[field];
+  if (typeof value.thinking === 'boolean') result.reasoning = value.thinking;
   const capabilities = value.capabilities;
   if (typeof capabilities?.thinking?.supported === 'boolean') result.reasoning = capabilities.thinking.supported;
   if (typeof capabilities?.tool_calling?.supported === 'boolean') result.supportsTools = capabilities.tool_calling.supported;

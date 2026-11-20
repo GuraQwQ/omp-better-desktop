@@ -1,64 +1,6 @@
-diff --git a/packages/coding-agent/src/extensibility/skill-descriptions.ts b/packages/coding-agent/src/extensibility/skill-descriptions.ts
-index 95c4fc836f..9a3c8be1e5 100644
---- a/packages/coding-agent/src/extensibility/skill-descriptions.ts
-+++ b/packages/coding-agent/src/extensibility/skill-descriptions.ts
-@@ -388,6 +388,7 @@ export class SkillDescriptionCatalog {
- 	readonly #store: SkillDescriptionStore | undefined;
- 	readonly #compress?: SkillDescriptionCompressor;
- 	readonly #snapshot = new Map<string, string>();
-+	reuseCache: boolean;
- 	/** Misses rendered before {@link startCompression}; `undefined` once compression runs. */
- 	#deferred: Map<string, Skill> | undefined;
- 
-@@ -400,11 +401,13 @@ export class SkillDescriptionCatalog {
- 		options: {
- 			store?: SkillDescriptionStore;
- 			compress?: SkillDescriptionCompressor;
-+			reuseCache?: boolean;
- 			deferCompression?: boolean;
- 		} = {},
- 	) {
- 		this.#store = options.store ?? sharedSkillDescriptionStore();
- 		this.#compress = options.compress;
-+		this.reuseCache = options.reuseCache ?? false;
- 		if (options.deferCompression) this.#deferred = new Map();
- 	}
- 
-@@ -470,7 +473,7 @@ export class SkillDescriptionCatalog {
- 			const job = `${store.path}:${key}`;
- 			if (inFlight.has(job)) continue;
- 			batchModel ??= Promise.resolve().then(() => compressor.modelKey());
--			const pending = compressSkill(store, compressor, batchModel, key, skill).finally(() => inFlight.delete(job));
-+			const pending = compressSkill(store, compressor, batchModel, key, skill, this).finally(() => inFlight.delete(job));
- 			inFlight.set(job, pending);
- 		}
- 	}
-@@ -486,6 +489,7 @@ async function compressSkill(
- 	batchModel: Promise<string | undefined>,
- 	key: string,
- 	skill: Skill,
-+	catalog: SkillDescriptionCatalog,
- ): Promise<void> {
- 	try {
- 		const candidate = await batchModel;
-@@ -493,6 +497,14 @@ async function compressSkill(
- 		await compressionSlots.acquire();
- 		try {
- 			if (store.isClosing) return;
-+			if (catalog.reuseCache) {
-+				try {
-+					// 等待期间其他会话可能已完成压缩；保留本会话已冻结的描述。
-+					if (store.get(key) !== undefined) return;
-+				} catch (error) {
-+					logger.warn("Skill description cache recheck failed", { error: String(error) });
-+				}
-+			}
- 			// Unusable answers are remembered per model: that model is not asked again, a newly selected one is.
- 			// Re-resolved because the role can change while this job waits behind running requests.
- 			const model = compressor.modelKey();
 diff --git a/packages/coding-agent/src/prompts/system/programmatic-tool-use.md b/packages/coding-agent/src/prompts/system/programmatic-tool-use.md
 new file mode 100644
-index 0000000000..325488e82e
+index 0000000000000000000000000000000000000000..325488e82e7882803fe2b8f2b2692e029a9c85dd
 --- /dev/null
 +++ b/packages/coding-agent/src/prompts/system/programmatic-tool-use.md
 @@ -0,0 +1,7 @@
@@ -70,19 +12,18 @@ index 0000000000..325488e82e
 +
 +Use a direct tool call for a simple action. Stop the program where a new judgment or missing information is needed, inspect the result, then choose the next step.
 diff --git a/packages/coding-agent/src/sdk.ts b/packages/coding-agent/src/sdk.ts
-index 64e5d68a44..f901e92aae 100644
+index 9b3f393f0f755e999cf01781961c0d17a97aa28c..c255d49728ce1b53c3d51ec947f0f8166c76d5b2 100644
 --- a/packages/coding-agent/src/sdk.ts
 +++ b/packages/coding-agent/src/sdk.ts
-@@ -426,6 +426,8 @@ import {
+@@ -473,6 +473,7 @@ import {
  	cfgSnapcompactShape,
  	cfgSnapcompactSystemPrompt,
  	cfgSnapcompactToolResults,
 +	cfgTokenOptimizationProgrammatic,
-+	cfgTokenOptimizationSkillCacheReuse,
  	cfgWorkspaceAdditionalDirectories,
  } from "./session/context-settings";
- import { cfgTaskBatch, cfgTaskDisabledAgents, cfgTaskEager, ovnfsCommand } from "./task/settings";
-@@ -1418,6 +1420,8 @@ export interface BuildSystemPromptOptions {
+ import { cfgTaskBatch, cfgTaskCrossInstance, cfgTaskDisabledAgents, cfgTaskEager, ovnfsCommand } from "./task/settings";
+@@ -1491,6 +1492,8 @@ export interface BuildSystemPromptOptions {
  	systemPromptTemplate?: string;
  	appendPrompt?: string;
  	inlineToolDescriptors?: boolean;
@@ -91,7 +32,7 @@ index 64e5d68a44..f901e92aae 100644
  	includeWorkspaceTree?: boolean;
  	/** Include the read-only security:// resource inventory entry. Default: false. */
  	securityEnabled?: boolean;
-@@ -1448,6 +1452,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
+@@ -1521,6 +1524,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
  		contextFiles: options.contextFiles,
  		appendSystemPrompt: options.appendPrompt,
  		inlineToolDescriptors: options.inlineToolDescriptors,
@@ -99,53 +40,30 @@ index 64e5d68a44..f901e92aae 100644
  		includeWorkspaceTree: options.includeWorkspaceTree,
  		securityEnabled: options.securityEnabled,
  		evalPreludes: options.evalPreludes,
-@@ -4196,6 +4201,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
- 				: openSessionSkillDescriptionStore(agentDir);
- 		const skillDescriptions = new SkillDescriptionCatalog({
- 			store: ownedSkillDescriptionStore,
-+			reuseCache: cfgTokenOptimizationSkillCacheReuse.get(settings),
- 			// Held until AgentSession exists: before then the root cost gate does not, so a request
- 			// sent from the startup prompt render could go out ungated (see `startCompression` below).
- 			deferCompression: true,
-@@ -4413,6 +4419,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+@@ -4654,6 +4658,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
  				skillsSettings: cfgSkills.get(settings),
  				inlineToolDescriptors,
  				nativeTools,
 +				programmatic: cfgTokenOptimizationProgrammatic.get(settings),
- 				intentField: cfgToolsIntentTracing.get(settings) ? INTENT_FIELD : undefined,
+ 				intentField: intentTracingActive(settings) ? INTENT_FIELD : undefined,
  				// Spotlight ranks output against the call's intent: experiment sessions ask what each call's output is for.
  				intentGuidance: spotlightExperiment ? SPOTLIGHT_INTENT_GUIDANCE : undefined,
-@@ -5274,6 +5281,9 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+@@ -5684,6 +5689,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
  				session.emitNotice("error", `Failed to rebuild the system prompt after a settings change: ${error}`);
  			}
  		});
-+		cfgTokenOptimizationSkillCacheReuse.listen(session, enabled => {
-+			skillDescriptions.reuseCache = enabled;
-+		});
++
  		// Agent-level tool-call switches: the loop snapshots them per prompt run, so a
  		// change applies from the next run without splitting one response's schema/strip.
  		// The prompt listener above republishes the intent-field guidance.
 diff --git a/packages/coding-agent/src/session/context-settings.ts b/packages/coding-agent/src/session/context-settings.ts
-index 747a4ca42e..9961cd30c1 100644
+index 747a4ca42e83f7817c9ceef2e9a071d9fae9a06f..5c8791fb0b4818cd1d0b47c6025889f4f8775678 100644
 --- a/packages/coding-agent/src/session/context-settings.ts
 +++ b/packages/coding-agent/src/session/context-settings.ts
-@@ -9,6 +9,32 @@ import { SHAPE_VARIANT_NAMES } from "@oh-my-pi/snapcompact";
+@@ -9,6 +9,19 @@ import { SHAPE_VARIANT_NAMES } from "@oh-my-pi/snapcompact";
  const EMPTY_STRING_ARRAY: string[] = [];
  const EMPTY_MODEL_COMPACTION_THRESHOLDS: Record<string, AgentCompactionThresholdOverride> = {};
  
-+export const cfgTokenOptimizationSkillCacheReuse = register({
-+	id: "tokenOptimization.skillCacheReuse",
-+	type: "boolean",
-+	default: false,
-+	ui: {
-+		tab: "context",
-+		group: "Token optimization",
-+		label: "Reuse skill description cache",
-+		description:
-+			"Recheck completed skill descriptions after waiting for a compression slot to avoid duplicate model calls. Current session descriptions stay unchanged.",
-+	},
-+});
-+
 +export const cfgTokenOptimizationProgrammatic = register({
 +	id: "tokenOptimization.programmatic",
 +	type: "boolean",
@@ -163,7 +81,7 @@ index 747a4ca42e..9961cd30c1 100644
  	id: "workspace.additionalDirectories",
  	type: "array",
 diff --git a/packages/coding-agent/src/system-prompt.ts b/packages/coding-agent/src/system-prompt.ts
-index 4bada8e1f2..7cffb1ab00 100644
+index 67c1a731af24524bb901197a12e1b86f7fb799c0..ccb2f1e89531bb222c1edbdd0c816c94b207adb9 100644
 --- a/packages/coding-agent/src/system-prompt.ts
 +++ b/packages/coding-agent/src/system-prompt.ts
 @@ -38,6 +38,7 @@ import pragmaticPersonality from "./prompts/system/personalities/pragmatic.md" w
@@ -174,16 +92,16 @@ index 4bada8e1f2..7cffb1ab00 100644
  import type { SystemPromptSource, SystemPromptSources } from "@oh-my-pi/pi-tui/status-line/context-usage";
  import type { ActiveRepoContext } from "@oh-my-pi/pi-tui/status-line/host";
  import { XD_URL_PREFIX } from "@oh-my-pi/pi-tui/tools/xd-url";
-@@ -50,7 +51,7 @@ import { cfgEvalAutoBackgroundEnabled } from "./eval/settings";
- import { cfgTtsrBuiltinRules, cfgTtsrDisabledRules, cfgTtsrEnabled } from "./export/ttsr-settings";
- import { cfgTuiAutoGraph, cfgTuiReactions, cfgTuiRenderMermaid, cfgTuiRenderSvg } from "./modes/settings";
+@@ -58,7 +59,7 @@ import {
+ 	cfgTuiRenderSvg,
+ } from "./modes/settings";
  import { cfgSecretsEnabled } from "./secrets/settings";
 -import { cfgToolsFormat } from "./session/context-settings";
 +import { cfgTokenOptimizationProgrammatic, cfgToolsFormat } from "./session/context-settings";
  import {
  	cfgEncourageEdits,
  	cfgIncludeModelInPrompt,
-@@ -79,6 +80,7 @@ export const cfgSystemPromptInputs = combine({
+@@ -91,6 +92,7 @@ export const cfgSystemPromptInputs = combine({
  	includeWorkspaceTree: cfgIncludeWorkspaceTree,
  	inlineToolDescriptors: cfgInlineToolDescriptors,
  	toolsFormat: cfgToolsFormat,
@@ -191,7 +109,7 @@ index 4bada8e1f2..7cffb1ab00 100644
  	intentTracing: cfgToolsIntentTracing,
  	xdevDocs: cfgToolsXdevDocs,
  	xdevInlineDevices: cfgToolsXdevInlineDevices,
-@@ -529,6 +531,8 @@ export interface BuildSystemPromptOptions {
+@@ -553,6 +555,8 @@ export interface BuildSystemPromptOptions {
  	 * `namespace functions { … }` catalog. Default: true
  	 */
  	nativeTools?: boolean;
@@ -200,8 +118,7 @@ index 4bada8e1f2..7cffb1ab00 100644
  	/** Skills settings for discovery. */
  	skillsSettings?: SkillsSettings;
  	/** Working directory. Default: getProjectDir() */
-@@ -1065,7 +1069,10 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
- 		rendered = prompt.renderTracked(systemPromptTemplate, data, sourceItems);
+@@ -1179,6 +1183,9 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
  	}
  	const systemPrompt = [rendered.text];
  	const sources = trackedSources(rendered, 0, sourceIdentities);

@@ -41,6 +41,7 @@ export interface DesktopCommands {
   'data.discover': Command<Empty, (FilePath & { sessionCount: number; profiles: string[]; kind: string; warning?: string | null })[]>;
   'data.import': Command<FilePath, ImportResult>;
   'data.takeover': Command<{ enabled: boolean }, { enabled: boolean; active: boolean; restartTerminal?: boolean }>;
+  'community.install': Command<Cwd & { id: 'ponytail' | 'grill-me' | 'codegraph'; format: 'skill' | 'plugin' | 'mcp' }, { paths?: string[]; source?: string; marketplace?: string; config?: Json; installed?: boolean }>;
   'launch.get': Command<Cwd, LaunchProfile>;
   'launch.set': Command<Cwd & { profile: Partial<LaunchProfile> }, LaunchProfile>;
   'requests.status': Command<Empty, CaptureStatus>;

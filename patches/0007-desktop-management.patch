@@ -1233,7 +1233,7 @@ diff --git a/packages/coding-agent/src/session/agent-session.ts b/packages/codin
 +	}
 +
  	/** Selects a model for this session without updating persisted model settings. */
- 	setModelTemporary(
+ 	async setModelTemporary(
  		model: Model,
 @@ -12290,6 +12333,7 @@ export class AgentSession implements SettingsScope {
  			}

@@ -50,6 +50,7 @@ fn invoke(root: &Path, request: Value) -> Result<Value, String> {
         .arg(helper)
         .current_dir(root)
         .env("BUN_BE_BUN", "1")
+        .envs(crate::network::environment())
         .env("BUN_INSTALL_CACHE_DIR", root.join("cache/bun"))
         .env("TEMP", root.join("cache/tmp"))
         .env("TMP", root.join("cache/tmp"))

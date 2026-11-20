@@ -25,7 +25,7 @@
 在本仓库 [Releases](https://github.com/GuraQwQ/omp-better-desktop/releases) 下载 Windows x64 发行包及 `SHA256SUMS`，用 PowerShell 核对：
 
 ```powershell
-Get-FileHash -LiteralPath './Better-OMP-Desktop_0.4.0_windows-x64.exe' -Algorithm SHA256
+Get-FileHash -LiteralPath './Better-OMP-Desktop_0.6.5_windows-x64.exe' -Algorithm SHA256
 ```
 
 文件名以实际附件为准。安装器未签名，Windows 可能提示发布者未知。安装包内置匹配的 OMP；需要系统已有 WebView2，或自行提供解压到其他盘的 Fixed Version WebView2。首次启动选择数据目录，应用数据与安装目录分开管理。安装与更新说明见 [发行页](https://github.com/GuraQwQ/omp-better-desktop/releases)。
@@ -35,8 +35,9 @@ Get-FileHash -LiteralPath './Better-OMP-Desktop_0.4.0_windows-x64.exe' -Algorith
 - 项目与会话导航、流式消息、模型选择、设置、提供商登录、文件与差异查看。
 - OMP 配置按类别编辑并展示生效来源；图形化管理模型角色与预设、MCP、技能、插件市场、代理定义、SSH，以及指令和记忆来源。
 - 项目启动配置支持提示词、附加目录、工具与配置覆盖，保存后可重新连接；模型高级参数默认继承供应商与 OMP 标准，按需展开覆盖。
-- “发现与导入”在点击后读取其他 Agent 的技能与 MCP 配置，通过目录链接引用源数据，导入后可逐项启用。
-- 自定义 OpenAI / Anthropic 兼容提供商，自动获取常见模型目录并一键填入当前分组；配置保存到 OMP 原生文件，新连接的会话生效。
+- “发现与导入”按来源选择技能与 MCP，复制到受管目录并单独显示已导入列表，支持批量启用、停用、更新与移除；原有目录链接按记录迁移为独立副本。
+- 普通子代理提供实时进度、运行轨迹与运行中纠偏；进阶设置可开启随包 Swarm 协作，查看共享板、成员与关系图，并向共享板或指定成员发送留言、提醒与纠偏。
+- 自定义 OpenAI / Anthropic 兼容和 Gemini 原生提供商，自动获取模型目录并一键填入当前分组；配置保存到 OMP 原生文件，新连接的会话生效。Windows 桌面调用沿用系统静态 HTTP/HTTPS 代理，显式代理环境变量优先。
 - 按标题、项目、路径和 ID 搜索对话；从用户消息创建编辑分支，失败回合使用 OMP 原生重试。
 - 保存的对话按本地日期分组；切换会话恢复阅读位置，后台任务完成提供未读标记和可关闭的系统通知。
 - 队列消息可取回草稿及附件；输入 `@` 搜索项目文件，使用方向键与 Enter/Tab 插入路径，也支持未初始化 Git 的项目。
@@ -48,6 +49,7 @@ Get-FileHash -LiteralPath './Better-OMP-Desktop_0.4.0_windows-x64.exe' -Algorith
 - 用量面板的“进阶”支持查看系统提示词、完整会话消息、工具参数与运行信息。设置中的“进阶”可开启本地实际请求捕获，按会话查看原文、复制和清理；默认关闭。
 - OMP 运行时随包交付，首次启动校验并激活；保留上一份托管运行时用于回退。
 - 原生命令与 RPC 按实际语义接入；依赖 OMP TUI 的交互通过内嵌终端接管当前会话。
+- 定时任务与会话库使用独立页面；右侧工作区支持文件编辑、终端、差异与紧凑布局切换，输入框支持 Mod+Enter 换行。
 - 导入既有 OMP 数据时复制源数据并记录进度；会话、凭据、配置和应用文件分别保留。
 
 能力与接口见自动生成的 [功能目录](docs/feature-map.md) 和 [桌面接口约定](docs/desktop-contract.md)。第三方自定义 TUI、外部服务和语音设备的行为取决于 OMP 及相应服务，不能把目录中的条目数视作端到端验证结果。当前构建与发行流程覆盖 Windows x64。
@@ -67,7 +69,7 @@ bun run build:runtime
 ./scripts/dev.ps1
 ```
 
-`build:runtime` 从锁定提交创建隔离的上游 checkout，应用补丁、生成协议、编译运行时并进行无模型调用的 RPC 烟测，最后执行桌面类型与 Rust 编译检查。需要网络访问上游和依赖仓库。使用已在其他位置安装的工具链时，保留 `CARGO_HOME`、`RUSTUP_HOME` 与 PATH；也可通过 `MSVC_ROOT`、`WINDOWS_SDK_ROOT`、`WINDOWS_SDK_VERSION` 指定工具目录。
+`build:runtime` 从锁定提交创建隔离的上游 checkout，应用补丁、生成协议、编译运行时，最后执行桌面类型与 Rust 编译检查。发行前使用本机验证环境对最终二进制执行无模型调用的 RPC 烟测。需要网络访问上游和依赖仓库。使用已在其他位置安装的工具链时，保留 `CARGO_HOME`、`RUSTUP_HOME` 与 PATH；也可通过 `MSVC_ROOT`、`WINDOWS_SDK_ROOT`、`WINDOWS_SDK_VERSION` 指定工具目录。
 
 ```powershell
 bun run check
@@ -82,7 +84,7 @@ bun run clean                                 # 清理本仓库 .cache、build�
 
 请先阅读 [贡献说明](CONTRIBUTING.md)。报告问题时附上应用版本、OMP revision、Windows/WebView2 版本、复现步骤和脱敏日志；不要上传凭据或完整私人会话。
 
-公开 CI 执行类型检查、Rust 格式与编译检查，以及无模型调用的运行时协议烟测。定时上游 Release 更新提出 PR 后，在云端构建匹配的 Windows 安装包；检查通过且无冲突时自动合并，并将预构建包发布为预览 Release。维护者也可按正式或预览标签创建发行草稿。详见 [发行工作流](.github/workflows/upstream-release.yml)。
+公开 CI 执行类型检查、Rust 格式与编译检查，并按改动范围构建运行时。定时上游 Release 更新提出 PR 后，在云端构建匹配的 Windows 安装包；检查通过且无冲突时自动合并，并将预构建包发布为预览 Release。维护者也可按正式或预览标签创建发行草稿。详见 [发行工作流](.github/workflows/upstream-release.yml)。
 
 ## 许可与来源
 

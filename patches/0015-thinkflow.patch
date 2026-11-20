@@ -1,4 +1,5 @@
 diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
+index c8b776212758155e1c5e88b8efa2e0aaebf3d09d..36ce42d7969ad57d06580431946032129aae50fa 100644
 --- a/packages/agent/src/agent-loop.ts
 +++ b/packages/agent/src/agent-loop.ts
 @@ -59,6 +59,10 @@ import { LiveSteeringChannel } from "./live-steering";
@@ -12,7 +13,7 @@ diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
  import {
  	type AgentTelemetry,
  	failChatSpan,
-@@ -1601,6 +1605,14 @@ async function runLoopBody(
+@@ -1621,6 +1625,14 @@ async function runLoopBody(
  					stream.push({ type: "message_end", message: snapshotAssistantMessage(message) });
  				}
  				newMessages.push(message);
@@ -27,7 +28,7 @@ diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
  
  				// The escalation choice (if any) applied to the call above; clear it so
  				// only the single escalation turn carries the forced choice.
-@@ -1646,8 +1658,11 @@ async function runLoopBody(
+@@ -1666,8 +1678,11 @@ async function runLoopBody(
  							status: message.stopReason === "aborted" ? "aborted" : "error",
  						});
  					}
@@ -40,7 +41,7 @@ diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
  
  					stream.push(buildAgentEndEvent(newMessages, telemetry, stepCounter.count));
  					stream.end(newMessages);
-@@ -1699,7 +1714,14 @@ async function runLoopBody(
+@@ -1719,7 +1734,14 @@ async function runLoopBody(
  
  				const toolResults: ToolResultMessage[] = [];
  				const additionalMessages: AgentMessage[] = [];
@@ -56,7 +57,7 @@ diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
  					SpeculativeOperationCoordinator.discardForMessage(message, "soft tool requirement deferred execution");
  					if (softRequirementState.escalations >= MAX_SOFT_TOOL_ESCALATIONS) {
  						throw new Error(
-@@ -1824,6 +1846,10 @@ async function runLoopBody(
+@@ -1844,6 +1866,10 @@ async function runLoopBody(
  					hasMoreToolCalls = true;
  				}
  
@@ -67,7 +68,7 @@ diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
  				await emitTurnEnd(stream, currentContext, message, toolResults, config, signal, {
  					additionalMessages,
  					willContinue: hasMoreToolCalls && !isDeadlineExceeded(config.deadline),
-@@ -2068,6 +2094,34 @@ async function prepareProviderCall(
+@@ -2088,6 +2114,34 @@ async function prepareProviderCall(
   * Stream an assistant response from the LLM.
   * This is where AgentMessage[] gets transformed to Message[] for the LLM.
   */
@@ -102,7 +103,7 @@ diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
  async function streamAssistantResponse(
  	context: AgentContext,
  	config: AgentLoopConfig,
-@@ -2109,9 +2163,11 @@ async function streamAssistantResponse(
+@@ -2129,9 +2183,11 @@ async function streamAssistantResponse(
  	// `requestSignal`), so it cancels the request without tripping the loop's
  	// external-abort handling (`abortRacePromise` / `requestSignal.aborted`).
  	const promptToolAbortController = ownedDialect ? new AbortController() : undefined;
@@ -114,7 +115,7 @@ diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
  	const finalRequestSignal =
  		providerAbortSignals.length === 0
  			? undefined
-@@ -2227,7 +2283,8 @@ async function streamAssistantResponse(
+@@ -2247,7 +2303,8 @@ async function streamAssistantResponse(
  	try {
  		return await runInActiveSpan(chatSpan, async () => {
  			onProviderStart?.();
@@ -124,7 +125,7 @@ diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
  				...config,
  				apiKey,
  				metadata: resolvedMetadata,
-@@ -2258,6 +2315,24 @@ async function streamAssistantResponse(
+@@ -2278,6 +2335,24 @@ async function streamAssistantResponse(
  			}
  
  			let partialMessage: AssistantMessage | null = null;
@@ -149,7 +150,7 @@ diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
  			let addedPartial = false;
  			// Previous `message_update` snapshot for the incremental rebuild below;
  			// null until the turn's `start` event seeds it.
-@@ -2279,7 +2354,7 @@ async function streamAssistantResponse(
+@@ -2299,7 +2374,7 @@ async function streamAssistantResponse(
  				argStreams.clear();
  			};
  			const speculationConfig =
@@ -158,7 +159,7 @@ diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
  			const speculationCoordinator = speculationConfig
  				? new SpeculativeOperationCoordinator(speculationConfig, {
  						context,
-@@ -2311,6 +2386,7 @@ async function streamAssistantResponse(
+@@ -2331,6 +2406,7 @@ async function streamAssistantResponse(
  					stream,
  					requestSignal,
  				);
@@ -166,7 +167,7 @@ diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
  				await finishChat(aborted);
  				return aborted;
  			};
-@@ -2334,12 +2410,13 @@ async function streamAssistantResponse(
+@@ -2354,12 +2430,13 @@ async function streamAssistantResponse(
  			try {
  				while (true) {
  					let next: IteratorResult<AssistantMessageEvent>;
@@ -183,7 +184,7 @@ diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
  					} else {
  						next = await responseIterator.next();
  					}
-@@ -2372,6 +2449,10 @@ async function streamAssistantResponse(
+@@ -2392,6 +2469,10 @@ async function streamAssistantResponse(
  							}
  						}
  						finalMessage = snapshotAssistantMessage(finalMessage);
@@ -194,7 +195,7 @@ diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
  						// Unhealed DSML markup must not reach history, including reasoning
  						// and turns with a valid structured call. Only a failed text-only
  						// call needs the recovery nudge.
-@@ -2393,7 +2474,7 @@ async function streamAssistantResponse(
+@@ -2413,7 +2494,7 @@ async function streamAssistantResponse(
  						// actually dispatch. The same gate keeps host-deferred speculation from
  						// being released for truncated, expired, or soft-tool-rejected turns.
  						const finalToolCallsCanDispatch =
@@ -203,7 +204,7 @@ diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
  							(canDispatchFinalToolCalls?.(finalMessage) ??
  								(finalMessage.stopReason !== "error" &&
  									finalMessage.stopReason !== "aborted" &&
-@@ -2441,8 +2522,19 @@ async function streamAssistantResponse(
+@@ -2461,8 +2542,19 @@ async function streamAssistantResponse(
  					if (requestSignal?.aborted) {
  						return await finishAbortedStream();
  					}
@@ -224,7 +225,7 @@ diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
  						const block = event.partial.content[event.contentIndex];
  						if (block?.type === "toolCall") {
  							const tool = resolveToolForCall(context.tools, block, config.resolveFallbackTool);
-@@ -2668,8 +2760,9 @@ async function streamAssistantResponse(
+@@ -2688,8 +2780,9 @@ async function streamAssistantResponse(
  					await config.transformAssistantMessage(trailing, requestSignal);
  				}
  				trailing = snapshotAssistantMessage(trailing);
@@ -236,9 +237,10 @@ diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
  						(trailing.stopReason !== "error" &&
  							trailing.stopReason !== "aborted" &&
 diff --git a/packages/agent/src/agent.ts b/packages/agent/src/agent.ts
+index e5b7d6e9c3e65ed982ca38ea539c1401c215047d..0765fef23f4d8b94959b86eb6bfb267018db9d5a 100644
 --- a/packages/agent/src/agent.ts
 +++ b/packages/agent/src/agent.ts
-@@ -263,6 +263,7 @@ export interface AgentOptions {
+@@ -266,6 +266,7 @@ export interface AgentOptions {
  	transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => Record<string, unknown>;
  	/** Host authorization and telemetry for opt-in speculative tool execution. */
  	speculativeToolExecution?: SpeculativeToolExecutionConfig;
@@ -246,7 +248,7 @@ diff --git a/packages/agent/src/agent.ts b/packages/agent/src/agent.ts
  
  	/**
  	 * Resolve a tool call whose name matched no advertised tool. Lets hosts
-@@ -494,6 +495,7 @@ export class Agent {
+@@ -497,6 +498,7 @@ export class Agent {
  	#preferWebsockets?: boolean;
  	#transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => Record<string, unknown>;
  	#speculativeToolExecution?: SpeculativeToolExecutionConfig;
@@ -254,7 +256,7 @@ diff --git a/packages/agent/src/agent.ts b/packages/agent/src/agent.ts
  	#resolveFallbackTool?: (name: string, advertised: readonly AgentTool<any>[]) => AgentTool<any> | undefined;
  	#suggestFallbackToolNames?: () => Iterable<string>;
  	#intentTracing: boolean;
-@@ -610,6 +612,7 @@ export class Agent {
+@@ -613,6 +615,7 @@ export class Agent {
  		this.#preferWebsockets = opts.preferWebsockets;
  		this.#transformToolCallArguments = opts.transformToolCallArguments;
  		this.#speculativeToolExecution = opts.speculativeToolExecution;
@@ -262,7 +264,7 @@ diff --git a/packages/agent/src/agent.ts b/packages/agent/src/agent.ts
  		this.#resolveFallbackTool = opts.resolveFallbackTool;
  		this.#suggestFallbackToolNames = opts.suggestFallbackToolNames;
  		this.#intentTracing = opts.intentTracing === true;
-@@ -2083,6 +2086,7 @@ export class Agent {
+@@ -2077,6 +2080,7 @@ export class Agent {
  			getCwd: this.#cwdResolver,
  			transformToolCallArguments: this.#transformToolCallArguments,
  			speculativeToolExecution: this.#speculativeToolExecution,
@@ -270,27 +272,8 @@ diff --git a/packages/agent/src/agent.ts b/packages/agent/src/agent.ts
  			resolveFallbackTool: this.#resolveFallbackTool,
  			suggestFallbackToolNames: this.#suggestFallbackToolNames,
  			intentTracing: this.#intentTracing,
-diff --git a/packages/agent/src/types.ts b/packages/agent/src/types.ts
---- a/packages/agent/src/types.ts
-+++ b/packages/agent/src/types.ts
-@@ -26,6 +26,7 @@ import type { AppendOnlyContextManager } from "./append-only-context";
- import type { AgentRunCoverage, AgentRunSummary } from "./run-collector";
- import type { SentToolDefinitions } from "./sent-tool-definitions";
- import type { AgentTelemetryConfig } from "./telemetry";
-+import type { ThinkFlowHost } from './thinkflow';
- 
- /** Stream function - can return sync or Promise for async config lookup */
- export type StreamFn = (
-@@ -190,6 +191,8 @@ export interface SteeringQueueState {
-  */
- export interface AgentLoopConfig extends SimpleStreamOptions {
- 	model: Model;
-+	/** 当前运行快照；关闭时不构造解析器或执行队列。 */
-+	thinkflow?: ThinkFlowHost;
- 
- 	/** Reports whether this loop has reached a safe process-pause boundary. */
- 	onPauseChange?: (paused: boolean) => void;
 diff --git a/packages/agent/src/index.ts b/packages/agent/src/index.ts
+index 79c152897872126a6356e973a3c863c2227d9092..c78e4cf55a37a9a0687aa782a91880638e8952cb 100644
 --- a/packages/agent/src/index.ts
 +++ b/packages/agent/src/index.ts
 @@ -32,3 +32,4 @@ export * from "./tokenizer";
@@ -300,6 +283,7 @@ diff --git a/packages/agent/src/index.ts b/packages/agent/src/index.ts
 +export * from './thinkflow';
 diff --git a/packages/agent/src/thinkflow.ts b/packages/agent/src/thinkflow.ts
 new file mode 100644
+index 0000000000000000000000000000000000000000..492738ed46781d5ad47b7a761c0909703559a1dd
 --- /dev/null
 +++ b/packages/agent/src/thinkflow.ts
 @@ -0,0 +1,297 @@
@@ -600,10 +584,32 @@ new file mode 100644
 +		this.feedbackReady.resolve();
 +	}
 +}
+diff --git a/packages/agent/src/types.ts b/packages/agent/src/types.ts
+index 45bedb54af2a290881881ca103c91728967785e9..bbc6ca833060ffebf5deaba6a371b44f6d1fd44b 100644
+--- a/packages/agent/src/types.ts
++++ b/packages/agent/src/types.ts
+@@ -26,6 +26,7 @@ import type { AppendOnlyContextManager } from "./append-only-context";
+ import type { AgentRunCoverage, AgentRunSummary } from "./run-collector";
+ import type { SentToolDefinitions } from "./sent-tool-definitions";
+ import type { AgentTelemetryConfig } from "./telemetry";
++import type { ThinkFlowHost } from './thinkflow';
+ 
+ /** Stream function - can return sync or Promise for async config lookup */
+ export type StreamFn = (
+@@ -190,6 +191,8 @@ export interface SteeringQueueState {
+  */
+ export interface AgentLoopConfig extends SimpleStreamOptions {
+ 	model: Model;
++	/** 当前运行快照；关闭时不构造解析器或执行队列。 */
++	thinkflow?: ThinkFlowHost;
+ 
+ 	/** Reports whether this loop has reached a safe process-pause boundary. */
+ 	onPauseChange?: (paused: boolean) => void;
 diff --git a/packages/coding-agent/src/sdk.ts b/packages/coding-agent/src/sdk.ts
+index 0d5a2dd0f752347378462e31e7b13491c4f08f7f..9fa6bb7b960b10f2f1af4ee209687dd8b0e39f20 100644
 --- a/packages/coding-agent/src/sdk.ts
 +++ b/packages/coding-agent/src/sdk.ts
-@@ -446,8 +446,10 @@ import {
+@@ -471,8 +471,10 @@ import {
  } from "./mcp/settings";
  import { cfgPlanEnabled } from "./plan-mode/settings";
  import { cfgSecretsEnabled } from "./secrets/settings";
@@ -614,7 +620,7 @@ diff --git a/packages/coding-agent/src/sdk.ts b/packages/coding-agent/src/sdk.ts
  	cfgSnapcompactSystemPrompt,
  	cfgSnapcompactToolResults,
  	cfgTokenOptimizationProgrammatic,
-@@ -2253,6 +2255,12 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+@@ -2313,6 +2315,12 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
  	// evidence that the old process can no longer finish that turn. Preserve the
  	// partial transcript and append one terminal aborted assistant record before
  	// rebuilding runtime context. The helper is idempotent once that record exists.
@@ -627,7 +633,7 @@ diff --git a/packages/coding-agent/src/sdk.ts b/packages/coding-agent/src/sdk.ts
  	let existingBranch = logger.time("getSessionBranch", () => sessionManager.getBranch());
  	const interruptedTurnAbort = createInterruptedTurnAbortMessage(existingBranch);
  	if (interruptedTurnAbort) {
-@@ -5089,6 +5097,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+@@ -5253,6 +5261,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
  			dialectResolver: dialectModel => resolveDialect(cfgToolsFormat.get(settings), dialectModel),
  			abortOnFabricatedToolResult: cfgToolsAbortOnFabricatedResult.get(settings),
  			speculativeToolExecution,
@@ -635,7 +641,23 @@ diff --git a/packages/coding-agent/src/sdk.ts b/packages/coding-agent/src/sdk.ts
  			getToolChoice: () => session?.nextToolChoiceDirective(),
  			onToolChoiceUnavailable: () => session?.toolChoiceQueue.reject("unavailable"),
  			telemetry: options.telemetry,
+diff --git a/packages/coding-agent/src/session/agent-session.ts b/packages/coding-agent/src/session/agent-session.ts
+index 58fb85dd83cbb94c3998c57ac16c6c23e5a8427e..0318cca4848e4402615990c74cfe095346e876ac 100644
+--- a/packages/coding-agent/src/session/agent-session.ts
++++ b/packages/coding-agent/src/session/agent-session.ts
+@@ -4717,6 +4717,10 @@ export class AgentSession implements SettingsScope, AgentViewSession {
+ 			return;
+ 		}
+ 		if (message.role === "hookMessage" || message.role === "custom") {
++			if (message.customType === 'thinkflow-observation') {
++				this.sessionManager.appendMessage(message);
++				return;
++			}
+ 			// One-run instructions must not return from persisted history: prewalk
+ 			// nudges are consumed once, and Vibe context is rebuilt only while active.
+ 			if (!isPrewalkPlanNudge(message) && message.customType !== VIBE_MODE_CONTEXT_MESSAGE_TYPE) {
 diff --git a/packages/coding-agent/src/session/context-settings.ts b/packages/coding-agent/src/session/context-settings.ts
+index 47e6b2cc2fd816b1abd34a3144c9bb8a19384f5f..cf2169a5b1408f8d4bf81a6e5a0e5c21c51ada97 100644
 --- a/packages/coding-agent/src/session/context-settings.ts
 +++ b/packages/coding-agent/src/session/context-settings.ts
 @@ -9,6 +9,11 @@ import { SHAPE_VARIANT_NAMES } from "@oh-my-pi/snapcompact";
@@ -647,11 +669,12 @@ diff --git a/packages/coding-agent/src/session/context-settings.ts b/packages/co
 +	ui: { tab: 'context', group: 'ThinkFlow', label: '续想流式执行（实验）', description: '完整正文命令在流中按序执行，仅在需要信息或失败时反馈；下一次运行生效。' },
 +});
 +
- export const cfgTokenOptimizationSkillCacheReuse = register({
- 	id: "tokenOptimization.skillCacheReuse",
+ export const cfgTokenOptimizationProgrammatic = register({
+ 	id: "tokenOptimization.programmatic",
  	type: "boolean",
 diff --git a/packages/coding-agent/src/session/thinkflow.ts b/packages/coding-agent/src/session/thinkflow.ts
 new file mode 100644
+index 0000000000000000000000000000000000000000..53279d060f70f7b160c6e9e3629e261b81e8264e
 --- /dev/null
 +++ b/packages/coding-agent/src/session/thinkflow.ts
 @@ -0,0 +1,240 @@
@@ -895,17 +918,3 @@ new file mode 100644
 +		};
 +	}
 +}
-diff --git a/packages/coding-agent/src/session/agent-session.ts b/packages/coding-agent/src/session/agent-session.ts
---- a/packages/coding-agent/src/session/agent-session.ts
-+++ b/packages/coding-agent/src/session/agent-session.ts
-@@ -4484,6 +4484,10 @@ export class AgentSession implements SettingsScope, AgentViewSession {
- 			return;
- 		}
- 		if (message.role === "hookMessage" || message.role === "custom") {
-+			if (message.customType === 'thinkflow-observation') {
-+				this.sessionManager.appendMessage(message);
-+				return;
-+			}
- 			// One-run instructions must not return from persisted history: prewalk
- 			// nudges are consumed once, and Vibe context is rebuilt only while active.
- 			if (!isPrewalkPlanNudge(message) && message.customType !== VIBE_MODE_CONTEXT_MESSAGE_TYPE) {

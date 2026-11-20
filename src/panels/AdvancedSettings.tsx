@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { request } from '../lib/bridge';
 import { displayPath } from '../lib/display-path';
 import { localizeError } from '../lib/i18n';
-import type { Language } from '../lib/types';
+import type { Language, Preferences } from '../lib/types';
+import { advancedFeatures } from '../lib/desktop-preferences';
 import type { DesktopRequestArgs } from '../lib/desktop-commands';
 import RequestCaptures from '../components/RequestCaptures';
 import './advanced-settings.css';
 
 interface CaptureStatus { enabled: boolean; supported: boolean; directory: string; count: number; bytes: number; maxBytes: number }
-export default function AdvancedSettings({ language }: { language: Language }) {
+export default function AdvancedSettings({ language, preferences, change }: { language: Language; preferences: Preferences; change: (patch: Partial<Preferences>) => void }) {
   const text = language === 'zh' ? {
     title: '进阶', capture: '捕获实际请求', description: '保存 OMP 发给模型的输入，便于检查系统提示词、扩展注入和工具参数。开关在下一次请求时生效。',
     local: '记录仅保存在本机，包含消息正文与附件。认证头会脱敏；正文中自行填写的敏感内容会原样保留。',
@@ -36,6 +37,7 @@ export default function AdvancedSettings({ language }: { language: Language }) {
   };
   const mb = (bytes: number) => new Intl.NumberFormat(language === 'zh' ? 'zh-CN' : 'en-US', { maximumFractionDigits: 1 }).format(bytes / 1024 / 1024);
   return <div className="advanced-settings"><h2>{text.title}</h2>
+    {Object.entries(advancedFeatures).map(([key, feature]) => <div className="setting-row" key={key}><div><strong id={`feature-${key}`}>{language === 'zh' ? feature.label : feature.enLabel}</strong><small>{language === 'zh' ? feature.hint : feature.enHint}</small></div><input className="capture-switch" type="checkbox" role="switch" aria-labelledby={`feature-${key}`} checked={preferences.features?.[key as keyof typeof advancedFeatures] === true} onChange={event => change({ features: { [key]: event.target.checked } })} /></div>)}
     {error && <div role="alert"><p>{localizeError(error, language)}</p><button className="quiet-button" disabled={working} onClick={() => setRevision(value => value + 1)}>{text.retry}</button></div>}
     {!status && !error ? <p role="status">{text.loading}</p> : status && <>
       <div className="setting-row"><div><strong id="request-capture-label">{text.capture}</strong><small>{text.description}</small></div><input className="capture-switch" type="checkbox" role="switch" aria-labelledby="request-capture-label" checked={status.enabled} disabled={working || !status.supported} onChange={event => void act('requests.configure', { enabled: event.target.checked })} /></div>

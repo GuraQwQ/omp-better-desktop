@@ -5,10 +5,6 @@ export const settingsZh: Record<string, { label: string; description?: string; o
     label: 'ThinkFlow 流式工具执行',
     description: '在生成期间按序执行完整的文本工具命令，仅在需要结果或执行失败时反馈。更改从下一次运行生效。',
   },
-  "tokenOptimization.skillCacheReuse": {
-    "label": "复用技能描述缓存",
-    "description": "共享缓存的会话协同压缩技能描述，减少重复调用；当前会话的描述保持不变。"
-  },
   "tokenOptimization.programmatic": {
     "label": "批量读取",
     "description": "在 eval 中启用批量读取，保留每项错误与原始结果。"
@@ -1137,34 +1133,32 @@ export const settingsZh: Record<string, { label: string; description?: string; o
   },
   "tts.localVoice": {
     "label": "本地 TTS 音色",
-    "description": "本地 TTS 后端使用的 Kokoro 音色（美式/英式，女声/男声）",
+    "description": "本地 TTS 后端使用的 Phonon 音色（美式/英式，女声/男声）",
     "options": {
-      "af_heart": "Heart（美国女声）",
-      "af_bella": "Bella（美国女声）",
-      "af_nicole": "Nicole（美国女声）",
-      "af_aoede": "Aoede（美国女声）",
-      "af_kore": "Kore（美国女声）",
-      "af_sarah": "Sarah（美国女声）",
-      "am_michael": "Michael（美国男声）",
-      "am_fenrir": "Fenrir（美国男声）",
-      "am_puck": "Puck（美国男声）",
-      "bf_emma": "Emma（英国女声）",
-      "bm_george": "George（英国男声）",
-      "bm_fable": "Fable（英国男声）"
+      "harper": "Harper（美国女声）",
+      "hadley": "Hadley（美国女声）",
+      "delia": "Delia（美国女声）",
+      "everly": "Everly（美国女声）",
+      "easton": "Easton（美国男声）",
+      "preston": "Preston（美国男声）",
+      "miles": "Miles（美国男声）",
+      "trevor": "Trevor（美国男声）",
+      "maeve": "Maeve（英国女声）",
+      "bryony": "Bryony（英国女声）",
+      "edwin": "Edwin（英国男声）",
+      "hugh": "Hugh（英国男声）"
     }
   },
   "tts.localSpeed": {
     "label": "本地 TTS 语速",
-    "description": "本地 TTS 后端（tts 工具、omp say）的语速。1 = 正常；限制在 0.5–2.5",
+    "description": "本地 TTS 后端（tts 工具、omp say）的语速。1 = 正常；限制在 0.8–1.3",
     "options": {
       "1": "1×（正常）",
-      "2": "2×",
-      "0.5": "0.5×",
-      "0.75": "0.75×",
-      "1.25": "1.25×",
-      "1.5": "1.5×",
-      "1.75": "1.75×",
-      "2.5": "2.5×"
+      "0.8": "0.8×",
+      "0.9": "0.9×",
+      "1.1": "1.1×",
+      "1.2": "1.2×",
+      "1.3": "1.3×"
     }
   },
   "speech.enabled": {
@@ -1186,34 +1180,32 @@ export const settingsZh: Record<string, { label: string; description?: string; o
   },
   "speech.voice": {
     "label": "语音朗读音色",
-    "description": "朗读助手输出时使用的 Kokoro 音色",
+    "description": "朗读助手输出时使用的 Phonon 音色",
     "options": {
-      "af_heart": "Heart（美国女声）",
-      "af_bella": "Bella（美国女声）",
-      "af_nicole": "Nicole（美国女声）",
-      "af_aoede": "Aoede（美国女声）",
-      "af_kore": "Kore（美国女声）",
-      "af_sarah": "Sarah（美国女声）",
-      "am_michael": "Michael（美国男声）",
-      "am_fenrir": "Fenrir（美国男声）",
-      "am_puck": "Puck（美国男声）",
-      "bf_emma": "Emma（英国女声）",
-      "bm_george": "George（英国男声）",
-      "bm_fable": "Fable（英国男声）"
+      "harper": "Harper（美国女声）",
+      "hadley": "Hadley（美国女声）",
+      "delia": "Delia（美国女声）",
+      "everly": "Everly（美国女声）",
+      "easton": "Easton（美国男声）",
+      "preston": "Preston（美国男声）",
+      "miles": "Miles（美国男声）",
+      "trevor": "Trevor（美国男声）",
+      "maeve": "Maeve（英国女声）",
+      "bryony": "Bryony（英国女声）",
+      "edwin": "Edwin（英国男声）",
+      "hugh": "Hugh（英国男声）"
     }
   },
   "speech.speed": {
     "label": "语音朗读语速",
-    "description": "朗读助手输出时的语速。1 = 正常；限制在 0.5–2.5",
+    "description": "朗读助手输出时的语速。1 = 正常；限制在 0.8–1.3",
     "options": {
       "1": "1×（正常）",
-      "2": "2×",
-      "0.5": "0.5×",
-      "0.75": "0.75×",
-      "1.25": "1.25×",
-      "1.5": "1.5×",
-      "1.75": "1.75×",
-      "2.5": "2.5×"
+      "0.8": "0.8×",
+      "0.9": "0.9×",
+      "1.1": "1.1×",
+      "1.2": "1.2×",
+      "1.3": "1.3×"
     }
   },
   "providers.fetch": {
@@ -2221,7 +2213,7 @@ export const settingsZh: Record<string, { label: string; description?: string; o
   },
   "speechgen.enabled": {
     "label": "语音生成",
-    "description": "启用 tts 工具进行端侧（Kokoro）或 xAI Grok Voice 语音文件合成"
+    "description": "启用 tts 工具进行端侧（Phonon）或 xAI Grok Voice 语音文件合成"
   },
   "generate_image.enabled": {
     "label": "生成图片",
@@ -2585,11 +2577,12 @@ export const settingsZh: Record<string, { label: string; description?: string; o
   },
   "worktree.onExit": {
     "label": "退出时处理 Worktree",
-    "description": "退出时如何处理 omp 启动以来（启动时或通过 /wt）创建的 worktree。",
+    "description": "退出时如何处理 OMP 启动以来创建的工作树。移除会清理干净的工作树；强制移除会丢弃未提交修改、被 Git 忽略的文件及仅存在于分离 HEAD 的提交，分支上的新提交保留。",
     "options": {
       "keep": "保留",
       "ask": "询问",
-      "remove": "移除"
+      "remove": "移除",
+      "force": "强制移除"
     }
   },
   "task.isolation.apply": {
@@ -2942,9 +2935,10 @@ export const settingsZh: Record<string, { label: string; description?: string; o
     "label": "截图目录",
     "description": "保存截图的目录。未设置时截图写入临时文件。支持 ~。示例：~/Downloads、~/Desktop、/sdcard/Download（Android）"
   },
-  "ida.enabled": {
-    "label": "启用 IDA Pro",
-    "description": "用 IDA Pro（idalib）打开 read 读取的可执行文件并启用 ida 工具；未找到 IDA 安装时无效。"
+  "disassembler.backend": {
+    "label": "反汇编后端",
+    "description": "用于 read 分析选择器和 eval 的 dsm 命名空间。普通可执行文件读取只显示元数据；自动模式优先使用已安装的 IDA Pro，否则首次分析时安装 Ghidra。",
+    "options": { "auto": "自动", "ghidra": "Ghidra", "ida": "IDA Pro", "none": "仅显示元数据" }
   },
   "ida.python": {
     "label": "IDA Python 解释器",
@@ -2954,9 +2948,9 @@ export const settingsZh: Record<string, { label: string; description?: string; o
     "label": "IDA 安装目录",
     "description": "包含 libidalib 的目录，导出为 IDADIR；留空自动检测（$IDADIR、ida-config.json、标准安装路径）。"
   },
-  "ida.maxOpen": {
-    "label": "IDA 同时打开上限",
-    "description": "每个项目最多同时打开的 IDA 数据库数（omp ps 中的 omp.ida.* 守护进程）；再打开时保存并关闭最久未用的空闲库。",
+  "disassembler.maxOpen": {
+    "label": "分析数据库同时打开上限",
+    "description": "每个项目最多同时打开的分析数据库数；再打开时关闭未被引用且最久未用的空闲库。使用完毕后应关闭保留的 dsm 句柄。",
     "options": {
       "2": "2",
       "4": "4",
@@ -2964,9 +2958,9 @@ export const settingsZh: Record<string, { label: string; description?: string; o
       "16": "16"
     }
   },
-  "ida.idleCloseSec": {
-    "label": "IDA 空闲关闭超时",
-    "description": "空闲超过此秒数的 IDA 数据库将被保存并关闭（0 = 从不）；exec 命名空间在重新打开时重置。",
+  "disassembler.idleCloseSec": {
+    "label": "分析数据库空闲关闭超时",
+    "description": "未被引用且空闲超过此秒数的数据库会保存并关闭（0 = 从不）；保留的 dsm 句柄保持打开，重新打开时重置执行命名空间。",
     "options": {
       "0": "从不",
       "300": "5 分钟",
@@ -2974,6 +2968,14 @@ export const settingsZh: Record<string, { label: string; description?: string; o
       "1800": "30 分钟",
       "3600": "1 小时"
     }
+  },
+  "ghidra.installDir": {
+    "label": "Ghidra 安装目录",
+    "description": "Ghidra 12 及以上版本的安装目录，须包含 Ghidra/application.properties。留空依次查找环境变量、已有安装或下载应用管理的版本。"
+  },
+  "ghidra.python": {
+    "label": "Ghidra Python 解释器",
+    "description": "能导入 PyGhidra 的 Python 解释器；留空使用由安装目录附带的 wheel 创建的受管虚拟环境。"
   },
   "mcp.enableProjectConfig": {
     "label": "MCP 项目配置",

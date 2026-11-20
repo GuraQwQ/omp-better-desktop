@@ -1,6 +1,6 @@
 diff --git a/packages/coding-agent/src/eval/read-batch.ts b/packages/coding-agent/src/eval/read-batch.ts
 new file mode 100644
-index 0000000..17a4a1b
+index 0000000000000000000000000000000000000000..17a4a1be6a3c4d59e2002d4525506264599343b8
 --- /dev/null
 +++ b/packages/coding-agent/src/eval/read-batch.ts
 @@ -0,0 +1,59 @@
@@ -64,7 +64,7 @@ index 0000000..17a4a1b
 +	};
 +}
 diff --git a/packages/coding-agent/src/prompts/system/programmatic-tool-use.md b/packages/coding-agent/src/prompts/system/programmatic-tool-use.md
-index 325488e..737c842 100644
+index 325488e82e7882803fe2b8f2b2692e029a9c85dd..737c842e262f198c2d6d90ddc1fc8a83444e62cf 100644
 --- a/packages/coding-agent/src/prompts/system/programmatic-tool-use.md
 +++ b/packages/coding-agent/src/prompts/system/programmatic-tool-use.md
 @@ -1,7 +1,7 @@
@@ -79,10 +79,10 @@ index 325488e..737c842 100644
 -Use a direct tool call for a simple action. Stop the program where a new judgment or missing information is needed, inspect the result, then choose the next step.
 +Simple actions stay direct. Stop a batch at decisions or missing information; preserve the original tests and completion criteria.
 diff --git a/packages/coding-agent/src/sdk.ts b/packages/coding-agent/src/sdk.ts
-index dfecb6a..7bd2edc 100644
+index c255d49728ce1b53c3d51ec947f0f8166c76d5b2..fc7f6cb6b0a6d9bbdf5d340cfa92230c18469344 100644
 --- a/packages/coding-agent/src/sdk.ts
 +++ b/packages/coding-agent/src/sdk.ts
-@@ -96,6 +96,7 @@ import { initializeWithSettings } from "./discovery";
+@@ -103,6 +103,7 @@ import { initializeWithSettings } from "./discovery";
  import { setInvocationConfiguredExtensions, withOmpExtensionRootScope } from "./discovery/omp-extension-roots";
  import { disposeVmContextsByOwner } from "./eval/js/context-manager";
  import { getEnabledEvalPreludes, type EvalPreludeDefinition } from "./eval/preludes";
@@ -90,11 +90,10 @@ index dfecb6a..7bd2edc 100644
  import { disposeAllKernelSessions, disposeKernelSessionsByOwner } from "./eval/py/executor";
  import { defaultEvalSessionId } from "./eval/session-id";
  import type { EditMode } from "@oh-my-pi/pi-tui/tools/edit";
-@@ -2586,10 +2587,15 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
- 		let computerPrelude: EvalPreludeDefinition | undefined;
- 		let ratchetPrelude: EvalPreludeDefinition | undefined;
- 		let archivePrelude: EvalPreludeDefinition | undefined;
- 		let commitPrelude: EvalPreludeDefinition | undefined;
+@@ -2903,9 +2904,14 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+ 		// oxlint-disable-next-line prefer-const -- captured by getEvalPreludes before assignment
+ 		let mcpNamespaces: MCPEvalNamespaceCatalog | undefined;
+ 		let initialEvalBoundToolNames: readonly string[] = [];
 +		let readBatchPrelude: EvalPreludeDefinition | undefined;
  		const getEvalPreludes = (): readonly EvalPreludeDefinition[] => {
  			if (restrictToolNames || !toolRegistry.has("eval") || !activeToolNames.has("eval")) return [];
@@ -107,19 +106,10 @@ index dfecb6a..7bd2edc 100644
  				browserPrelude ??= createBrowserPrelude(toolSession);
  				builtins.push(browserPrelude);
 diff --git a/packages/coding-agent/src/session/context-settings.ts b/packages/coding-agent/src/session/context-settings.ts
-index 9961cd3..51f19ed 100644
+index 5c8791fb0b4818cd1d0b47c6025889f4f8775678..83d4fbf5141ea5e3effdea2109639b33f72b5afc 100644
 --- a/packages/coding-agent/src/session/context-settings.ts
 +++ b/packages/coding-agent/src/session/context-settings.ts
-@@ -18,7 +18,7 @@ export const cfgTokenOptimizationSkillCacheReuse = register({
- 		group: "Token optimization",
- 		label: "Reuse skill description cache",
- 		description:
--			"Recheck completed skill descriptions after waiting for a compression slot to avoid duplicate model calls. Current session descriptions stay unchanged.",
-+			"Coordinate skill description compression across sessions sharing a cache. Current session descriptions stay unchanged.",
- 	},
- });
- 
-@@ -31,7 +31,7 @@ export const cfgTokenOptimizationProgrammatic = register({
+@@ -18,7 +18,7 @@ export const cfgTokenOptimizationProgrammatic = register({
  		group: "Token optimization",
  		label: "Programmatic tool use",
  		description:

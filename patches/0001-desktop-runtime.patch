@@ -1,8 +1,8 @@
 diff --git a/packages/coding-agent/src/main.ts b/packages/coding-agent/src/main.ts
-index 2bfe0b7230..6ed38c98a5 100644
+index ad2f7258782aa33981c124e0c07c588e86bc52d0..2d6ffb19e887757848a6004d0251a5ebf3e58036 100644
 --- a/packages/coding-agent/src/main.ts
 +++ b/packages/coding-agent/src/main.ts
-@@ -2768,7 +2768,8 @@ export async function runRootCommand(
+@@ -2804,7 +2804,8 @@ export async function runRootCommand(
  				notifs.push({ kind: "error", message: modelRegistryError.message });
  			}
  
@@ -14,7 +14,7 @@ index 2bfe0b7230..6ed38c98a5 100644
  				}
 diff --git a/packages/coding-agent/src/modes/rpc/desktop.ts b/packages/coding-agent/src/modes/rpc/desktop.ts
 new file mode 100644
-index 0000000000..c6c053c0f8
+index 0000000000000000000000000000000000000000..c6c053c0f8fe14ba3b93991f59f5a185b6585732
 --- /dev/null
 +++ b/packages/coding-agent/src/modes/rpc/desktop.ts
 @@ -0,0 +1,53 @@
@@ -72,7 +72,7 @@ index 0000000000..c6c053c0f8
 +	};
 +}
 diff --git a/packages/coding-agent/src/modes/rpc/rpc-mode.ts b/packages/coding-agent/src/modes/rpc/rpc-mode.ts
-index 3ea84ee018..b1877750e2 100644
+index bf9791d50ce867d2fe0f1a0d80ae93cbcf9cf48b..a4ff9216c5f7afca202a5ea16ab17fbd3e301ab0 100644
 --- a/packages/coding-agent/src/modes/rpc/rpc-mode.ts
 +++ b/packages/coding-agent/src/modes/rpc/rpc-mode.ts
 @@ -52,7 +52,8 @@ import { requestTextPrediction, textPredictionBackend } from "../../predict/clie
@@ -101,7 +101,7 @@ index 3ea84ee018..b1877750e2 100644
  	"bash",
  	"predict_word",
  	"live_start",
-@@ -2014,11 +2017,51 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions
+@@ -2021,11 +2024,51 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions
  		builtinCommandAborts.clear();
  	};
  
@@ -153,13 +153,14 @@ index 3ea84ee018..b1877750e2 100644
  			case "negotiate_protocol": {
  				if (command.protocolVersion !== 2)
  					return error(id, "negotiate_protocol", `Unsupported RPC protocol version: ${command.protocolVersion}`);
-@@ -2755,14 +2798,12 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions
+@@ -2762,15 +2805,12 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions
  					return error(id, "login", `Unknown OAuth provider: ${command.providerId}`);
  				}
  				const uiCtx = new RpcExtensionUIContext(pendingExtensionRequests, output);
 -				// Track whether onAuth has fired. Providers that require interactive
 -				// input before a browser URL cannot be satisfied headlessly; after
 -				// onAuth, prompt input is the pasted OAuth code/redirect URL path.
+-				// The login-warning acceptance is the exception: a plain yes/no the host can show.
 -				let authEmitted = false;
 +				const loginController = new AbortController();
 +				builtinCommandAborts.add(loginController);
@@ -171,7 +172,7 @@ index 3ea84ee018..b1877750e2 100644
  							output({
  								type: "extension_ui_request",
  								id: Snowflake.next() as string,
-@@ -2776,23 +2817,25 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions
+@@ -2784,23 +2824,25 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions
  							uiCtx.notify(message, "info");
  						},
  						onPrompt: async prompt => {
@@ -183,7 +184,7 @@ index 3ea84ee018..b1877750e2 100644
 +							if (headless || !setToolUIContext) {
 +								throw new Error(`Provider '${command.providerId}' requires an interactive login surface.`);
  							}
--							if (!authEmitted) {
+-							if (!authEmitted && !prompt.riskAcknowledgement) {
 -								// onPrompt called before any auth URL — provider requires
 -								// interactive input that cannot be satisfied headlessly.
 -								return Promise.reject(
@@ -213,7 +214,7 @@ index 3ea84ee018..b1877750e2 100644
  						},
  					});
  					// Provider-scoped online refresh so the just-persisted credential
-@@ -2805,6 +2848,8 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions
+@@ -2814,6 +2856,8 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions
  					return success(id, "login", { providerId: command.providerId });
  				} catch (err: unknown) {
  					return error(id, "login", err instanceof Error ? err.message : String(err));
@@ -223,10 +224,10 @@ index 3ea84ee018..b1877750e2 100644
  			}
  
 diff --git a/packages/coding-agent/src/modes/rpc/rpc-types.ts b/packages/coding-agent/src/modes/rpc/rpc-types.ts
-index e0a14dacb8..7833f4eac0 100644
+index 0dcbc18a10bd4c56f1439685eebc78ede4fffc2b..5b3e402983e9e7c064c01aafe72fc1b54c3d2490 100644
 --- a/packages/coding-agent/src/modes/rpc/rpc-types.ts
 +++ b/packages/coding-agent/src/modes/rpc/rpc-types.ts
-@@ -46,6 +46,8 @@ import type { BtwHistoryRecord } from "../../session/btw-history";
+@@ -47,6 +47,8 @@ import type { BtwHistoryRecord } from "../../session/btw-history";
  export type RpcMessageUpdates = "full" | "delta";
  
  export type RpcCommand =
@@ -235,7 +236,7 @@ index e0a14dacb8..7833f4eac0 100644
  	// Protocol
  	| { id?: string; type: "negotiate_protocol"; protocolVersion: number }
  
-@@ -426,6 +428,20 @@ export interface RpcSubagentMessagesResult {
+@@ -429,6 +431,20 @@ export interface RpcSubagentMessagesResult {
  
  // Success responses with data
  export type RpcResponse =
@@ -257,7 +258,7 @@ index e0a14dacb8..7833f4eac0 100644
  	| {
  			id?: string;
 diff --git a/packages/coding-agent/src/modes/rpc/wire/commands.ts b/packages/coding-agent/src/modes/rpc/wire/commands.ts
-index b363009c2c..590897f4c9 100644
+index 3469547520289018807cea8a29147c6b1f3bcedc..5976824ab29e8f01a25b7792541c0808f0bb4155 100644
 --- a/packages/coding-agent/src/modes/rpc/wire/commands.ts
 +++ b/packages/coding-agent/src/modes/rpc/wire/commands.ts
 @@ -32,6 +32,17 @@ export interface RpcCommandSpec {
@@ -279,7 +280,7 @@ index b363009c2c..590897f4c9 100644
  		name: "negotiate_protocol",
  		doc: "Switch the connection to a protocol version advertised by `ready`.",
 diff --git a/packages/utils/src/dirs.ts b/packages/utils/src/dirs.ts
-index 0bbbaa9998..816cdb15f6 100644
+index 37fd4c13de1f3c6af01022cd24e0c3a0454f0393..3dae7c582796249ad86a027e84424b4151d36fa0 100644
 --- a/packages/utils/src/dirs.ts
 +++ b/packages/utils/src/dirs.ts
 @@ -114,6 +114,11 @@ function readProfileFromEnvSafe(): string | undefined {
@@ -294,7 +295,7 @@ index 0bbbaa9998..816cdb15f6 100644
  	return path.join(os.homedir(), getConfigDirName());
  }
  
-@@ -366,7 +371,7 @@ class DirResolver {
+@@ -363,7 +368,7 @@ class DirResolver {
  		this.configRoot = getProfileConfigRoot(profile);
  
  		const defaultAgent = path.join(this.configRoot, "agent");
@@ -303,7 +304,7 @@ index 0bbbaa9998..816cdb15f6 100644
  		this.agentDir = agentDirOverride ? path.resolve(agentDirOverride) : defaultAgent;
  		const isDefault = this.agentDir === defaultAgent;
  
-@@ -385,7 +390,8 @@ class DirResolver {
+@@ -382,7 +387,8 @@ class DirResolver {
  		let xdgData: string | undefined;
  		let xdgState: string | undefined;
  		let xdgCache: string | undefined;
