@@ -1,8 +1,8 @@
 diff --git a/packages/agent/src/compaction/compaction.ts b/packages/agent/src/compaction/compaction.ts
-index 661c6b1..a938bd5 100644
+index a5218961856c070ad690173b407b11ba523b63a1..2ca8f80bd0573a0fdf7a97a577664228aeba3bd1 100644
 --- a/packages/agent/src/compaction/compaction.ts
 +++ b/packages/agent/src/compaction/compaction.ts
-@@ -59,7 +59,7 @@ import {
+@@ -66,7 +66,7 @@ import {
  	V2_RETAINED_MESSAGE_TOKEN_BUDGET,
  } from "./compaction-v2-streaming";
  import type { CompactionEntry, SessionEntry } from "./entries";
@@ -11,7 +11,7 @@ index 661c6b1..a938bd5 100644
  import {
  	type ConvertToLlm,
  	createCompactionSummaryMessage,
-@@ -102,6 +102,8 @@ import {
+@@ -109,6 +109,8 @@ import {
  export interface CompactionDetails {
  	readFiles: string[];
  	modifiedFiles: string[];
@@ -20,7 +20,7 @@ index 661c6b1..a938bd5 100644
  }
  
  /**
-@@ -1725,13 +1727,12 @@ function buildCompactionV2Reasoning(
+@@ -1776,13 +1778,12 @@ function buildCompactionV2Reasoning(
  }
  
  /**
@@ -38,7 +38,7 @@ index 661c6b1..a938bd5 100644
  	return AIError.is(AIError.classify(previousError), AIError.Flag.AuthFailed) ? nextError : previousError;
  }
  
-@@ -2323,7 +2324,7 @@ export async function compact(
+@@ -2384,7 +2385,7 @@ export async function compact(
  		}
  	}
  
@@ -47,7 +47,7 @@ index 661c6b1..a938bd5 100644
  		throw new NativeCompactionError(nativeCompactionError);
  	}
  	if (!usedRemoteCompaction && nativeSummary === undefined) await ensureExtraContext();
-@@ -2428,7 +2429,11 @@ export async function compact(
+@@ -2489,7 +2490,11 @@ export async function compact(
  		...(shortSummary !== undefined ? { shortSummary } : {}),
  		firstKeptEntryId: nativeSummary !== undefined ? nativeFirstKeptEntryId : firstKeptEntryId,
  		tokensBefore,
@@ -61,7 +61,7 @@ index 661c6b1..a938bd5 100644
  		...(remoteReplayThroughEntryId ? { providerReplayThroughEntryId: remoteReplayThroughEntryId } : {}),
  	};
 diff --git a/packages/agent/src/compaction/errors.ts b/packages/agent/src/compaction/errors.ts
-index 24b6b39..e3cd8f4 100644
+index 24b6b39c35f61136aa8f14a4d6f12e0a2f718da2..e3cd8f490d93099fedae2c88822845db1aff03f7 100644
 --- a/packages/agent/src/compaction/errors.ts
 +++ b/packages/agent/src/compaction/errors.ts
 @@ -1,3 +1,5 @@
@@ -122,7 +122,7 @@ index 24b6b39..e3cd8f4 100644
   * Outcome of a compaction attempt, surfaced by `CommandController.executeCompaction`
   * so callers (e.g. the plan-mode approval flow) can distinguish a deliberate abort
 diff --git a/packages/coding-agent/src/session/compaction-methods.ts b/packages/coding-agent/src/session/compaction-methods.ts
-index 64aaf51..de983cb 100644
+index 64aaf517a4f406bbd7fd6ff7328309cb0170ffa0..de983cb3367dd05104d95338ad333e76a7908a52 100644
 --- a/packages/coding-agent/src/session/compaction-methods.ts
 +++ b/packages/coding-agent/src/session/compaction-methods.ts
 @@ -28,8 +28,8 @@ export const COMPACTION_METHOD_CHOICES = [
@@ -154,7 +154,7 @@ index 64aaf51..de983cb 100644
  const COMPACTION_METHODS: Record<CompactionMethod, true> = {
  	remote: true,
 diff --git a/packages/coding-agent/src/session/context-settings.ts b/packages/coding-agent/src/session/context-settings.ts
-index 747a4ca..7f7e283 100644
+index 747a4ca42e83f7817c9ceef2e9a071d9fae9a06f..7f7e2837962154e7ef22ff1a247420a9f829dcbe 100644
 --- a/packages/coding-agent/src/session/context-settings.ts
 +++ b/packages/coding-agent/src/session/context-settings.ts
 @@ -149,12 +149,24 @@ export const cfgCompactionMethodOrder = register({
@@ -201,10 +201,10 @@ index 747a4ca..7f7e283 100644
  	thresholdTokens: cfgCompactionThresholdTokens,
  	reserveTokens: cfgCompactionReserveTokens,
 diff --git a/packages/coding-agent/src/session/session-maintenance.ts b/packages/coding-agent/src/session/session-maintenance.ts
-index 516f368..7cbb77f 100644
+index b439f445629ac30b33d31ec2197cafb4f67dbe1d..88f3af83c158b4738c6ca183666357fa8adb787a 100644
 --- a/packages/coding-agent/src/session/session-maintenance.ts
 +++ b/packages/coding-agent/src/session/session-maintenance.ts
-@@ -34,6 +34,7 @@ import {
+@@ -35,6 +35,7 @@ import {
  	invalidateMessageCache,
  	isTranscriptUsageAnchor,
  	NativeCompactionError,
@@ -212,7 +212,7 @@ index 516f368..7cbb77f 100644
  	prepareCompaction,
  	promptBudgetTokens,
  	RESCUE_SHAKE_CONFIG,
-@@ -75,7 +76,6 @@ import * as snapcompact from "@oh-my-pi/snapcompact";
+@@ -77,7 +78,6 @@ import * as snapcompact from "@oh-my-pi/snapcompact";
  import { writeArtifact } from "./artifacts";
  import { cfgOffline } from "../config/auxiliary-model-policy";
  import type { ModelRegistry } from "../config/model-registry";
@@ -220,8 +220,8 @@ index 516f368..7cbb77f 100644
  import type { Settings } from "../config/settings";
  import type { ExtensionRunner, SessionBeforeCompactResult } from "../extensibility/extensions";
  import type { CompactOptions, ContextUsage } from "../extensibility/extensions/types";
-@@ -107,7 +107,7 @@ import {
- } from "./messages";
+@@ -111,7 +111,7 @@ import {
+ import { type CompletionJournal, journalCompletion } from "./model-usage-journal";
  import { isTerminalTextAssistantAnswer } from "./queued-messages";
  import {
 -	resolveCompactionConfiguredTarget,
@@ -229,7 +229,7 @@ index 516f368..7cbb77f 100644
  	resolveContextPromotionConfiguredTarget,
  	resolveRoleModelFull,
  } from "./role-models";
-@@ -131,6 +131,7 @@ import {
+@@ -136,6 +136,7 @@ import {
  	cfgCompactionAutoContinue,
  	cfgCompactionEnabled,
  	cfgCompactionMethodOrder,
@@ -237,7 +237,7 @@ index 516f368..7cbb77f 100644
  	cfgContextPromotionEnabled,
  	cfgSnapcompactShape,
  } from "./context-settings";
-@@ -352,6 +353,7 @@ interface ArmedSpeculation {
+@@ -357,6 +358,7 @@ interface ArmedSpeculation {
  	result: CompactionResult;
  	action: "context-full" | "handoff" | "remote";
  	method: CompactionMethod;
@@ -245,16 +245,16 @@ index 516f368..7cbb77f 100644
  	codexCompaction?: CodexCompactionContext;
  	/** Last branch entry covered by the speculated summary's source snapshot. */
  	snapshotLeafId: string;
-@@ -1401,6 +1403,7 @@ export class SessionMaintenance {
- 								canUseLiveProviderNativeCompaction(candidate, activeModel, effectiveSettings)) &&
- 							(!remoteReader || canReplayRemoteCompactionFrom(candidate, remoteReader))
- 					: undefined,
-+				selectedMethod === "soft",
- 			);
+@@ -1473,6 +1475,7 @@ export class SessionMaintenance {
+ 											canUseLiveProviderNativeCompaction(candidate, activeModel, effectiveSettings)) &&
+ 										(!remoteReader || canReplayRemoteCompactionFrom(candidate, remoteReader))
+ 								: undefined,
++							selectedMethod === "soft",
+ 						);
  			if ((requireProviderRemote || remoteReader) && compactionCandidates.length === 0) {
  				this.#host.emitNotice(
-@@ -1692,7 +1695,8 @@ export class SessionMaintenance {
- 				!compactionAbortController.signal.aborted &&
+@@ -1794,7 +1797,8 @@ export class SessionMaintenance {
+ 				!compactionSignal.aborted &&
  				!(error instanceof CompactionCancelledError) &&
  				selectedMethodIndex >= 0 &&
 -				selectedMethodIndex + 1 < methods.length
@@ -263,7 +263,7 @@ index 516f368..7cbb77f 100644
  			) {
  				this.#host.emitNotice(
  					"warning",
-@@ -2351,17 +2355,13 @@ export class SessionMaintenance {
+@@ -2467,17 +2471,13 @@ export class SessionMaintenance {
  				error: error instanceof Error ? error.message : String(error),
  			});
  			if (this.#speculation === run) this.#speculation = undefined;
@@ -283,7 +283,7 @@ index 516f368..7cbb77f 100644
  			) {
  				this.#failedNativeSpeculation = nativeKey;
  			}
-@@ -2480,6 +2480,7 @@ export class SessionMaintenance {
+@@ -2674,6 +2674,7 @@ export class SessionMaintenance {
  				method === "remote" && !effectiveSettings.remoteEndpoint
  					? candidate => canUseLiveProviderNativeCompaction(candidate, model, effectiveSettings)
  					: undefined,
@@ -291,7 +291,7 @@ index 516f368..7cbb77f 100644
  			);
  			if (candidates.length === 0) return clear();
  			const codexCompaction = createCodexCompactionContext({
-@@ -2512,6 +2513,7 @@ export class SessionMaintenance {
+@@ -2708,6 +2709,7 @@ export class SessionMaintenance {
  				},
  				action: method === "remote" ? "remote" : "context-full",
  				method,
@@ -299,7 +299,7 @@ index 516f368..7cbb77f 100644
  				codexCompaction,
  				snapshotLeafId,
  				contextTokensAtStart: contextTokens,
-@@ -2544,6 +2546,7 @@ export class SessionMaintenance {
+@@ -2740,6 +2742,7 @@ export class SessionMaintenance {
  		const model = this.#model;
  		if (!model) return false;
  		const settings = this.#compactionSettings;
@@ -307,7 +307,7 @@ index 516f368..7cbb77f 100644
  		if (
  			armed.result.preserveData &&
  			!remotePreserveReusable(armed.result.preserveData, model, resolveMethodSettings(settings, armed.method))
-@@ -3704,66 +3707,32 @@ export class SessionMaintenance {
+@@ -3928,66 +3931,32 @@ export class SessionMaintenance {
  		return candidate;
  	}
  
@@ -390,7 +390,7 @@ index 516f368..7cbb77f 100644
  		if (!currentModel) {
  			return new Error(
  				"Compaction requires a model with usable credentials, but no authenticated compaction model is available.",
-@@ -3771,7 +3740,7 @@ export class SessionMaintenance {
+@@ -3995,7 +3964,7 @@ export class SessionMaintenance {
  		}
  		return new Error(
  			`Compaction requires usable credentials for ${currentModel.provider}/${currentModel.id}. ` +
@@ -399,7 +399,7 @@ index 516f368..7cbb77f 100644
  		);
  	}
  
-@@ -3859,7 +3828,7 @@ export class SessionMaintenance {
+@@ -4106,7 +4075,7 @@ export class SessionMaintenance {
  		}
  
  		if (nativeCompactionFailure) throw nativeCompactionFailure.error;
@@ -408,7 +408,7 @@ index 516f368..7cbb77f 100644
  	}
  
  	async #prepareCompactionFromHooks(
-@@ -5935,6 +5904,7 @@ export class SessionMaintenance {
+@@ -6191,6 +6160,7 @@ export class SessionMaintenance {
  					method === "remote" && !effectiveSettings.remoteEndpoint && liveModel
  						? candidate => canUseLiveProviderNativeCompaction(candidate, liveModel, effectiveSettings)
  						: undefined,
@@ -416,7 +416,7 @@ index 516f368..7cbb77f 100644
  				);
  				const retrySettings = cfgRetry.get(this.#host.settings);
  				const telemetry = resolveTelemetry(this.#host.agent.telemetry, this.#host.sessionId());
-@@ -6019,7 +5989,7 @@ export class SessionMaintenance {
+@@ -6283,7 +6253,7 @@ export class SessionMaintenance {
  								candidate.api,
  							);
  							if (AIError.is(id, AIError.Flag.AuthFailed)) {
@@ -425,7 +425,7 @@ index 516f368..7cbb77f 100644
  								break;
  							}
  							if (AIError.is(id, AIError.Flag.Timeout)) {
-@@ -6263,7 +6233,10 @@ export class SessionMaintenance {
+@@ -6527,7 +6497,10 @@ export class SessionMaintenance {
  					: reason === "incomplete"
  						? `Incomplete response recovery failed: ${errorMessage}`
  						: `Auto-compaction failed: ${errorMessage}`;

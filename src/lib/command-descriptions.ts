@@ -214,7 +214,7 @@ const rpc: Record<string, string> = {
   get_branch_messages: '列出可创建分支的用户消息',
   get_last_assistant_text: '读取最后一条助手文本',
   set_session_name: '重命名会话',
-  handoff: '将对话交接到新会话；未生成交接时返回 null',
+  handoff: '生成交接文档，并在当前会话空闲或轮次边界应用压缩',
   get_messages: '一次读取会话的全部消息',
   get_messages_page: '读取一页顺序稳定的会话消息',
   get_login_providers: '列出 OAuth 提供商及认证状态',

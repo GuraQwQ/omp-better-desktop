@@ -1,13 +1,29 @@
 diff --git a/packages/coding-agent/src/modes/rpc/rpc-mode.ts b/packages/coding-agent/src/modes/rpc/rpc-mode.ts
-index 53f6515cfd..50fd04047a 100644
+index a4ff9216c5f7afca202a5ea16ab17fbd3e301ab0..e327e556aba8f911f640a39e22459643c16f0be8 100644
 --- a/packages/coding-agent/src/modes/rpc/rpc-mode.ts
 +++ b/packages/coding-agent/src/modes/rpc/rpc-mode.ts
-@@ -2596,6 +2596,21 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions
+@@ -2805,12 +2805,14 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions
+ 					return error(id, "login", `Unknown OAuth provider: ${command.providerId}`);
+ 				}
+ 				const uiCtx = new RpcExtensionUIContext(pendingExtensionRequests, output);
++				let authEmitted = false;
+ 				const loginController = new AbortController();
+ 				builtinCommandAborts.add(loginController);
+ 				try {
+ 					await session.modelRegistry.authStorage.oauth.login(command.providerId, {
+ 						signal: loginController.signal,
+ 						onAuth: info => {
++							authEmitted = true;
+ 							output({
+ 								type: "extension_ui_request",
+ 								id: Snowflake.next() as string,
+@@ -2823,8 +2825,24 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions
  						onProgress: message => {
  							uiCtx.notify(message, "info");
  						},
+-						onPrompt: async prompt => {
 +						onBrowserSession: async (request, signal) => {
-+							if (headless || !setToolUIContext) {
+ 							if (headless || !setToolUIContext) {
 +								throw new Error(`Provider '${command.providerId}' requires a browser login surface.`);
 +							}
 +							const value = await requestRpcDialog(
@@ -21,14 +37,17 @@ index 53f6515cfd..50fd04047a 100644
 +							if (value === undefined) throw new Error("Login cancelled");
 +							return value;
 +						},
- 						onPrompt: async prompt => {
- 							if (headless || !setToolUIContext) {
++						onPrompt: async prompt => {
++							const requiresDesktop = prompt.secret || (!authEmitted && !prompt.riskAcknowledgement);
++							if (headless || (!setToolUIContext && requiresDesktop)) {
  								throw new Error(`Provider '${command.providerId}' requires an interactive login surface.`);
+ 							}
+ 							const value = await requestRpcDialog(
 diff --git a/packages/coding-agent/src/modes/rpc/rpc-types.ts b/packages/coding-agent/src/modes/rpc/rpc-types.ts
-index e916bd0a81..31943ed053 100644
+index 5b3e402983e9e7c064c01aafe72fc1b54c3d2490..7f2f381073ac3af93c74d9ea59ca33b75b69ea13 100644
 --- a/packages/coding-agent/src/modes/rpc/rpc-types.ts
 +++ b/packages/coding-agent/src/modes/rpc/rpc-types.ts
-@@ -708,6 +708,14 @@ export interface RpcAskDialogQuestion {
+@@ -805,6 +805,14 @@ export interface RpcAskDialogQuestion {
  
  /** Emitted when an extension needs user input */
  export type RpcExtensionUIRequest =
@@ -44,10 +63,10 @@ index e916bd0a81..31943ed053 100644
  			type: "extension_ui_request";
  			id: string;
 diff --git a/packages/coding-agent/src/modes/rpc/wire/frames.ts b/packages/coding-agent/src/modes/rpc/wire/frames.ts
-index 63b60a3b20..51c49e10c1 100644
+index 3b132354fbbe128568fabeb4c59a4d7d8d3624d2..d988a03980721815e8a2dab047a751a9bd3e606e 100644
 --- a/packages/coding-agent/src/modes/rpc/wire/frames.ts
 +++ b/packages/coding-agent/src/modes/rpc/wire/frames.ts
-@@ -213,8 +213,16 @@ export const frameDefs = {
+@@ -243,8 +243,16 @@ export const frameDefs = {
  		"launchUrl?": doc("string", "Short loopback redirect to `url`; the truncation-safe copy target."),
  		"instructions?": "string",
  	},
