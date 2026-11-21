@@ -1,5 +1,5 @@
 .context-dialog { padding: 0; width: min(840px, calc(100vw - 40px)); max-width: none; max-height: calc(100dvh - 64px); margin: auto; overflow: hidden; border: 0; border-radius: 12px; color: var(--text); background: var(--surface-raised); box-shadow: var(--shadow); }
-.context-dialog::backdrop { background: #10170e55; }
+.context-dialog::backdrop { background: var(--backdrop); }
 .context-dialog > header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 22px; border-bottom: 1px solid var(--line-soft); }
 .context-dialog h2 { margin: 0; font-size: 16px; }
 .context-dialog header p { margin: 4px 0 0; color: var(--secondary); font-size: 12px; font-variant-numeric: tabular-nums; }

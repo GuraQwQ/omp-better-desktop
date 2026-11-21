@@ -1,3 +1,4 @@
+mod appearance;
 mod attachments;
 mod bootstrap;
 mod browser_login;
@@ -89,8 +90,19 @@ fn save(path: &Path, value: &Value) -> Result<(), String> {
 fn config(root: &Path) -> Result<Value, String> {
     let mut cfg = load(
         &root.join("desktop.json"),
-        json!({"preferences":{"language":"en","theme":"system"},"projects":[]}),
+        json!({"preferences":{"language":"en"},"projects":[]}),
     )?;
+    if !matches!(cfg["preferences"]["theme"].as_str(), Some("light" | "dark" | "system")) {
+        cfg["preferences"]["theme"] = json!("light");
+    }
+    if !appearance::valid_palette(&cfg["preferences"]["palette"]) {
+        cfg["preferences"]["palette"] = json!("obsidian");
+    }
+    if !appearance::valid_accents(&cfg["preferences"]["customAccent"])
+        && let Some(values) = cfg["preferences"].as_object_mut()
+    {
+        values.remove("customAccent");
+    }
     if cfg["preferences"]["motion"].is_null() {
         cfg["preferences"]["motion"] = json!("rich");
     }
@@ -107,6 +119,8 @@ fn set_preferences(root: &Path, patch: &Value) -> Result<Value, String> {
         match key.as_str() {
             "language" if matches!(value.as_str(), Some("en" | "zh")) => {}
             "theme" if matches!(value.as_str(), Some("system" | "light" | "dark")) => {}
+            "palette" if appearance::valid_palette(value) => {}
+            "customAccent" if appearance::valid_accents(value) => {}
             "motion" if matches!(value.as_str(), Some("rich" | "normal" | "reduced")) => {}
             "showTurnNumber" | "notifyOnDone" | "asyncQuestions" if value.is_boolean() => {}
             "features"
@@ -221,6 +235,9 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
         "preferences.set" => {
             let _lock = desktop.configuration.lock().unwrap();
             let preferences = set_preferences(root, &request["patch"])?;
+            if ["theme", "palette", "customAccent"].iter().any(|key| request["patch"].get(*key).is_some()) {
+                appearance::apply(&app, &preferences);
+            }
             if let Some(enabled) = request["patch"]["features"]["swarm"].as_bool() {
                 desktop.sessions.swarm_enabled(&app, enabled);
             }
@@ -532,8 +549,12 @@ pub fn run() {
                 bootstrap::show_startup_error(&error);
                 return Err(std::io::Error::other(error).into());
             }
+            let appearance = appearance::Appearance::read(&desktop.root);
             tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
                 .data_directory(desktop.root.join("webview"))
+                .theme(appearance.theme)
+                .background_color(appearance.background)
+                .initialization_script(appearance.boot_script())
                 .build()?;
             Ok(())
         })

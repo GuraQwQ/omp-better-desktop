@@ -59,7 +59,7 @@ export default function GenerativeUI({ source, kind = 'openui', id, sessionId, s
     const refresh = () => setTheme(genUITheme(container.current!));
     refresh();
     const observer = new MutationObserver(refresh);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-motion', 'style', 'class'] });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-palette', 'data-motion', 'style', 'class'] });
     return () => observer.disconnect();
   }, [config.features.theme]);
   useEffect(() => { frame.current?.contentWindow?.postMessage({ channel, type: 'theme', theme }, '*'); }, [theme, channel]);

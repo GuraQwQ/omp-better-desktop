@@ -1,17 +1,27 @@
-:root { --window-chrome-height: 36px; }
+:root { --window-chrome-height: 40px; --sidebar-width: 224px; }
 .window-frame { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; background: var(--surface); }
 .window-frame > .app-shell { flex: 1; height: auto; min-height: 0; }
-.window-chrome { position: relative; z-index: 30; height: var(--window-chrome-height); flex: 0 0 var(--window-chrome-height); display: flex; align-items: stretch; background: var(--surface); color: var(--secondary); border-bottom: 1px solid var(--line-soft); user-select: none; }
-.window-drag-region { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 18px; padding: 0 12px 0 16px; font-size: 12px; }
-.window-drag-region > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.window-chrome { position: relative; z-index: 30; height: var(--window-chrome-height); flex: 0 0 var(--window-chrome-height); display: flex; align-items: stretch; background: var(--sidebar); color: var(--secondary); border-bottom: 1px solid var(--line-soft); user-select: none; }
+.window-drag-region { width: var(--sidebar-width); display: flex; flex-shrink: 0; justify-content: space-between; align-items: center; gap: 14px; padding: 0 10px 0 16px; color: var(--text); }
+.window-frame.sidebar-hidden .window-drag-region { width: auto; }
+.omp-wordmark { width: 70px; height: auto; display: block; }
+.omp-wordmark-m { fill: var(--accent); }
+.sidebar-toggle { color: var(--secondary); }
 .window-slot { flex: 1; min-width: 0; display: flex; align-items: stretch; }
+.window-slot .workspace-header { padding-inline: 14px 8px; }
+.window-slot .page-location { display: flex; gap: 8px; min-width: 0; align-items: center; }
+.page-location h1 { margin: 0; font-size: var(--text-ui); font-weight: var(--weight-strong); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .window-chrome .quiet-button { padding: 5px 9px; }
 .window-chrome .icon-button { padding: 5px; }
-.window-action-error { color: var(--danger); }
+.window-action-error { align-self: center; max-width: 22vw; color: var(--danger); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .window-controls { display: flex; flex-shrink: 0; }
 .window-controls > button { width: 46px; display: inline-flex; align-items: center; justify-content: center; padding: 0; color: var(--text); border-radius: 0; }
 .window-controls > button:hover:not(:disabled) { background: var(--hover); }
 .window-controls > button:focus-visible { outline-offset: -4px; }
-.window-controls > .window-close:hover:not(:disabled) { background: #c42b1c; color: #fff; }
+.window-controls > .window-close:hover:not(:disabled) { background: var(--window-close-hover); color: var(--window-close-fg); }
 .window-controls > button:disabled { opacity: .35; }
-@media (max-height: 760px) { .window-frame .welcome { padding-top: 24px; padding-bottom: 16px; } }
+@media (max-width: 960px) { :root { --sidebar-width: 190px; } }
+@media (max-width: 620px) {
+  .window-drag-region { width: auto; padding-inline: 10px 4px; }
+  .window-controls > button { width: 32px; }
+}

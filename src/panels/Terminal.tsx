@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, TerminalSquare } from 'lucide-react';
 import { onDesktopEvent, request } from '../lib/bridge';
 import type { Copy } from '../lib/i18n';
+import { terminalAppearance } from '../lib/terminal-appearance';
 import '@xterm/xterm/css/xterm.css';
 
 export default function TerminalPanel({ id, initialCommand = '', t, close, onError }: { id: string; initialCommand?: string; t: Copy; close: (takenOver: boolean) => void; onError: (error: unknown) => void }) {
@@ -18,7 +19,7 @@ export default function TerminalPanel({ id, initialCommand = '', t, close, onErr
     void (async () => {
       const [{ Terminal }, { FitAddon }] = await Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit')]);
       if (disposed || !container.current) return;
-      terminal = new Terminal({ fontFamily: 'Cascadia Code, Consolas, monospace', fontSize: 13, cursorBlink: true, theme: { background: '#181a1b', foreground: '#e3e5e5' }, scrollback: 3000 });
+      terminal = new Terminal({ ...terminalAppearance(), cursorBlink: true, scrollback: 3000 });
       const fit = new FitAddon(); terminal.loadAddon(fit); terminal.open(container.current); fit.fit();
       cleanup = await onDesktopEvent(({ sessionId, event }) => {
         if (disposed || sessionId !== id) return;

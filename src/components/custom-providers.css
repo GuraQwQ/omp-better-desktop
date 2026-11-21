@@ -12,7 +12,7 @@
 .provider-form > button { justify-self: start; }
 .provider-model-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
 .provider-model-dialog { padding: 0; width: min(560px, calc(100vw - 40px)); max-width: none; max-height: calc(100dvh - 48px); margin: auto; overflow: hidden; border: 0; border-radius: 12px; color: var(--text); background: var(--surface-raised); box-shadow: var(--shadow); }
-.provider-model-dialog::backdrop { background: #10170e55; }
+.provider-model-dialog::backdrop { background: var(--backdrop); }
 .provider-model-dialog[open] { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; animation: pop-in var(--motion-med) var(--ease-enter) both; }
 .provider-model-dialog > header, .provider-model-dialog > footer { display: flex; align-items: center; gap: 12px; padding: 16px 20px; }
 .provider-model-dialog > header { justify-content: space-between; }

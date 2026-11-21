@@ -4,6 +4,7 @@ import { FileCode2, GitBranch, GitCommitHorizontal, Plus, RefreshCw, Save, Searc
 import { native, request } from '../lib/bridge';
 import CodeEditor from '../components/CodeEditor';
 import type { Language } from '../lib/types';
+import { terminalAppearance } from '../lib/terminal-appearance';
 import '@xterm/xterm/css/xterm.css';
 import './workspace-tools.css';
 
@@ -265,14 +266,13 @@ function ShellView({ id, onError, onExit }: { id: string; onError: (error: unkno
   const container = useRef<HTMLDivElement>(null);
   const callbacks = useRef({ onError, onExit }); callbacks.current = { onError, onExit };
   useEffect(() => {
-    let disposed = false; let terminal: import('@xterm/xterm').Terminal | undefined; let unsubscribe: (() => void) | undefined; let observer: ResizeObserver | undefined; let themeObserver: MutationObserver | undefined; let ready = false; let seq = -1;
+    let disposed = false; let terminal: import('@xterm/xterm').Terminal | undefined; let unsubscribe: (() => void) | undefined; let observer: ResizeObserver | undefined; let ready = false; let seq = -1;
     const pending: ShellEvent[] = [];
     const apply = (event: ShellEvent) => { if (event.type === 'exit') { callbacks.current.onExit(); return; } if (event.seq > seq) { terminal?.write(event.data ?? ''); seq = event.seq; } };
     void (async () => {
       const [{ Terminal }, { FitAddon }] = await Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit')]);
       if (disposed || !container.current) return;
-      const theme = () => { const styles = getComputedStyle(document.documentElement); return { background: styles.getPropertyValue('--surface').trim(), foreground: styles.getPropertyValue('--text').trim(), cursor: styles.getPropertyValue('--accent').trim(), selectionBackground: styles.getPropertyValue('--selection').trim() }; };
-      terminal = new Terminal({ fontFamily: 'Cascadia Code, Consolas, monospace', fontSize: 13, cursorBlink: true, scrollback: 3000, theme: theme() });
+      terminal = new Terminal({ ...terminalAppearance(), cursorBlink: true, scrollback: 3000 });
       const fit = new FitAddon(); terminal.loadAddon(fit); terminal.open(container.current); fit.fit();
       if (native) unsubscribe = await listen<ShellEvent>('desktop-shell', ({ payload }) => { if (disposed || payload.id !== id) return; if (!ready) pending.push(payload); else apply(payload); });
       if (disposed) { unsubscribe?.(); return; }
@@ -285,9 +285,9 @@ function ShellView({ id, onError, onExit }: { id: string; onError: (error: unkno
       let previousSize = '';
       const resize = () => { if (!terminal || disposed) return; fit.fit(); const size = `${terminal.cols}:${terminal.rows}`; if (size === previousSize) return; previousSize = size; void request('shell.resize', { id, cols: terminal.cols, rows: terminal.rows }).catch(error => callbacks.current.onError(error)); };
       observer = new ResizeObserver(resize); observer.observe(container.current); resize();
-      themeObserver = new MutationObserver(() => { if (terminal) terminal.options.theme = theme(); }); themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] }); terminal.focus();
+      terminal.focus();
     })().catch(error => { if (!disposed) callbacks.current.onError(error); });
-    return () => { disposed = true; unsubscribe?.(); observer?.disconnect(); themeObserver?.disconnect(); terminal?.dispose(); };
+    return () => { disposed = true; unsubscribe?.(); observer?.disconnect(); terminal?.dispose(); };
   }, [id]);
   return <div className="workspace-shell" ref={container} />;
 }

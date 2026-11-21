@@ -12,7 +12,7 @@ const highlight = HighlightStyle.define([
   { tag: [tags.variableName, tags.propertyName, tags.typeName], color: 'var(--code-name)' },
   { tag: [tags.string, tags.regexp], color: 'var(--code-string)' },
   { tag: [tags.number, tags.bool, tags.null], color: 'var(--code-literal)' },
-  { tag: tags.comment, color: 'var(--muted)', fontStyle: 'italic' },
+  { tag: tags.comment, color: 'var(--code-comment)', fontStyle: 'italic' },
 ]);
 
 export default function CodeEditor({ path, value, readOnly, language, location, onChange, onCursor }: {

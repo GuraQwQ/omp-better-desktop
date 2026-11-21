@@ -1,7 +1,6 @@
-.code-editor { --code-keyword: #82519a; --code-name: #245a86; --code-string: #865512; --code-literal: #356a56; flex: 1; min-height: 180px; overflow: hidden; position: relative; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); }
-:root[data-theme='dark'] .code-editor { --code-keyword: #c6a0d8; --code-name: #9dc3df; --code-string: #dfb274; --code-literal: #a5d8bb; }
+.code-editor { flex: 1; min-height: 180px; overflow: hidden; position: relative; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); }
 .code-editor-viewport { position: absolute; inset: 0; }
-.code-editor .cm-editor { height: 100%; font: 12px/1.75 var(--font-code); color: var(--text); background: var(--surface); }
+.code-editor .cm-editor { height: 100%; font: var(--text-code)/1.7 var(--font-code); color: var(--text); background: var(--surface); }
 .code-editor .cm-scroller { overflow: auto; }
 .code-editor .cm-content { padding: 12px 0; caret-color: var(--accent); }
 .code-editor .cm-line { padding: 0 12px; }

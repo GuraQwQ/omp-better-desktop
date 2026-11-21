@@ -96,10 +96,13 @@ fn login_window(
     let popup_windows = windows.clone();
     let popup_cancelled = cancelled.clone();
     let primary = features.is_none();
+    let appearance = crate::appearance::Appearance::read(&app.state::<crate::Desktop>().root);
     let mut builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(url))
         .title("OMP — Sign in / 登录")
         .inner_size(1000.0, 760.0)
         .data_directory(profile.to_owned())
+        .theme(appearance.theme)
+        .background_color(appearance.background)
         .incognito(true)
         .on_new_window(move |_, features| {
             if popup_cancelled.load(Ordering::Acquire) {

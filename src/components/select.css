@@ -4,7 +4,7 @@
 .select-button > svg { color: var(--secondary); }
 .select-button:hover:not(:disabled), .select-button[aria-expanded='true'] { box-shadow: inset 0 0 0 1px var(--input-focus); background: var(--hover); }
 .select-button:focus-visible { box-shadow: var(--focus-ring); }
-.ui-menu { background: var(--surface-raised); box-shadow: var(--shadow); border-radius: var(--radius-surface); padding: 6px; color: var(--text); }
+.ui-menu { background: var(--surface-overlay); box-shadow: var(--shadow); border-radius: var(--radius-surface); padding: 6px; color: var(--text); }
 .select-menu { position: fixed; z-index: 50; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 .select-option { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 34px; padding: 7px 9px; border-radius: 6px; font-size: 12px; cursor: pointer; }
 .select-option > span { overflow-wrap: anywhere; }
@@ -27,5 +27,4 @@
 .model-picker.ui-menu button { min-height: 35px; }
 .model-picker.ui-menu button[aria-pressed='true'] { color: var(--accent); background: var(--accent-soft); }
 .model-picker.ui-menu small { font-size: 12px; }
-.more-menu > div.ui-menu { padding: 8px; border-radius: var(--radius-surface); }
 .menu-separator { height: 1px; background: var(--line-soft); margin: 5px 4px; }

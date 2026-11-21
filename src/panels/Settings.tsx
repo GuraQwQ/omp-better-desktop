@@ -1,6 +1,6 @@
 import { modelCatalog } from '../lib/model-catalog';
 import { lazy, Suspense, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { ArrowLeft, ArrowUpRight, Check, Download, FolderOpen, LoaderCircle, RefreshCw } from 'lucide-react';
+import { ArrowUpRight, Check, Download, FolderOpen, LoaderCircle, RefreshCw } from 'lucide-react';
 import { pickPath, request } from '../lib/bridge';
 import { displayPath } from '../lib/display-path';
 import { localizeError, type Copy } from '../lib/i18n';
@@ -24,7 +24,7 @@ const managedTabs = ['mcp', 'skills', 'plugins', 'agents', 'ssh', 'resources'];
 
 interface ImportResult { copied: number; skipped: number; completed: boolean; retryable: boolean; conflicts: string[] }
 
-export default function Settings({ bootstrap, t, sessionId, cwd = '', ensureSession, reconnectSession, update, onError, close, initialTab = 'general', initialQuery = '' }: { bootstrap: Bootstrap; t: Copy; sessionId?: string; cwd?: string; ensureSession?: () => Promise<string>; reconnectSession?: () => Promise<void>; update: Dispatch<SetStateAction<Bootstrap>>; onError: (error: unknown) => void; close: () => void; initialTab?: string; initialQuery?: string }) {
+export default function Settings({ bootstrap, t, sessionId, cwd = '', ensureSession, reconnectSession, update, onError, initialTab = 'general', initialQuery = '' }: { bootstrap: Bootstrap; t: Copy; sessionId?: string; cwd?: string; ensureSession?: () => Promise<string>; reconnectSession?: () => Promise<void>; update: Dispatch<SetStateAction<Bootstrap>>; onError: (error: unknown) => void; initialTab?: string; initialQuery?: string }) {
   const [tab, setTab] = useState(initialTab);
   const [working, setWorking] = useState('');
   const [notice, setNotice] = useState('');
@@ -78,7 +78,6 @@ export default function Settings({ bootstrap, t, sessionId, cwd = '', ensureSess
   ];
   const connection = !canConnect ? <p>{t.selectProject}</p> : connectionError ? <div role="alert"><p className="settings-error">{localizeError(connectionError, language)}</p><button className="quiet-button" onClick={() => void reconnect()}><RefreshCw size={14} />{t.refresh}</button></div> : <p role="status">{t.loading}</p>;
   return <div className="settings-page">
-    <header className="page-header"><button className="icon-button" title={t.close} onClick={close}><ArrowLeft size={18} /></button><h1>{t.settings}</h1></header>
     <div className="settings-layout"><nav className="settings-nav" aria-label={t.settings}>{navigation.map(group => <div key={group.group}><small>{group.group}</small>{group.tabs.map(([id, label]) => <button key={id} aria-current={tab === id ? 'page' : undefined} className={tab === id ? 'active' : ''} onClick={() => { setNotice(''); setTab(id); }}>{label}</button>)}</div>)}</nav>
       <section className="settings-content" key={tab}><Suspense fallback={<p role="status">{t.loading}</p>}>
         {tab === 'shortcuts' && <><h2>{zh ? '快捷键' : 'Keyboard shortcuts'}</h2><p>{zh ? '点击输入框后按下组合键。Mod 对应 Ctrl 或 Command，清空可停用。' : 'Focus an input and press a key combination. Mod means Ctrl or Command; clear to disable.'}</p>{Object.entries(shortcuts).map(([key, shortcut]) => <div className="setting-row" key={key}><label htmlFor={`shortcut-${key}`}>{zh ? shortcut.label : shortcut.enLabel}</label><input id={`shortcut-${key}`} aria-label={zh ? shortcut.label : shortcut.enLabel} value={shortcutValue(key as keyof typeof shortcuts, bootstrap.preferences.shortcuts)} onChange={event => void preference({ shortcuts: { ...bootstrap.preferences.shortcuts, [key]: event.target.value } }).catch(onError)} onKeyDown={event => { if (event.key === 'Tab') return; event.preventDefault(); if (['Control', 'Meta', 'Shift', 'Alt'].includes(event.key)) return; const value = event.key === 'Backspace' || event.key === 'Delete' ? '' : [...(event.ctrlKey || event.metaKey ? ['Mod'] : []), ...(event.altKey ? ['Alt'] : []), ...(event.shiftKey ? ['Shift'] : []), event.key.length === 1 ? event.key.toUpperCase() : event.key].join('+'); const values = { ...bootstrap.preferences.shortcuts, [key]: value }; if (value && Object.keys(shortcuts).some(id => id !== key && shortcutValue(id as keyof typeof shortcuts, values).toLowerCase() === value.toLowerCase())) { onError(zh ? '该组合键已用于其他操作。' : 'This shortcut is already assigned.'); return; } void preference({ shortcuts: values }).catch(onError); }} /></div>)}<button className="quiet-button" onClick={() => void preference({ shortcuts: {} }).catch(onError)}>{zh ? '恢复默认' : 'Restore defaults'}</button></>}

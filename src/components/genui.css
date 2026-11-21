@@ -3,6 +3,9 @@
 .genui-independent-theme { color-scheme:light; --genui-surface:#fff; --genui-text:#242424; --genui-muted:#666; --genui-border:#ddd; --genui-accent:#245fae; --genui-on-accent:#fff; --genui-success:#28764c; --genui-warning:#a3620d; --genui-danger:#b12e35; }
 .genui-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 40px; padding: 6px 12px; border-bottom: 1px solid var(--genui-border); font-size: 12px; color: var(--genui-muted); }
 .genui-toolbar > div { display: flex; align-items: center; gap: 8px; }
+.genui .quiet-button { color: var(--genui-muted); }
+.genui .quiet-button:hover:not(:disabled) { color: var(--genui-text); background: color-mix(in srgb, var(--genui-accent) 10%, var(--genui-surface)); }
+.genui :focus-visible { outline-color: var(--genui-accent); }
 .genui-source { width: 100%; min-width: 0; margin-top: 4px; }
 .genui-source-toggle { width: 24px; min-height: 24px; padding: 4px; color: var(--muted); list-style: none; cursor: pointer; }
 .genui-source-toggle::-webkit-details-marker { display: none; }
@@ -22,8 +25,9 @@
 .genui-card { padding:16px; border:1px solid var(--genui-border); border-radius:8px; }
 .genui-field { display:flex; flex-direction:column; gap:6px; min-width:0; font-size:13px; }
 .genui-field input,.genui-field textarea,.genui-field select { width:100%; box-sizing:border-box; color:var(--genui-text); background:var(--genui-surface); border:1px solid var(--genui-border); box-shadow:none; }
+.genui-field :is(input,textarea,select):focus-visible { outline: 2px solid var(--genui-accent); outline-offset: -2px; }
 .genui-checkbox { flex-direction:row; align-items:center; }.genui-checkbox input { width:auto; order:-1; }
-.genui-button { padding:8px 14px; border-radius:6px; background:var(--genui-accent); color:var(--on-accent,#fff); align-self:flex-start; }
+.genui-button { padding:8px 14px; border-radius:var(--radius-action); background:var(--genui-accent); color:var(--genui-on-accent); align-self:flex-start; }
 .genui-link { padding:0; text-decoration:underline; color:var(--genui-accent); text-align:inherit; }
 .genui-content table { width:100%; border-collapse:collapse; font-size:13px; }.genui-content th,.genui-content td { text-align:start; padding:8px 10px; border-bottom:1px solid var(--genui-border); }.genui-content caption { text-align:start; color:var(--genui-muted); margin-bottom:8px; }.genui-table-scroll { overflow:auto; }
 .genui-content pre { white-space:pre-wrap; overflow-wrap:anywhere; overflow:auto; }.genui-content img,.genui-content video { max-width:100%; height:auto; }.genui-content audio { max-width:100%; }

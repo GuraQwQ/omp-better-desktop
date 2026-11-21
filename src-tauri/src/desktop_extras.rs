@@ -161,6 +161,7 @@ pub fn execute(app: tauri::AppHandle, root: &Path, request: &Value) -> Result<Va
         "card.open" => {
             let handle = app.clone();
             let directory = root.join("webview");
+            let appearance = crate::appearance::Appearance::read(root);
             let value = request["value"].clone();
             let session_id = id.to_owned();
             let (send, receive) = std::sync::mpsc::channel();
@@ -192,6 +193,9 @@ pub fn execute(app: tauri::AppHandle, root: &Path, request: &Value) -> Result<Va
                         .min_inner_size(300., 180.)
                         .always_on_top(true)
                         .data_directory(directory)
+                        .theme(appearance.theme)
+                        .background_color(appearance.background)
+                        .initialization_script(appearance.boot_script())
                         .build()
                         .map_err(|e| e.to_string())?;
                         let closed_label = label.clone();

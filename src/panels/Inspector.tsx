@@ -15,7 +15,7 @@ import AgentsPanel from './AgentsPanel';
 import type { SessionUpdater } from '../lib/agents-state';
 
 export type InspectorTab = 'review' | 'files' | 'context' | 'agents' | 'tasks' | 'tree';
-export default function Inspector({ tab, session, cwd, t, language, onError, close, send, onSessionChanged, swarmEnabled, onSessionUpdate, focusAgentId, onAgentFocused }: { tab: InspectorTab; session?: SessionView; cwd: string; t: Copy; language: Language; onError: (error: unknown) => void; close: () => void; send: (text: string) => void; onSessionChanged: () => Promise<void>; swarmEnabled?: boolean; onSessionUpdate?: SessionUpdater; focusAgentId?: string; onAgentFocused?: () => void }) {
+export default function Inspector({ tab, session, cwd, t, language, onError, close, onTab, send, onSessionChanged, swarmEnabled, onSessionUpdate, focusAgentId, onAgentFocused }: { tab: InspectorTab; session?: SessionView; cwd: string; t: Copy; language: Language; onError: (error: unknown) => void; close: () => void; onTab: (tab: InspectorTab) => void; send: (text: string) => void; onSessionChanged: () => Promise<void>; swarmEnabled?: boolean; onSessionUpdate?: SessionUpdater; focusAgentId?: string; onAgentFocused?: () => void }) {
   const [data, setData] = useState<any>(null);
   const [file, setFile] = useState('');
   const [content, setContent] = useState('');
@@ -69,7 +69,12 @@ export default function Inspector({ tab, session, cwd, t, language, onError, clo
     if (!session) return;
     try { await rpc(session.id, type, { entryId }); await onSessionChanged(); await load(); } catch (error) { onError(error); }
   };
-  return <aside className={`inspector${tab === 'agents' ? ' inspector-agents' : ''}`}><header><h2>{t[tab]}</h2><div><button className="icon-button" title={t.refresh} onClick={load}><RefreshCw size={14} /></button><button className="icon-button" title={t.close} onClick={close}><X size={17} /></button></div></header><div className="inspector-body">
+  return <aside className={`inspector${tab === 'agents' ? ' inspector-agents' : ''}`}>
+    <header><h2>{t[tab]}</h2><div><button className="icon-button" aria-label={t.refresh} title={t.refresh} onClick={load}><RefreshCw size={14} /></button><button className="icon-button" aria-label={t.close} title={t.close} onClick={close}><X size={17} /></button></div></header>
+    <nav className="inspector-tabs" aria-label={language === 'zh' ? '检查窗' : 'Inspector'}>
+      {(['review', 'files', 'agents', 'tasks', 'tree'] as const).map(value => <button key={value} aria-pressed={tab === value} onClick={() => onTab(value)}>{t[value]}</button>)}
+    </nav>
+    <div className="inspector-body">
     {tab === 'review' ? <>
       <div className="review-scope"><span>{t.reviewScope}</span><Select label={t.reviewScope} value={selectedTurn?.id ?? 'workspace'} options={[{ value: 'workspace', label: t.workspaceChanges }, ...turns.slice().reverse().map(turn => ({ value: turn.id, label: turn.ordinal === null ? t.earlierTurn : `${t.turnLabel} ${turn.title.slice(0, 60) || turn.ordinal}` }))]} onChange={value => setSelection({ key: scopeKey, value })} /></div>
       {selectedTurn ? <div className="turn-review" key={`${scopeKey}:${selectedTurn.id}`}><p className="turn-review-caption">{t.turnChanges}</p>{selectedTurn.messages.length ? selectedTurn.messages.map((message, index) => {

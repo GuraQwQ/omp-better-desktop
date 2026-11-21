@@ -2,8 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Copy, Minus, Square, X } from 'lucide-react';
+import { Copy, Minus, PanelLeftClose, PanelLeftOpen, Square, X } from 'lucide-react';
 import { native } from '../lib/bridge';
+import Wordmark from './Wordmark';
 import './window-chrome.css';
 
 // 工作区的面包屑与操作按钮渲染进标题栏的 #window-slot，把原来的两行合成一行。
@@ -13,7 +14,7 @@ export function WindowSlot({ inert, children }: { inert?: boolean; children: Rea
   return slot ? createPortal(<div className="workspace-header" inert={inert}>{children}</div>, slot) : null;
 }
 
-export default function WindowChrome({ language }: { language: 'zh' | 'en' }) {
+export default function WindowChrome({ language, sidebar, sidebarLabel, sidebarDisabled, toggleSidebar }: { language: 'zh' | 'en'; sidebar: boolean; sidebarLabel: string; sidebarDisabled: boolean; toggleSidebar: () => void }) {
   const header = useRef<HTMLElement>(null);
   const [maximized, setMaximized] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -57,8 +58,12 @@ export default function WindowChrome({ language }: { language: 'zh' | 'en' }) {
   }, [language]);
   const maximizeLabel = maximized ? labels.restore : labels.maximize;
   return <header ref={header} className="window-chrome" aria-label={labels.bar}>
-    <div className="window-drag-region"><span>Better OMP Desktop</span>{failed && <span className="window-action-error" role="status">{labels.error}</span>}</div>
+    <div className="window-drag-region">
+      <Wordmark />
+      <button type="button" className="icon-button sidebar-toggle" title={sidebarLabel} aria-label={sidebarLabel} aria-expanded={sidebar} aria-controls={sidebar ? 'workspace-sidebar' : undefined} disabled={sidebarDisabled} onClick={toggleSidebar}>{sidebar ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}</button>
+    </div>
     <div id="window-slot" className="window-slot" />
+    {failed && <span className="window-action-error" role="status">{labels.error}</span>}
     <div className="window-controls">
       <button type="button" aria-label={labels.minimize} title={labels.minimize} disabled={!native} onClick={() => void act(() => getCurrentWindow().minimize())}><Minus size={14} /></button>
       <button type="button" aria-label={maximizeLabel} title={maximizeLabel} aria-pressed={maximized} disabled={!native} onClick={() => void toggle()}>{maximized ? <Copy size={12} /> : <Square size={12} />}</button>

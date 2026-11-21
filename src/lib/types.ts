@@ -1,7 +1,9 @@
 export type Language = 'en' | 'zh';
 export type MotionLevel = 'rich' | 'normal' | 'reduced';
 export type Json = Record<string, any>;
-export interface Preferences { language: Language; theme: 'system' | 'light' | 'dark'; motion?: MotionLevel; showTurnNumber?: boolean; notifyOnDone?: boolean; asyncQuestions?: boolean; features?: Partial<Record<'reviews' | 'browser' | 'cards' | 'externalSessions' | 'swarm', boolean>>; shortcuts?: Record<string, string>; generativeUI?: import('./genui-config').GenUIConfiguration }
+export type ColorPalette = 'obsidian' | 'classic' | 'claude' | 'omp' | 'custom';
+export type CustomAccent = Record<'light' | 'dark', string>;
+export interface Preferences { language: Language; theme: 'system' | 'light' | 'dark'; palette?: ColorPalette; customAccent?: CustomAccent; motion?: MotionLevel; showTurnNumber?: boolean; notifyOnDone?: boolean; asyncQuestions?: boolean; features?: Partial<Record<'reviews' | 'browser' | 'cards' | 'externalSessions' | 'swarm', boolean>>; shortcuts?: Record<string, string>; generativeUI?: import('./genui-config').GenUIConfiguration }
 export interface Project { path: string; name: string }
 export interface RuntimeRecord { path: string; version: string; revision?: string }
 export interface Bootstrap { dataRoot: string; runtime: RuntimeRecord | null; preferences: Preferences; projects: Project[] }

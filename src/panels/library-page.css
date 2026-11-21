@@ -1,8 +1,6 @@
 .library-page { min-height: 0; flex: 1; display: flex; flex-direction: column; background: var(--surface); }
-.library-page > header { display: flex; align-items: flex-start; gap: 16px; padding: 26px 32px 22px; border-bottom: 1px solid var(--line-soft); flex-shrink: 0; }
-.library-page h1 { margin: 0; font-size: 20px; font-weight: var(--weight-strong); }
-.library-page > header p { margin: 7px 0 0; color: var(--secondary); font-size: 13px; }
-.library-page-content { overflow: auto; min-height: 0; padding: 24px 32px; }
+.library-page-content { overflow: auto; min-height: 0; padding: 20px 28px; }
+.library-page-description { color: var(--secondary); margin-bottom: 16px; font-size: var(--text-ui); }
 .library-page-content > * { max-width: 1080px; margin-inline: auto; }
 .nav-item[aria-current='page'] { background: var(--selected); color: var(--text); }
-@media (max-width: 980px) { .library-page > header { padding: 22px 20px 18px; } .library-page-content { padding: 20px; } }
+@media (max-width: 980px) { .library-page-content { padding: 16px; } }

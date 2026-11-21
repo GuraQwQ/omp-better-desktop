@@ -2,7 +2,7 @@
 .image-preview-trigger:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 .image-preview-dialog { padding: 0; border: 0; border-radius: var(--radius-surface); width: min(1200px, calc(100vw - 32px)); max-width: none; height: calc(100dvh - 48px); max-height: none; color: var(--text); background: var(--surface-raised); box-shadow: var(--shadow); overflow: hidden; }
 .image-preview-dialog[open] { display: flex; flex-direction: column; animation: fade-in var(--motion-fast) ease both; }
-.image-preview-dialog::backdrop { background: color-mix(in srgb, var(--surface) 70%, transparent); }
+.image-preview-dialog::backdrop { background: var(--backdrop); }
 .image-preview-dialog > header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 12px 16px; border-bottom: 1px solid var(--line-soft); }
 .image-preview-title { min-width: 0; flex: 1 1 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
 .image-preview-actions { display: flex; align-items: center; gap: 4px; margin-inline-start: auto; }

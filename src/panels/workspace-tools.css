@@ -1,6 +1,7 @@
 .workspace-tools { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 12px; height: 100%; font-size: 12px; }
 .workspace-tool-tabs { display: flex; gap: 2px; overflow-x: auto; flex-shrink: 0; border-bottom: 1px solid var(--line-soft); padding-bottom: 8px; }
-.workspace-tool-tabs .quiet-button { gap: 5px; padding: 7px; }
+.workspace-tool-tabs .quiet-button { gap: 5px; padding: 6px 8px; }
+.workspace-tool-tabs .quiet-button:focus-visible { outline-offset: -2px; }
 .workspace-tool-path { display: block; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-tool-content { min-height: 0; min-width: 0; flex: 1; }
 .workspace-tool-content[hidden] { display: none; }
@@ -56,5 +57,5 @@
 .workspace-terminals .workspace-document-tabs { margin: 0; padding: 4px; background: var(--sidebar); border: 1px solid var(--line); border-bottom: 0; border-radius: var(--radius-control) var(--radius-control) 0 0; }
 .workspace-terminals .workspace-document-tabs > div { background: transparent; }
 .workspace-terminals .workspace-document-tabs > div.active { background: var(--surface-raised); color: var(--text); }
-.workspace-shell { min-height: 180px; flex: 1; overflow: hidden; padding: 12px 8px 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 0 0 var(--radius-control) var(--radius-control); }
+.workspace-shell { min-height: 180px; flex: 1; overflow: hidden; padding: 12px 8px 8px; background: var(--terminal-bg); border: 1px solid var(--line); border-radius: 0 0 var(--radius-control) var(--radius-control); }
 .workspace-shell .xterm { height: 100%; }

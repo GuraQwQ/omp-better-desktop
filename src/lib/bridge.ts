@@ -2,6 +2,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { Bootstrap, DesktopEvent, Json } from './types';
 import type { DesktopCommand, DesktopCommands, DesktopRequestArgs } from './desktop-commands';
+import { startupAppearance } from './appearance';
 
 export const native = isTauri();
 let previewPreferences: Bootstrap['preferences'] | undefined;
@@ -9,7 +10,7 @@ let previewPreferences: Bootstrap['preferences'] | undefined;
 export async function request<K extends DesktopCommand>(...args: DesktopRequestArgs<K>): Promise<DesktopCommands[K]['output']> {
   const [type, fields = {}] = args;
   if (native) return invoke<DesktopCommands[K]['output']>('desktop_command', { request: { type, ...fields } });
-  previewPreferences ??= { language: typeof navigator !== 'undefined' && navigator.language?.startsWith('zh') ? 'zh' : 'en', theme: 'system', motion: 'rich', asyncQuestions: true };
+  previewPreferences ??= { language: typeof navigator !== 'undefined' && navigator.language?.startsWith('zh') ? 'zh' : 'en', ...startupAppearance, motion: 'rich', asyncQuestions: true };
   if (type === 'bootstrap') return {
     dataRoot: '', runtime: null, projects: [],
     preferences: { ...previewPreferences },
