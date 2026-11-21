@@ -226,6 +226,11 @@ mod tests {
     fn replacing_launch_settings_keeps_history_discoverable() {
         let root = std::env::temp_dir().join(format!("omp-launch-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
+        crate::save(
+            &root.join("desktop.json"),
+            &json!({"preferences":{"theme":"system"},"projects":[]}),
+        )
+        .unwrap();
         let directory = root.join("历史");
         std::fs::create_dir(&directory).unwrap();
         write(
