@@ -92,7 +92,10 @@ fn config(root: &Path) -> Result<Value, String> {
         &root.join("desktop.json"),
         json!({"preferences":{"language":"en"},"projects":[]}),
     )?;
-    if !matches!(cfg["preferences"]["theme"].as_str(), Some("light" | "dark" | "system")) {
+    if !matches!(
+        cfg["preferences"]["theme"].as_str(),
+        Some("light" | "dark" | "system")
+    ) {
         cfg["preferences"]["theme"] = json!("light");
     }
     if !appearance::valid_palette(&cfg["preferences"]["palette"]) {
@@ -235,7 +238,10 @@ fn execute(app: tauri::AppHandle, request: Value) -> Result<Value, String> {
         "preferences.set" => {
             let _lock = desktop.configuration.lock().unwrap();
             let preferences = set_preferences(root, &request["patch"])?;
-            if ["theme", "palette", "customAccent"].iter().any(|key| request["patch"].get(*key).is_some()) {
+            if ["theme", "palette", "customAccent"]
+                .iter()
+                .any(|key| request["patch"].get(*key).is_some())
+            {
                 appearance::apply(&app, &preferences);
             }
             if let Some(enabled) = request["patch"]["features"]["swarm"].as_bool() {
