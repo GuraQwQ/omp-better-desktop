@@ -6,11 +6,15 @@
 
 ## 界面预览
 
-模拟任务：修复 `slugify`，统一小写、保留中文、合并连续分隔符，再检查边界案例。例如将 `Hello 世界___OMP` 转为 `hello-世界-omp`。以下为实际界面中的演示任务和用量数据，截图原始尺寸均为 **1600×900**。
+以下截图来自 0.7.0 桌面应用，使用隔离的演示项目和会话记录，原始尺寸均为 **1600×900**。
 
-对话主轴将项目与会话放在左侧，答复居中；模型、思考程度、原生速率与用量靠近输入区。
+默认浅色工作台将项目与会话放在左侧，欢迎区居中显示 π 和任务建议。
 
-![浅色对话界面，展示模拟任务结果、原生速率和会话用量](.github/images/conversation-1600x900.png)
+![默认浅色工作台，展示 OMP 字标、居中的 π 和任务建议](.github/images/welcome-1600x900.png)
+
+演示任务修复 `slugify`，统一小写、保留中文并合并连续分隔符，将 `Hello 世界___OMP` 转为 `hello-世界-omp`。
+
+![浅色对话界面，展示示例任务结果与收起的工具步骤](.github/images/conversation-1600x900.png)
 
 连续动作收为一行步骤摘要，点击读取、修改或命令可展开详情；差异和原始输出按需显示。
 
@@ -25,7 +29,7 @@
 在本仓库 [Releases](https://github.com/GuraQwQ/omp-better-desktop/releases) 下载 Windows x64 发行包及 `SHA256SUMS`，用 PowerShell 核对：
 
 ```powershell
-Get-FileHash -LiteralPath './Better-OMP-Desktop_0.6.5_windows-x64.exe' -Algorithm SHA256
+Get-FileHash -LiteralPath './Better-OMP-Desktop_0.7.0_windows-x64.exe' -Algorithm SHA256
 ```
 
 文件名以实际附件为准。安装器未签名，Windows 可能提示发布者未知。安装包内置匹配的 OMP；需要系统已有 WebView2，或自行提供解压到其他盘的 Fixed Version WebView2。首次启动选择数据目录，应用数据与安装目录分开管理。安装与更新说明见 [发行页](https://github.com/GuraQwQ/omp-better-desktop/releases)。
@@ -42,7 +46,7 @@ Get-FileHash -LiteralPath './Better-OMP-Desktop_0.6.5_windows-x64.exe' -Algorith
 - 保存的对话按本地日期分组；切换会话恢复阅读位置，后台任务完成提供未读标记和可关闭的系统通知。
 - 队列消息可取回草稿及附件；输入 `@` 搜索项目文件，使用方向键与 Enter/Tab 插入路径，也支持未初始化 Git 的项目。
 - 输入 `/` 搜索原生命令、技能与扩展，描述随界面语言切换；任务清单显示在对话左侧独立小板中，可展开或收起，完成后自动隐藏，历史可在上下文进阶中追溯。
-- 外观支持丰富、正常、减少三档动画，默认丰富；渐变、过渡和交互反馈随档位即时调整并保存。
+- 默认使用 Obsidian Studio 浅色。支持浅色、深色、跟随系统，以及鼠尾草、Claude、OMP 官方配色与自定义强调色。动画支持丰富、正常、减少三档，默认丰富。
 - 审阅面板可按用户回合查看已记录的文件工具操作，工作区 Git 差异单独查看。
 - 工具步骤以轻量摘要呈现；读取、修改与命令整行可展开路径、行号、差异和退出状态，保留原始输出，重内容按需挂载。
 - 显示上下文剩余、累计用量、缓存命中和 OMP 原生平滑生成速率；活跃工具行共享实时速率，统计详情可展开查看。
