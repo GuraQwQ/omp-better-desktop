@@ -32,7 +32,6 @@
   --accent-line: #8bb8eb;
   --on-accent: #ffffff;
   --focus: #0062c4;
-  --input-focus: var(--focus);
   --selection: #c7dcf5;
   --success: #1b7a38;
   --warning: #965200;
@@ -58,7 +57,7 @@
   --backdrop: #0f121a52;
   --shadow: 0 12px 36px #0f121a24, 0 2px 8px #0f121a12;
   --shadow-panel: 0 5px 18px #0f121a1a;
-  --focus-ring: inset 0 0 0 2px var(--focus);
+  --focus-ring: 0 0 8px color-mix(in srgb, var(--focus) 32%, transparent);
   --motion-fast: 140ms;
   --motion-feedback: 90ms;
   --motion-med: 220ms;

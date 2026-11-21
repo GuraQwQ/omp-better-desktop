@@ -10,13 +10,39 @@ button, input, textarea, select { font: inherit; }
 button { color: inherit; cursor: pointer; }
 button:disabled { cursor: default; opacity: .42; }
 button, a, input, textarea, select, summary { -webkit-tap-highlight-color: transparent; }
-button { border: 0; background: none; }
-input:where(:not([type='checkbox']):not([type='radio'])), textarea, select { color: var(--text); background: var(--surface); border: 0; box-shadow: inset 0 0 0 1px var(--line); border-radius: var(--radius-control); padding: 9px 11px; min-width: 0; }
+:where(button) { border: 0; background: none; }
+input:where(:not([type='checkbox'], [type='radio'], [type='range'], [type='file'])), textarea, select { color: var(--text); border-radius: var(--radius-control); padding: 8px 10px; min-width: 0; }
 input[type='checkbox'], input[type='radio'] { accent-color: var(--accent); }
 textarea { resize: vertical; }
 input::placeholder, textarea::placeholder { color: var(--muted); }
-:where(input, textarea, select):focus { box-shadow: var(--focus-ring); }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+:where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), textarea, select,
+  .composer, .select-button, .session-search, .swarm-board-search > label, .swarm-member-search > label,
+  .code-editor, .new-conversation, .starter-actions button, .palette-choice) {
+  --field-fill: var(--surface);
+  --field-line: var(--line);
+  --field-accent: var(--focus);
+  --field-shine: transparent;
+  --field-edge: linear-gradient(145deg, var(--field-line), color-mix(in srgb, var(--field-line) 64%, var(--field-fill)) 68%, var(--field-line));
+  border: 1px solid transparent;
+  background: radial-gradient(ellipse at 12% 0%, var(--field-shine), transparent 72%) padding-box,
+    linear-gradient(var(--field-fill), var(--field-fill)) padding-box, var(--field-edge) border-box;
+}
+
+@media (forced-colors: none) {
+  :where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), textarea, select, .select-button):focus,
+  :where(.session-search, .swarm-board-search > label, .swarm-member-search > label):has(input:focus),
+  :where(.composer):has(.composer-input > textarea:focus),
+  :where(.code-editor):has(.cm-content:focus),
+  :where(.select-button)[aria-expanded='true'] {
+    --field-shine: color-mix(in srgb, var(--field-accent) 9%, transparent);
+    --field-edge: linear-gradient(125deg, var(--field-accent), color-mix(in srgb, var(--field-accent) 48%, var(--field-fill)) 55%, color-mix(in srgb, var(--field-accent) 80%, var(--field-fill)));
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--field-accent) 13%, transparent),
+      0 0 14px color-mix(in srgb, var(--field-accent) 20%, transparent);
+    outline: none;
+  }
+}
 ::selection { color: var(--text); background: var(--selection); }
 textarea, input { caret-color: var(--accent); }
 a { color: var(--accent); text-underline-offset: 3px; }
@@ -43,8 +69,8 @@ legend { margin-bottom: 8px; font-weight: var(--weight-strong); }
 .icon-button { display: inline-flex; justify-content: center; align-items: center; padding: 6px; border-radius: 6px; line-height: 1; flex-shrink: 0; }
 .icon-button:hover:not(:disabled), .quiet-button:hover:not(:disabled) { background: var(--hover); color: var(--text); }
 .new-conversation, .nav-item { width: 100%; display: flex; align-items: center; gap: 9px; text-align: left; border-radius: var(--radius-control); padding: 8px 10px; }
-.new-conversation { color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); margin-bottom: 10px; font-weight: var(--weight-strong); }
-.new-conversation:hover { background: var(--selected); }
+.new-conversation { color: var(--accent); --field-fill: var(--accent-soft); --field-line: var(--accent-line); margin-bottom: 10px; padding: 7px 9px; font-weight: var(--weight-strong); }
+.new-conversation:hover { --field-fill: var(--selected); }
 .new-conversation > span, .nav-item > span { flex: 1; }
 kbd { font-size: 12px; color: var(--muted); }
 .nav-item { color: var(--secondary); }
@@ -109,8 +135,8 @@ kbd { font-size: 12px; color: var(--muted); }
 .welcome-content > p { color: var(--secondary); max-width: 54ch; font-size: var(--text-body); line-height: 1.75; margin-bottom: 0; }
 .welcome .browser-note { font-size: 12px; color: var(--secondary); margin-bottom: 0; }
 .starter-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 20px; width: 100%; }
-.starter-actions button { flex: 0 1 160px; min-width: 0; border: 1px solid var(--line); background: var(--surface-raised); border-radius: var(--radius-control); font-size: var(--text-ui); color: var(--text); padding: 8px 11px; display: flex; gap: 8px; align-items: center; justify-content: space-between; text-align: start; }
-.starter-actions button:hover { background: var(--hover); }
+.starter-actions button { flex: 0 1 160px; min-width: 0; --field-fill: var(--surface-raised); border-radius: var(--radius-control); font-size: var(--text-ui); color: var(--text); padding: 8px 11px; display: flex; gap: 8px; align-items: center; justify-content: space-between; text-align: start; }
+.starter-actions button:hover { --field-fill: var(--hover); }
 .starter-actions svg { color: var(--muted); }
 .composer-area { width: 100%; max-width: 850px; align-self: center; padding: 0 28px 16px; margin-top: auto; }
 .setup-callout { width: 100%; display: flex; align-items: center; gap: 11px; background: var(--sidebar); padding: 12px 14px; border-radius: var(--radius-surface); text-align: left; margin-bottom: 12px; }
@@ -120,9 +146,7 @@ kbd { font-size: 12px; color: var(--muted); }
 .setup-callout strong { display: block; font-size: 12px; font-weight: var(--weight-strong); }
 .setup-callout small { display: block; font-size: 12px; margin-top: 2px; }
 .setup-callout > svg { color: var(--muted); }
-.composer { background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-surface); padding: 12px 13px 9px; transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease; }
-.composer:focus-within { border-color: var(--input-focus); }
-.composer:has(textarea:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.composer { --field-fill: var(--surface-raised); border-radius: var(--radius-surface); padding: 12px 13px 9px; transition: box-shadow var(--motion-fast) ease; }
 .composer-toolbar { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; row-gap: 5px; }
 .composer-toolbar > .icon-button { color: var(--muted); }
 .model-button { font-size: 12px; display: flex; align-items: center; gap: 6px; padding: 5px 7px; border-radius: 6px; color: var(--secondary); max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -213,9 +237,9 @@ kbd { font-size: 12px; color: var(--muted); }
 .palette-picker { margin-block: 16px 20px; }
 .palette-picker > legend { padding: 0; }
 .palette-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 116px), 1fr)); gap: 8px; }
-.palette-choice { display: grid; gap: 6px; padding: 6px; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-raised); text-align: start; }
-.palette-choice:hover { background: var(--hover); }
-.palette-choice[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.palette-choice { display: grid; gap: 6px; padding: 6px; min-width: 0; --field-fill: var(--surface-raised); border-radius: var(--radius-control); text-align: start; }
+.palette-choice:hover { --field-fill: var(--hover); }
+.palette-choice[aria-pressed='true'] { --field-fill: var(--accent-soft); --field-line: var(--accent); color: var(--accent); }
 .palette-preview { display: flex; gap: 2px; height: 24px; overflow: hidden; border-radius: var(--radius-item); }
 .palette-preview > i { display: grid; place-items: center; flex: 1; border: 1px solid var(--line); border-radius: var(--radius-item); background: var(--sample-surface); }
 .palette-preview > i::after { content: ''; width: 60%; max-width: 26px; border-radius: 3px; height: 4px; background: var(--sample-accent); }
@@ -292,7 +316,7 @@ kbd { font-size: 12px; color: var(--muted); }
 .command-inner > header { display: flex; align-items: center; gap: 11px; padding: 15px 18px; border-bottom: 1px solid var(--line-soft); }
 .command-inner > header > svg { color: var(--muted); }
 .command-inner > header input { flex: 1; border: 0; box-shadow: none; padding: 0; background: transparent; outline: none; font-size: 14px; }
-.command-inner > header:focus-within { box-shadow: inset 0 -2px 0 var(--focus); }
+.command-inner > header:has(input:focus) { border-image: linear-gradient(90deg, var(--focus), var(--accent-line), var(--focus)) 1; box-shadow: 0 2px 10px color-mix(in srgb, var(--focus) 17%, transparent); }
 .keycap { font-size: 12px; border: 0; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); padding: 2px 5px; border-radius: 4px; }
 .command-results { max-height: 52vh; overflow: auto; padding: 8px; }
 .command-results > button { width: 100%; display: flex; align-items: center; gap: 13px; text-align: left; padding: 10px 12px; border-radius: var(--radius-item); }
@@ -372,9 +396,11 @@ dialog[data-exiting='true']::backdrop { background: transparent; }
 .code-copy { position: absolute; top: 6px; right: 6px; background: var(--surface-raised); opacity: 0; transition: opacity var(--motion-fast) ease; }
 .code-block:hover .code-copy, .code-copy:focus-visible { opacity: 1; }
 @media (forced-colors: active) {
-  :is(input, button, textarea, select, summary, a):focus-visible, .composer:focus-within, .session-search:focus-within { outline: 2px solid Highlight; outline-offset: 2px; }
-  input:where(:not([type='checkbox']):not([type='radio'])), textarea, select, .select-button, .composer, .question { border: 1px solid CanvasText; }
-  .composer-input > textarea, .session-search input { border: 0; }
+  :where(input, button, textarea, select, summary, a):focus-visible,
+  :is(.session-search, .swarm-board-search > label, .swarm-member-search > label, .command-inner > header):has(input:focus),
+  .composer:has(.composer-input > textarea:focus), .code-editor:has(.cm-content:focus) { outline: 2px solid Highlight; outline-offset: 2px; }
+  :is(input:where(:not([type='checkbox'], [type='radio'], [type='range'], [type='file'])), textarea, select, .select-button, .composer, .question, .code-editor, .session-search, .swarm-board-search > label, .swarm-member-search > label, .palette-choice) { border-color: CanvasText; }
+  .command-inner > header:has(input:focus) { border-image: none; outline-offset: -2px; }
   .session-item.active, .answer-option.selected { outline: 1px solid Highlight; }
 }
 @media (max-width: 1120px) { .composer-area { padding-right: 22px; padding-left: 22px; } .welcome { padding-inline: 22px; } .settings-content { padding: 22px; } .effort-select { max-width: 62px; } }

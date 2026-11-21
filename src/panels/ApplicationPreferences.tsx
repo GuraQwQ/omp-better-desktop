@@ -20,7 +20,7 @@ export function GeneralPreferences({ bootstrap, t, change }: Props) {
 }
 const paletteSamples = [
   { id: 'obsidian', label: 'Obsidian Studio', en: 'Obsidian Studio', light: ['#f5f5f7', '#0062c4'], dark: ['#1c1c1e', '#4da6ff'] },
-  { id: 'classic', label: '旧版配色', en: 'Classic', light: ['#fcfcfb', '#42664b'], dark: ['#151714', '#a7c698'] },
+  { id: 'classic', label: '鼠尾草', en: 'Sage', light: ['#fcfcfb', '#42664b'], dark: ['#151714', '#a7c698'] },
   { id: 'claude', label: 'Claude', en: 'Claude', light: ['#faf9f5', '#98432e'], dark: ['#141413', '#d97757'] },
   { id: 'omp', label: 'OMP 官方', en: 'OMP', light: ['#f8f8f8', '#3b6768'], dark: ['#151820', '#00b4ff'] },
   { id: 'custom', label: '自定义', en: 'Custom', light: ['#f5f5f7', '#0062c4'], dark: ['#1c1c1e', '#4da6ff'] },

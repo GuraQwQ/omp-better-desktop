@@ -89,10 +89,9 @@
 .swarm-board-search { gap: 8px; margin-bottom: 10px; }
 .swarm-board-view { min-height: 0; flex: 1; display: flex; flex-direction: column; position: relative; }
 .swarm-board-view > :not(.swarm-board-scroll) { flex-shrink: 0; }
-.swarm-board-search > label, .swarm-member-search > label { display: flex; align-items: center; flex: 1; min-width: 0; color: var(--muted); background: var(--sidebar); border-radius: var(--radius-control); padding-left: 10px; }
-.swarm-board-search input, .swarm-member-search input { width: 100%; background: transparent; box-shadow: none; padding: 9px; font-size: 12px; }
+.swarm-board-search > label, .swarm-member-search > label { display: flex; align-items: center; flex: 1; min-width: 0; color: var(--muted); --field-fill: var(--sidebar); border-radius: var(--radius-control); padding-left: 9px; }
+.swarm-board-search input, .swarm-member-search input { width: 100%; background: transparent; border: 0; box-shadow: none; padding: 8px; font-size: 12px; }
 .swarm-board-search > button, .swarm-member-search > button { flex-shrink: 0; }
-.swarm-board-search > label:focus-within, .swarm-member-search > label:focus-within { box-shadow: var(--focus-ring); }
 .swarm-board-search input:focus-visible, .swarm-member-search input:focus-visible { outline: none; }
 .swarm-board-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 7px; margin: 8px 0; }
 .swarm-board-filters > .select { min-width: 0; }

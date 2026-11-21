@@ -1,4 +1,4 @@
-.code-editor { flex: 1; min-height: 180px; overflow: hidden; position: relative; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); }
+.code-editor { flex: 1; min-height: 180px; overflow: hidden; position: relative; border-radius: var(--radius-control); }
 .code-editor-viewport { position: absolute; inset: 0; }
 .code-editor .cm-editor { height: 100%; font: var(--text-code)/1.7 var(--font-code); color: var(--text); background: var(--surface); }
 .code-editor .cm-scroller { overflow: auto; }
@@ -7,10 +7,10 @@
 .code-editor .cm-gutters { background: var(--sidebar); border-right: 1px solid var(--line-soft); color: var(--muted); }
 .code-editor .cm-lineNumbers .cm-gutterElement { padding: 0 9px 0 12px; }
 .code-editor .cm-activeLine, .code-editor .cm-activeLineGutter { background: var(--hover); }
-.code-editor .cm-editor.cm-focused { outline: 1px solid var(--focus); outline-offset: -1px; }
+.code-editor .cm-editor.cm-focused { outline: none; }
 .code-editor .cm-selectionBackground, .code-editor .cm-editor.cm-focused .cm-selectionBackground { background: var(--selection); }
 .code-editor .cm-panels { background: var(--sidebar); color: var(--text); border-color: var(--line); }
 .code-editor .cm-search { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 26px 8px 8px; }
 .code-editor .cm-search label { display: inline-flex; align-items: center; gap: 4px; }
-.code-editor .cm-textfield { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-item); min-width: 80px; }
+.code-editor .cm-textfield { color: var(--text); border-radius: var(--radius-item); min-width: 80px; }
 .code-editor .cm-button { background: var(--hover); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-item); }

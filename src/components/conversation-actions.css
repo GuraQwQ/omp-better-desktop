@@ -1,5 +1,4 @@
-.session-search { display: flex; align-items: center; gap: 6px; margin: 0 2px 12px; padding: 0 7px; border: 0; box-shadow: inset 0 0 0 1px var(--line); border-radius: 8px; color: var(--secondary); }
-.session-search:focus-within { box-shadow: var(--focus-ring); }
+.session-search { display: flex; align-items: center; gap: 6px; margin: 0 2px 12px; padding: 0 6px; --field-fill: var(--sidebar); border-radius: 8px; color: var(--secondary); }
 .session-search input { width: 100%; padding: 7px 0; border: 0; background: transparent; border-radius: 0; font-size: 12px; }
 .session-search input, .session-search input:focus { box-shadow: none; outline: none; }
 .session-search input::-webkit-search-cancel-button { display: none; }

@@ -24,8 +24,7 @@
 .genui-content h1 { font-size:24px; }.genui-content h2 { font-size:20px; }.genui-content h3 { font-size:16px; }.genui-content h4 { font-size:14px; }
 .genui-card { padding:16px; border:1px solid var(--genui-border); border-radius:8px; }
 .genui-field { display:flex; flex-direction:column; gap:6px; min-width:0; font-size:13px; }
-.genui-field input,.genui-field textarea,.genui-field select { width:100%; box-sizing:border-box; color:var(--genui-text); background:var(--genui-surface); border:1px solid var(--genui-border); box-shadow:none; }
-.genui-field :is(input,textarea,select):focus-visible { outline: 2px solid var(--genui-accent); outline-offset: -2px; }
+.genui-field > :is(input:not([type='checkbox']), textarea, select) { width: 100%; color: var(--genui-text); --field-fill: var(--genui-surface); --field-line: var(--genui-border); --field-accent: var(--genui-accent); }
 .genui-checkbox { flex-direction:row; align-items:center; }.genui-checkbox input { width:auto; order:-1; }
 .genui-button { padding:8px 14px; border-radius:var(--radius-action); background:var(--genui-accent); color:var(--genui-on-accent); align-self:flex-start; }
 .genui-link { padding:0; text-decoration:underline; color:var(--genui-accent); text-align:inherit; }
