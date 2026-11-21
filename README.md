@@ -4,26 +4,6 @@
 
 桌面宿主管理项目、会话、数据位置与运行时；代理能力由随安装包内置的 OMP 提供。上游提交、协议版本与本地补丁由 [upstream.lock.json](upstream.lock.json) 锁定。
 
-## 界面预览
-
-以下截图来自 0.7.0 桌面应用，使用隔离的演示项目和会话记录，原始尺寸均为 **1600×900**。
-
-默认浅色工作台将项目与会话放在左侧，欢迎区居中显示 π 和任务建议。
-
-![默认浅色工作台，展示 OMP 字标、居中的 π 和任务建议](.github/images/welcome-1600x900.png)
-
-演示任务修复 `slugify`，统一小写、保留中文并合并连续分隔符，将 `Hello 世界___OMP` 转为 `hello-世界-omp`。
-
-![浅色对话界面，展示示例任务结果与收起的工具步骤](.github/images/conversation-1600x900.png)
-
-连续动作收为一行步骤摘要，点击读取、修改或命令可展开详情；差异和原始输出按需显示。
-
-![深色工具步骤界面，展开修改动作查看逐行差异](.github/images/tools-1600x900.png)
-
-需要审阅时打开右侧改动面板，同时保留对话与输入区。
-
-![浅色双栏审阅界面，右侧显示工作区文件差异](.github/images/review-1600x900.png)
-
 ## 安装
 
 在本仓库 [Releases](https://github.com/GuraQwQ/omp-better-desktop/releases) 下载 Windows x64 发行包及 `SHA256SUMS`，用 PowerShell 核对：
@@ -33,6 +13,12 @@ Get-FileHash -LiteralPath './Better-OMP-Desktop_0.7.0_windows-x64.exe' -Algorith
 ```
 
 文件名以实际附件为准。安装器未签名，Windows 可能提示发布者未知。安装包内置匹配的 OMP；需要系统已有 WebView2，或自行提供解压到其他盘的 Fixed Version WebView2。首次启动选择数据目录，应用数据与安装目录分开管理。安装与更新说明见 [发行页](https://github.com/GuraQwQ/omp-better-desktop/releases)。
+
+## 界面预览
+
+![默认浅色工作台，展示 OMP 字标、居中的 π 和任务建议](.github/images/welcome-1600x900.png)
+
+![深色工具步骤界面，展开修改动作查看逐行差异](.github/images/tools-1600x900.png)
 
 ## 当前范围
 
