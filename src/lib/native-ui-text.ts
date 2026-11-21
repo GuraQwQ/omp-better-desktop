@@ -145,7 +145,7 @@ const nativeTextZh: Record<string, string> = {
 export function localizeNativeText(value: unknown, language: Language): string {
   const text = value == null ? '' : String(value);
   if (language !== 'zh') return text;
-  if (nativeTextZh[text]) return nativeTextZh[text];
+  if (Object.hasOwn(nativeTextZh, text)) return nativeTextZh[text];
   const code = /^Enter code: (.+)$/.exec(text);
   if (code) return `输入验证码：${code[1]}`;
   const quota = /^Optional quota reporting: open browser DevTools → Network, reload the Token Plan page, filter for api.json, and select the (\S+) request whose api query ends in \/tokenplan\/personal\/api\/v2\/usage\. Copy Request Headers → Cookie, then paste the complete name=value; \.\.\. value here, or press Enter to skip\.$/.exec(text);
