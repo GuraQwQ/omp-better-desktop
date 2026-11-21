@@ -196,6 +196,8 @@ pub fn execute(app: tauri::AppHandle, root: &Path, request: &Value) -> Result<Va
                         .theme(appearance.theme)
                         .background_color(appearance.background)
                         .initialization_script(appearance.boot_script())
+                        .visible(false)
+                        .on_page_load(crate::appearance::show_loaded)
                         .build()
                         .map_err(|e| e.to_string())?;
                         let closed_label = label.clone();

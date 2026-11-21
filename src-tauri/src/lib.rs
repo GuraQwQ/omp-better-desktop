@@ -555,6 +555,8 @@ pub fn run() {
                 .theme(appearance.theme)
                 .background_color(appearance.background)
                 .initialization_script(appearance.boot_script())
+                .visible(false)
+                .on_page_load(appearance::show_loaded)
                 .build()?;
             Ok(())
         })

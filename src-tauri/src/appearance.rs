@@ -104,3 +104,13 @@ pub(crate) fn apply(app: &tauri::AppHandle, preferences: &Value) {
         }
     }
 }
+
+pub(crate) fn show_loaded(window: tauri::WebviewWindow, load: tauri::webview::PageLoadPayload<'_>) {
+    // WebView2 的默认画布可能短暂使用另一种明暗，即使原生底色已匹配。
+    if load.event() == tauri::webview::PageLoadEvent::Finished
+        && load.url().scheme() != "about"
+        && let Err(error) = window.show()
+    {
+        eprintln!("显示窗口失败 ({}): {error}", window.label());
+    }
+}
