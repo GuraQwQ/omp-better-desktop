@@ -14,3 +14,6 @@
 .code-editor .cm-search label { display: inline-flex; align-items: center; gap: 4px; }
 .code-editor .cm-textfield { color: var(--text); border-radius: var(--radius-item); min-width: 80px; }
 .code-editor .cm-button { background: var(--hover); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-item); }
+@media (forced-colors: none) {
+  .code-editor input.cm-textfield { border-color: transparent; }
+}
