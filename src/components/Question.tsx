@@ -1,7 +1,7 @@
 import { useId } from 'react';
 import { ExternalLink, MessageCircleQuestion } from 'lucide-react';
 import { localizeError, type Copy } from '../lib/i18n';
-import { localizeNativeText } from '../lib/native-ui-text';
+import { localizeNativeQuestion, localizeNativeText } from '../lib/native-ui-text';
 import type { Json, Language, QuestionDraft } from '../lib/types';
 import { request } from '../lib/bridge';
 import { QUESTION_CONFIRMATION_PENDING, questionAnswersComplete } from '../lib/question-draft';
@@ -10,7 +10,8 @@ import './question.css';
 export default function Question({ question, draft, change, language, t, answer }: { question: Json; draft: QuestionDraft; change: (update: (draft: QuestionDraft) => QuestionDraft) => void; language: Language; t: Copy; answer: (response: Json) => Promise<void> }) {
   const controlId = useId();
   const zh = language === 'zh';
-  const title = localizeNativeText(question.title, language) || t.pending;
+  const title = (question.method === 'input' ? localizeNativeQuestion : localizeNativeText)(question.title, language) || t.pending;
+  const instructions = localizeNativeQuestion(question.instructions, language);
   const placeholder = localizeNativeText(question.placeholder, language) || t.customAnswer;
   const busy = !!draft.submitting;
   const questions: Json[] = Array.isArray(question.questions) ? question.questions : [];
@@ -21,11 +22,11 @@ export default function Question({ question, draft, change, language, t, answer 
   const awaitingConfirmation = draft.error === QUESTION_CONFIRMATION_PENDING;
   const submit = () => { if (complete) respond(question.method === 'confirm' ? { confirmed: true } : question.method === 'ask' ? { answers: questions.map(q => ({ id: q.id, ...(draft.answers[q.id] ?? { selectedOptions: [], customInput: '' }) })) } : { value: draft.value }); };
   return <section className="question" aria-label={t.pending} onKeyDown={event => { if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); cancel(); } }}>
-    <div className="question-heading"><MessageCircleQuestion size={18} aria-hidden="true" /><strong>{title}</strong>{question.async && <span className="question-background">{zh ? '异步提问' : 'Asynchronous'}</span>}</div>
+    <div className="question-heading"><MessageCircleQuestion size={18} aria-hidden="true" /><strong className="preserve-lines">{title}</strong>{question.async && <span className="question-background">{zh ? '异步提问' : 'Asynchronous'}</span>}</div>
     {question.message && <p className="preserve-lines">{localizeNativeText(question.message, language)}</p>}
     {question.async && <p>{zh ? '任务会继续运行，你可以稍后回答。' : 'Work continues while you consider your answer.'}</p>}
     {draft.error && <p className="question-error" role="alert">{localizeError(draft.error, language)}</p>}
-    {question.method === 'open_url' ? <><p>{localizeNativeText(question.instructions, language)}</p><button type="button" className="primary-button" onClick={() => request('system.open_url', { url: question.launchUrl ?? question.url }).catch(() => window.open(question.launchUrl ?? question.url, '_blank'))}><ExternalLink size={14} />{t.open}</button><button type="button" className="quiet-button" disabled={busy} onClick={() => respond({ cancelled: true })}>{t.done}</button></> : <form onSubmit={event => { event.preventDefault(); submit(); }} onKeyDown={event => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.requestSubmit(); } }}>
+    {question.method === 'open_url' ? <>{instructions && <p className="preserve-lines">{instructions}</p>}<button type="button" className="primary-button" onClick={() => request('system.open_url', { url: question.launchUrl ?? question.url }).catch(() => window.open(question.launchUrl ?? question.url, '_blank'))}><ExternalLink size={14} />{t.open}</button><button type="button" className="quiet-button" disabled={busy} onClick={() => respond({ cancelled: true })}>{t.done}</button></> : <form onSubmit={event => { event.preventDefault(); submit(); }} onKeyDown={event => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.requestSubmit(); } }}>
       <div className="question-fields">{question.method === 'ask' ? questions.map(q => <fieldset key={q.id} disabled={busy || awaitingConfirmation}><legend>{q.header && <strong className="question-field-header">{q.header}</strong>}{q.question}</legend>
         {Array.isArray(q.options) && q.options.length > 0 && <div className="answer-options">{q.options.map((option: Json, index: number) => {
           const checked = draft.answers[q.id]?.selectedOptions.includes(option.label) ?? false;
