@@ -42,7 +42,6 @@ import ModelPicker from './components/ModelPicker';
 import ThinkingControl from './components/ThinkingControl';
 import SessionUsage, { type UsageCache } from './components/SessionUsage';
 import WindowChrome, { WindowSlot } from './components/WindowChrome';
-import Wordmark from './components/Wordmark';
 import { applyAppearance, startupAppearance } from './lib/appearance';
 import GenerationRate, { GenerationRateProvider, type RateCache } from './components/GenerationRate';
 import type { SessionAction, SessionListEntry } from './components/SavedSessions';
@@ -713,7 +712,27 @@ export default function App() {
         </WindowSlot>
         {error && <div className="error-banner" role="alert"><CircleHelp size={16} /><span>{localizeError(error, bootstrap.preferences.language)}</span><button className="icon-button" title={t.dismiss} onClick={() => setError('')}><X size={15} /></button></div>}
         {terminalId ? <Suspense fallback={<PageSkeleton label={t.loading} />}><TerminalPanel id={terminalId} initialCommand={terminalInput} t={t} onError={showError} close={closeTerminal} /></Suspense> : <ConversationLayout layoutKey={layoutKey} identity={session ? sessionKey(session) : draftKey}><GenerationRateProvider session={session} language={bootstrap.preferences.language} cache={rateCache.current}><SessionTodos session={session} language={bootstrap.preferences.language} /><SplitWorkspace key={contextKey || cwd} restoreKey={contextKey || cwd} language={bootstrap.preferences.language} closePreview={closePreview} preview={desktopTab ? <Suspense fallback={<PageSkeleton label={t.loading} />}><DesktopTools onSessionAction={sessionAction} tab={desktopTab} openFile={openFile} cwd={cwd} language={bootstrap.preferences.language} preferences={bootstrap.preferences} session={session} selection={selectedText} selectionNonce={selectionNonce} sideQuestionSource={sideQuestionSource} sideQuestionThreadId={sideQuestionThreadId} onSideQuestionThreadsChange={threads => setSideQuestionMetadata({ key: sideQuestionsKey, threads })} onExportSideQuestions={exportSideQuestions} onTab={setDesktopTab} onClose={closePreview} onPrompt={prepareCommand} onEnsureSession={openSession} onSideQuestion={askSideQuestion} onCancelSideQuestion={cancelSideQuestion} onReference={reference} onArchiveChange={() => { for (const value of bootstrap.projects) void refreshHistory(value.path); }} onOpen={(summary, messageId) => { const project = bootstrap.projects.find(value => sessionPathKey(value.path) === sessionPathKey(summary.cwd)); if (project) setProject(project); void loadHistory(summary, messageId); }} onProject={path => void request('project.add', { path }).then(projects => { setBootstrap(current => ({ ...current, projects })); const project = projects.find(value => sessionPathKey(value.path) === sessionPathKey(path)); if (project) selectProject(project); }).catch(showError)} /></Suspense> : inspector && <Suspense fallback={<aside className="inspector"><PageSkeleton label={t.loading} /></aside>}><Inspector onTab={setInspector} swarmEnabled={bootstrap.preferences.features?.swarm === true} onSessionUpdate={updateAgentSession} {...agentFocus} language={bootstrap.preferences.language} onSessionChanged={() => session ? lifecycle.refresh(session.id, true, t.newTitle) : Promise.resolve()} tab={inspector} session={session} cwd={cwd} t={t} onError={showError} close={() => setInspector(null)} send={prepareCommand} /></Suspense>}><div className="conversation-column">
-          {transcript ?? <div className="welcome"><Wordmark decorative /><h1>{t.welcome}</h1><p>{t.welcomeText}</p>{!native && <p className="browser-note">{t.nativeOnly}</p>}<div className="starter-actions">{[[t.exploreAction, t.explorePrompt], [t.reviewAction, t.reviewPrompt], [t.buildAction, t.buildPrompt]].map(([label, prompt]) => <button key={label} onClick={() => { changeDraft(composerDraft, prompt); textarea.current?.focus(); }}>{label}<ArrowUpRight size={14} /></button>)}</div></div>}
+          {transcript ?? <div className="welcome">
+            <div className="welcome-content">
+              <svg className="welcome-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+                <path className="welcome-mark-bar" d="M16 16h39v8H11v-3z" />
+                <g className="welcome-mark-legs">
+                  <path d="M20 24h8v27h-8z" />
+                  <path className="welcome-mark-accent" d="M41 24h8v19h6v8h-8l-6-6z" />
+                </g>
+              </svg>
+              <h1>{t.welcome}</h1>
+              <p>{t.welcomeText}</p>
+              {!native && <p className="browser-note">{t.nativeOnly}</p>}
+              <div className="starter-actions">
+                {[[t.exploreAction, t.explorePrompt], [t.reviewAction, t.reviewPrompt], [t.buildAction, t.buildPrompt]].map(([label, prompt]) =>
+                  <button type="button" key={label} onClick={() => { changeDraft(composerDraft, prompt); textarea.current?.focus(); }}>
+                    <span>{label}</span><ArrowUpRight size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>}
           <div className="composer-area">{activeQuestion && session && <Question key={session.id + ":" + activeQuestion.id} question={activeQuestion} draft={questionDraft(session, activeQuestion)} change={update => lifecycle.update(session.id, current => updateQuestionDraft(current, activeQuestion.id, update))} language={bootstrap.preferences.language} t={t} answer={response => answer(session.id, response)} />}
             {session && <SessionActivity session={session} t={t} threads={sideQuestionThreads} onSideQuestion={openSideQuestionThread} refresh={() => lifecycle.refresh(session.id, false, t.newTitle)} onError={showError} />}
             {!bootstrap.runtime && !booting && <button className="setup-callout" onClick={() => openSettings('runtime')}><span className="setup-icon"><TerminalSquare size={18} /></span><span><strong>{t.installRuntime}</strong><small>{t.installText}</small></span><ArrowUpRight size={16} /></button>}

@@ -14,6 +14,15 @@
 @keyframes stream-reveal { from { opacity: .45; filter: blur(6px); } to { opacity: 1; filter: blur(0); } }
 @keyframes check-settle { 0% { transform: scale(.65); } 65% { transform: scale(1.08); } 100% { transform: scale(1); } }
 
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-motion='normal'] .welcome-mark { --pi-draw: 250ms; }
+  :root[data-motion='rich'] .welcome-mark { --pi-draw: 340ms; }
+  :root:is([data-motion='normal'], [data-motion='rich']) .welcome-mark-bar { animation: pi-draw-bar var(--pi-draw) var(--ease-enter) both; }
+  :root:is([data-motion='normal'], [data-motion='rich']) .welcome-mark-legs { animation: pi-draw-legs var(--pi-draw) var(--ease-enter) calc(var(--pi-draw) * .55) both; }
+}
+@keyframes pi-draw-bar { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0); } }
+@keyframes pi-draw-legs { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0); } }
+
 .icon-button.copy-feedback { display: inline-grid; }
 .copy-feedback > svg { grid-area: 1 / 1; transition: opacity var(--motion-fast) ease, transform var(--motion-fast) var(--ease-enter); }
 .copy-feedback-icons { display: inline-grid; }
